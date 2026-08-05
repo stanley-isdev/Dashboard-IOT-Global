@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20" role="presentation">
+  <rect width="30" height="20" fill="#FFF"/>
+  <g fill="#B22234">
+    <rect width="30" height="1.538"/>
+    <rect y="3.077" width="30" height="1.538"/>
+    <rect y="6.154" width="30" height="1.538"/>
+    <rect y="9.231" width="30" height="1.538"/>
+    <rect y="12.308" width="30" height="1.538"/>
+    <rect y="15.385" width="30" height="1.538"/>
+    <rect y="18.462" width="30" height="1.538"/>
+  </g>
+  <rect width="12" height="10.769" fill="#3C3B6E"/>
+  <!-- Stars simplified to dots: at a 16 px render size the 50-star field is
+       indistinguishable, and dots stay crisp where star points would alias. -->
+  <g fill="#FFF">
+    <circle cx="2" cy="2" r=".7"/><circle cx="5" cy="2" r=".7"/><circle cx="8" cy="2" r=".7"/><circle cx="11" cy="2" r=".7"/>
+    <circle cx="3.5" cy="4.3" r=".7"/><circle cx="6.5" cy="4.3" r=".7"/><circle cx="9.5" cy="4.3" r=".7"/>
+    <circle cx="2" cy="6.6" r=".7"/><circle cx="5" cy="6.6" r=".7"/><circle cx="8" cy="6.6" r=".7"/><circle cx="11" cy="6.6" r=".7"/>
+    <circle cx="3.5" cy="8.9" r=".7"/><circle cx="6.5" cy="8.9" r=".7"/><circle cx="9.5" cy="8.9" r=".7"/>
+  </g>
+</svg>

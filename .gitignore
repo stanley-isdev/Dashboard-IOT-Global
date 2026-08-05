@@ -1,0 +1,34 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local env overrides only. .env / .env.mock / .env.production are committed
+# on purpose: they hold no secrets, only the mock-vs-http build default.
+.env.local
+.env.*.local
+
+# Generated from docs/global-executive-dashboard.html by scripts/extract-logo.mjs.
+# Kept out of Git so the 111 kB raster is not versioned; run `npm run extract:logo`
+# after clone. Replace with a real SVG when design supplies one (see docs/DECISIONS.md D-F16).
+public/brand/one-stanley-narong-pat.png

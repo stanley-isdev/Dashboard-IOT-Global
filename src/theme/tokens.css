@@ -1,0 +1,150 @@
+/*
+ * Design tokens — the single place any colour or size literal may live.
+ *
+ * Ported from the approved mockup (docs/global-executive-dashboard.html) with
+ * two deliberate changes:
+ *
+ *   1. px -> rem everywhere, so one root font-size change scales the whole
+ *      system for a 4K wall panel instead of 200 individual overrides.
+ *   2. Each status colour is split into a `mark` token (fills, dots, pins,
+ *      bars — a non-text graphic, needs 3:1) and an `ink` token (anything
+ *      rendered as type — needs 4.5:1, 7:1 in kiosk mode).
+ *
+ * Every value in the status blocks below is verified by scripts/check-contrast.mjs
+ * against all three surfaces. Do not hand-edit a status colour without re-running
+ * `npm run check:contrast`; the mockup's original green and grey clear 3:1 on
+ * white but drop to 2.83 and 2.80 on --panel-2, which is exactly where the
+ * expanded plant rows sit.
+ */
+
+:root {
+  /* ---- surfaces (unchanged from the approved mockup) ---- */
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --panel-2: #f1f4f9;
+  --line: rgba(15, 23, 42, 0.1);
+  --line-strong: rgba(15, 23, 42, 0.18);
+
+  /* ---- type ---- */
+  --text: #1b2333;
+  --sub: #5a6273; /* was #6B7488 in the mockup: 4.28:1, just under AA */
+
+  /* ---- status: mark tokens (fills, dots, pins, bars) ---- */
+  --status-good-mark: #0c8f70;
+  --status-warn-mark: #c6790a;
+  --status-crit-mark: #e0333f;
+  --status-nodata-mark: #727c8d;
+  --status-other-mark: #7c6bb0;
+
+  /* ---- status: ink tokens (text) ---- */
+  --status-good-ink: #0b6e58;
+  --status-warn-ink: #8a5308;
+  --status-crit-ink: #b31c25;
+  --status-nodata-ink: #5b6472;
+  --status-other-ink: #5b4b8a;
+
+  /* ---- status: tint backgrounds for badges/pills ---- */
+  --status-good-tint: rgba(12, 143, 112, 0.12);
+  --status-warn-tint: rgba(198, 121, 10, 0.12);
+  --status-crit-tint: rgba(224, 51, 63, 0.1);
+  --status-nodata-tint: rgba(114, 124, 141, 0.14);
+  --status-other-tint: rgba(124, 107, 176, 0.13);
+
+  /* Aliases kept so the ported mockup CSS reads the same. */
+  --run: var(--status-good-ink);
+  --stop: var(--status-crit-ink);
+  --warn: var(--status-warn-ink);
+  --nodata: var(--status-nodata-ink);
+
+  /* ---- radii, elevation, focus ---- */
+  --r-sm: 0.3125rem; /* 5px  */
+  --r-md: 0.5rem; /* 8px  */
+  --r-lg: 0.75rem; /* 12px */
+  --r-xl: 0.875rem; /* 14px */
+  --shadow-panel: 0 0.0625rem 0.1875rem rgba(15, 23, 42, 0.06);
+  --shadow-pop: 0 0.25rem 0.375rem rgba(15, 23, 42, 0.08);
+  --focus-ring: 0 0 0 0.1875rem rgba(11, 110, 88, 0.45);
+
+  /* ---- spacing ---- */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 1.5rem;
+  --sp-8: 2rem;
+
+  /* ---- type scale (desktop, ~1 m viewing distance) ---- */
+  --fs-kpi: 2rem; /* 32px */
+  --fs-h1: 1.0625rem; /* 17px */
+  --fs-h2: 0.875rem; /* 14px */
+  --fs-body: 0.8125rem; /* 13px */
+  --fs-label: 0.75rem; /* 12px */
+  --fs-micro: 0.6875rem; /* 11px */
+  --fs-nano: 0.625rem; /* 10px */
+
+  /* ---- line height. Thai stacks tone marks above and vowels below the
+     baseline; the mockup's tight leading clips them. Overridden per lang. ---- */
+  --lh-body: 1.4;
+  --lh-tight: 1.2;
+
+  /* ---- interaction target floors ---- */
+  --target-min: 1.5rem; /* 24px desktop */
+
+  /* ---- map ---- */
+  --map-h: 26.875rem; /* 430px */
+  --map-void: #eaeef5;
+}
+
+/*
+ * Thai needs more leading than Latin or the tone marks collide with the row
+ * above. Set on <html lang> by I18nProvider.
+ */
+html[lang='th'] {
+  --lh-body: 1.55;
+  --lh-tight: 1.4;
+}
+
+/*
+ * Kiosk / TV density. Set by AppShell when ?kiosk=1 or the viewport is very
+ * wide. Floors come from angular size: at 3 m from a 55" 4K panel, 0.3 degrees
+ * is roughly 25 logical px, so body text below that is unreadable.
+ *
+ * Ink tokens step up to AAA 7:1 here — factory ambient light is high and the
+ * panels are usually glossy.
+ */
+:root[data-density='tv'] {
+  --fs-kpi: 3.5rem; /* 56px */
+  --fs-h1: 1.75rem; /* 28px */
+  --fs-h2: 1.625rem; /* 26px */
+  --fs-body: 1.375rem; /* 22px */
+  --fs-label: 1.5rem; /* 24px */
+  --fs-micro: 1.125rem; /* 18px */
+  --fs-nano: 1.125rem; /* 18px — no smaller tier exists at this distance */
+
+  --target-min: 2.75rem; /* 44px */
+  --map-h: 40rem;
+
+  --sub: #474e5d;
+  --status-good-ink: #075744;
+  --status-warn-ink: #6e4206;
+  --status-crit-ink: #96131c;
+  --status-nodata-ink: #49505d;
+  --status-other-ink: #4c3e74;
+}
+
+/*
+ * Very large viewports scale the whole layout, not just the type. This is a
+ * separate axis from density: density says "the viewer is far away", this says
+ * "there are simply more pixels".
+ */
+@media (min-width: 2560px) {
+  html {
+    font-size: 20px;
+  }
+}
+@media (min-width: 3400px) {
+  html {
+    font-size: 24px;
+  }
+}

@@ -1,0 +1,27 @@
+/*
+ * Self-hosted type. Closes T-12: the mockup pulled Inter, Space Grotesk and
+ * IBM Plex Mono from fonts.googleapis.com, which fails on a plant network with
+ * no public internet.
+ *
+ * `wght.css` rather than `index.css` on purpose: index.css also declares the
+ * italic and optical-size variants, and this dashboard uses neither. For Inter
+ * that alone drops 35 of 42 woff2 files from the build output. The remaining
+ * per-script subsets stay, but each @font-face carries a unicode-range so a
+ * browser only ever downloads latin (plus thai, when the UI is in Thai).
+ */
+@import '@fontsource-variable/inter/wght.css';
+@import '@fontsource-variable/space-grotesk/wght.css';
+@import '@fontsource-variable/noto-sans-thai/wght.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
+/*
+ * Language-agnostic stacks. The browser picks the Thai face only for Thai
+ * codepoints, so mixed strings like "THS · โรงงาน LAMP 2" render correctly
+ * with no per-string logic anywhere in the app.
+ */
+:root {
+  --font-ui: 'Inter Variable', 'Noto Sans Thai Variable', system-ui, sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Noto Sans Thai Variable', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Noto Sans Thai Variable', ui-monospace, monospace;
+}

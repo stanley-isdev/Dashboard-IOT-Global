@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20" role="presentation">
+  <rect width="10" height="20" fill="#006847"/>
+  <rect x="10" width="10" height="20" fill="#FFF"/>
+  <rect x="20" width="10" height="20" fill="#CE1126"/>
+  <!-- The coat of arms is unreadable below ~64 px; a neutral emblem mark keeps
+       the flag identifiable without pretending to render the eagle. -->
+  <circle cx="15" cy="10" r="2.6" fill="none" stroke="#7B5A2E" stroke-width="1"/>
+  <circle cx="15" cy="10" r="1" fill="#006847"/>
+</svg>
