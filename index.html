@@ -4,7 +4,47 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>dashboard-iot-global</title>
+    <!-- The board ships both themes now, so the browser is told both are real.
+         Which one is in force is a `color-scheme` declaration in tokens.css,
+         keyed off the data-theme attribute the script below writes. -->
+    <meta name="color-scheme" content="light dark" />
+    <title>One Stanley Narong-Pat Global Executive Dashboard</title>
+
+    <!--
+      Theme before first paint.
+
+      The one piece of app logic that has to live outside the bundle. React
+      cannot set data-theme until main.tsx has fetched runtime-config.json and
+      mounted, and a returning viewer would spend that round trip looking at the
+      theme they did not choose - on a dark board, a full-screen white flash.
+
+      This is a paint-time shortcut, not a second source of truth: it only ever
+      writes the same value applyBootPrefs would, and AppShell owns the attribute
+      from mount onward. It reads zustand's persisted envelope directly, so the
+      storage key and the `state` wrapper are duplicated here - the two places
+      are state/prefsStore.ts and this block.
+
+      A first-time viewer at a site whose defaultTheme is 'dark' still gets one
+      light frame, because nothing on the machine knows about that setting until
+      the config file arrives. Storing it would mean caching config in the very
+      place config is meant to override.
+    -->
+    <script>
+      (function () {
+        try {
+          var q = new URLSearchParams(location.search).get('theme');
+          var stored = JSON.parse(localStorage.getItem('osnp.prefs') || 'null');
+          var t = q || (stored && stored.state && stored.state.theme);
+          if (t === 'system') {
+            t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+        } catch (e) {
+          /* Private mode, a corrupt entry, a blocked localStorage: fall through
+             to the light default and let the bundle sort it out. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

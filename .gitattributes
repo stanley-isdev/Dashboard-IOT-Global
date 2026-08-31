@@ -8,7 +8,7 @@
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 
-# Binary — never diff or convert.
+# Binary - never diff or convert.
 *.png binary
 *.jpg binary
 *.woff  binary

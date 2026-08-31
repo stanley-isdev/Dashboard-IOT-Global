@@ -42,7 +42,7 @@ async function walk(dir) {
 try {
   await stat(dist);
 } catch {
-  console.error('dist/ not found — run `npm run build` first.');
+  console.error('dist/ not found - run `npm run build` first.');
   process.exit(1);
 }
 
@@ -62,4 +62,4 @@ if (hits.length) {
   process.exit(1);
 }
 
-console.log('No external CDN references in dist/ — offline deploy is safe.');
+console.log('No external CDN references in dist/ - offline deploy is safe.');

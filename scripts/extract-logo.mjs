@@ -33,6 +33,6 @@ await writeFile(outFile, bytes);
 
 console.log(`Wrote ${outFile} (${(bytes.length / 1024).toFixed(1)} kB)`);
 console.log(
-  'Note: this is a raster. At 58 px tall it will look soft on a 4K TV — ' +
+  'Note: this is a raster. At 58 px tall it will look soft on a 4K TV - ' +
     'ask the design owner for the original SVG (docs/DECISIONS.md D-F16).',
 );

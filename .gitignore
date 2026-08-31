@@ -28,7 +28,17 @@ dist-ssr
 .env.local
 .env.*.local
 
+# The backend server's .env holds REAL InfluxDB/MSSQL credentials - do NOT
+# extend the frontend's "commit .env" convention to it. Only .env.example
+# (a template with no real values) is committed.
+server/.env
+server/.env.*
+!server/.env.example
+
 # Generated from docs/global-executive-dashboard.html by scripts/extract-logo.mjs.
 # Kept out of Git so the 111 kB raster is not versioned; run `npm run extract:logo`
 # after clone. Replace with a real SVG when design supplies one (see docs/DECISIONS.md D-F16).
 public/brand/one-stanley-narong-pat.png
+
+# Throwaway Playwright font audit, re-created on demand. Not part of the build.
+.tmp-fontaudit.mjs
