@@ -3,7 +3,7 @@
  *
  * IMPORTANT: this file is standing in for the backend. Nothing under
  * src/mocks/ may be imported by a component, a page, or anything under
- * src/domain — shift resolution and production-date anchoring are business
+ * src/domain - shift resolution and production-date anchoring are business
  * logic and belong on the server (design doc sections 7, 9.5, 9.6). They live
  * here only so the UI can be built and proven before the API exists.
  *

@@ -48,8 +48,8 @@ const TWO_SHIFT = (timezone: string): ShiftConfig => ({
 });
 
 /**
- * STJ runs three shifts and — this is the case that breaks every hour-bucketed
- * query in the old dashboards — B ends at 22:15, not on the hour. A shift is
+ * STJ runs three shifts and - this is the case that breaks every hour-bucketed
+ * query in the old dashboards - B ends at 22:15, not on the hour. A shift is
  * 8h, B is 8h15m, C is 7h45m and crosses midnight.
  */
 const STJ_SHIFT: ShiftConfig = {

@@ -22,7 +22,7 @@ import { COMPANIES, type CompanySeed } from './masterData';
  * every commit.
  */
 
-const FILTERS = { range: '24h', process: 'Injection', region: 'all' } as const;
+const FILTERS = { range: '24h', process: 'Injection', region: 'all', plant: 'all' } as const;
 
 /** A fixed instant so shift-boundary assertions are reproducible. */
 const AT = (iso: string) => new Date(iso);
@@ -85,7 +85,7 @@ describe('a site with no telemetry is never reported as stopped', () => {
     ]);
   });
 
-  it('contributes zero to every machine bucket — including stopped', () => {
+  it('contributes zero to every machine bucket - including stopped', () => {
     for (const c of unconnected) {
       expect(c.counts.stopped, `${c.code} must not report stopped machines`).toBe(0);
       expect(c.counts.running).toBe(0);
@@ -115,7 +115,7 @@ describe('a site with no telemetry is never reported as stopped', () => {
     expect(overview.totals.companies_needing_attention).toBeLessThanOrEqual(3);
   });
 
-  it('never sources an alert — a site with no data cannot report a fault', () => {
+  it('never sources an alert - a site with no data cannot report a fault', () => {
     const reporting = new Set(
       overview.companies
         .filter((c) => c.status === 'online' || c.status === 'stale')
@@ -195,7 +195,7 @@ describe('shift resolution handles all three patterns (section 16 DoD)', () => {
   const ths = COMPANIES.find((c) => c.code === 'THS')!;
   const stj = COMPANIES.find((c) => c.code === 'STJ')!;
 
-  it('two twelve-hour shifts — THS day', () => {
+  it('two twelve-hour shifts - THS day', () => {
     // 08:15 UTC is 15:15 in Bangkok, inside the 08:00-20:00 day shift.
     const shift = resolveShift(ths, AT('2026-08-04T08:15:00Z'))!;
     expect(shift.code).toBe('D');
@@ -206,7 +206,7 @@ describe('shift resolution handles all three patterns (section 16 DoD)', () => {
     expect(shift.production_date).toBe('2026-08-04');
   });
 
-  it('three shifts with an off-the-hour boundary — STJ B ends 22:15', () => {
+  it('three shifts with an off-the-hour boundary - STJ B ends 22:15', () => {
     // 12:00 UTC is 21:00 in Tokyo, inside B (14:00-22:15).
     const shift = resolveShift(stj, AT('2026-08-04T12:00:00Z'))!;
     expect(shift.code).toBe('B');
@@ -216,9 +216,9 @@ describe('shift resolution handles all three patterns (section 16 DoD)', () => {
   });
 
   it('the 22:15 boundary is respected, not rounded to 22:00', () => {
-    // 13:10 UTC is 22:10 JST — still B, by ten minutes.
+    // 13:10 UTC is 22:10 JST - still B, by ten minutes.
     expect(resolveShift(stj, AT('2026-08-04T13:10:00Z'))!.code).toBe('B');
-    // 13:20 UTC is 22:20 JST — now C.
+    // 13:20 UTC is 22:20 JST - now C.
     expect(resolveShift(stj, AT('2026-08-04T13:20:00Z'))!.code).toBe('C');
   });
 
@@ -253,7 +253,7 @@ describe('hourly buckets are generated from shift config, never hardcoded', () =
     expect(buckets.some((b) => b.is_partial)).toBe(false);
   });
 
-  it('STJ B yields nine — eight hours plus a fifteen-minute tail', () => {
+  it('STJ B yields nine - eight hours plus a fifteen-minute tail', () => {
     const now = AT('2026-08-04T12:00:00Z'); // 21:00 JST
     const shift = resolveShift(stj, now)!;
     const buckets = buildBuckets(shift, 'Asia/Tokyo', now, 'test');
@@ -264,7 +264,7 @@ describe('hourly buckets are generated from shift config, never hardcoded', () =
     expect(buckets.slice(0, 8).every((b) => b.duration_min === 60)).toBe(true);
   });
 
-  it('STJ C yields eight — a forty-five-minute head plus seven hours', () => {
+  it('STJ C yields eight - a forty-five-minute head plus seven hours', () => {
     const now = AT('2026-08-04T18:00:00Z'); // 03:00 JST next day
     const shift = resolveShift(stj, now)!;
     const buckets = buildBuckets(shift, 'Asia/Tokyo', now, 'test');
@@ -288,7 +288,7 @@ describe('hourly buckets are generated from shift config, never hardcoded', () =
   });
 
   it('supplies a per-hour rate so unequal buckets stay comparable', () => {
-    const now = AT('2026-08-04T13:00:00Z'); // 22:00 JST — the 15 min tail is running
+    const now = AT('2026-08-04T13:00:00Z'); // 22:00 JST - the 15 min tail is running
     const shift = resolveShift(stj, now)!;
     const buckets = buildBuckets(shift, 'Asia/Tokyo', now, 'test');
     const done = buckets.filter((b) => b.state === 'complete');
@@ -314,7 +314,7 @@ describe('a new shift pattern needs config only, not code (section 16 DoD)', () 
       shiftConfig: fourShift,
     };
 
-    const now = AT('2026-08-04T18:00:00Z'); // 20:00 CEST — inside S3
+    const now = AT('2026-08-04T18:00:00Z'); // 20:00 CEST - inside S3
     const shift = resolveShift(seed, now)!;
     expect(shift.code).toBe('S3');
     expect(shift.of).toBe(4);
@@ -334,5 +334,82 @@ describe('degraded sources are named, not hidden', () => {
     const mssql = overview.meta.sources.find((s) => s.name === 'mssql')!;
     expect(mssql.status).toBe('down');
     expect(mssql.message).toBeTruthy();
+  });
+});
+
+/**
+ * The region parameter is the one filter that changes the denominator, so its
+ * encoding is asserted here rather than left to the picker that writes it: the
+ * frontend, the mock and the server all read it through the same matcher in the
+ * contract, and a URL somebody pasted into a kiosk has to keep meaning what it
+ * meant when it was copied.
+ */
+describe('region scopes the board, one code or several', () => {
+  const now = AT('2026-08-04T08:15:00Z');
+  const scoped = (region: string) =>
+    parse(zGlobalOverview, buildGlobalOverview(now, 'default', { ...FILTERS, region }));
+
+  const codes = (region: string) => scoped(region).companies.map((c) => c.code);
+
+  it('takes a country code, and includes every base under it', () => {
+    expect(codes('TH')).toEqual(['THS', 'ASI']);
+  });
+
+  it('takes a single company code', () => {
+    expect(codes('STJ')).toEqual(['STJ']);
+  });
+
+  it('takes a comma-separated list mixing countries and companies', () => {
+    expect(codes('TH,STJ')).toEqual(['THS', 'ASI', 'STJ']);
+    expect(codes('THS,SEH')).toEqual(['THS', 'SEH']);
+  });
+
+  it('reads TH the same as THS,ASI - the short form is only shorter', () => {
+    expect(codes('TH')).toEqual(codes('THS,ASI'));
+  });
+
+  it('keeps the coverage arithmetic inside the scope it was given', () => {
+    const overview = scoped('TH,STJ');
+    expect(overview.totals.companies_total).toBe(3);
+    expect(overview.totals.companies_reporting).toBe(3);
+    expect(overview.totals.countries_total).toBe(2);
+    const machines = overview.companies.reduce((a, c) => a + c.counts.total, 0);
+    expect(overview.totals.counts.total).toBe(machines);
+  });
+
+  it('never sources an alert from a base outside the scope', () => {
+    const overview = scoped('JP');
+    for (const alert of overview.alerts) expect(alert.company).toBe('STJ');
+  });
+
+  it('matches nothing for an unknown token rather than widening back to all', () => {
+    expect(codes('ZZ')).toEqual([]);
+  });
+
+  /*
+   * `none` is what the picker's All row writes when it is tapped off, so it is
+   * the one empty scope a reader reaches on purpose. It has to survive the trip
+   * through the URL as itself: coming back as the whole fleet would mean the
+   * board silently disagreeing with the ticks in the menu above it.
+   */
+  it('takes none as the empty scope, and keeps the totals honest at zero', () => {
+    const overview = scoped('none');
+    expect(overview.companies).toEqual([]);
+    expect(overview.totals.companies_total).toBe(0);
+    expect(overview.totals.companies_reporting).toBe(0);
+    expect(overview.totals.oa_pct).toBeNull();
+    expect(overview.totals.actual_qty).toBeNull();
+    expect(overview.alerts).toEqual([]);
+  });
+
+  it('lets a real token win over a leftover none', () => {
+    expect(codes('none,TH')).toEqual(['THS', 'ASI']);
+  });
+
+  it('treats all as the whole fleet however it arrives', () => {
+    expect(codes('all')).toHaveLength(9);
+    expect(codes('')).toHaveLength(9);
+    // `all` in a list wins: it is already the widest scope.
+    expect(codes('TH,all')).toHaveLength(9);
   });
 });

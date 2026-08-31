@@ -29,7 +29,7 @@ export const SCENARIOS = {
   'backend-down': 'backend-down',
 
   /**
-   * MSSQL is down but InfluxDB is fine. Proves the degraded state — the parts
+   * MSSQL is down but InfluxDB is fine. Proves the degraded state - the parts
    * of the payload that still work are shown, and the parts that do not are
    * named rather than silently omitted.
    */

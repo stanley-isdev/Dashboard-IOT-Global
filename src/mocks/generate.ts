@@ -12,6 +12,8 @@ import type {
   PlantDetail,
   PlantSummary,
   PlantWithZones,
+  Process,
+  Range,
   Shift,
   ShiftBreakdown,
   SiteStatus,
@@ -21,6 +23,19 @@ import type {
   TrendPoint,
   ZoneSummary,
 } from '../api/contract';
+import { plantFilterActive, plantMatcher, regionMatcher } from '../api/contract';
+/*
+ * The one thing the mock must NOT re-implement: where a drill-down link points.
+ * A mock that hands out a differently shaped Grafana URL than the server does
+ * is a link that works in mock mode and 404s in production, which is exactly
+ * the class of bug mock mode exists to catch early.
+ */
+import {
+  DEFAULT_LINK_PROCESS,
+  GRAFANA_BASE_URL,
+  machineStatusUrl,
+  representativePlant,
+} from '@dashboard/domain-shared';
 import { COMPANIES, COUNTRIES, TARGET_OA, type CompanySeed, type PlantSeed } from './masterData';
 import {
   clockToMinutes,
@@ -37,7 +52,7 @@ import type { Scenario } from './scenarios';
  * Generates contract-valid payloads from the master data.
  *
  * This is backend code living temporarily in the frontend repo. Nothing here
- * may be imported outside src/mocks — shift resolution, roll-ups and tier
+ * may be imported outside src/mocks - shift resolution, roll-ups and tier
  * assignment are exactly the business logic the design doc (sections 7 and 13)
  * says must sit behind the API.
  *
@@ -56,7 +71,7 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
-/** mulberry32 — small, fast, good enough for believable-looking sample data. */
+/** mulberry32 - small, fast, good enough for believable-looking sample data. */
 function rng(seed: string): () => number {
   let a = hash(seed);
   return () => {
@@ -256,6 +271,11 @@ const BUCKET_OF: Record<MachineStatus, StatusBucket> = {
   'No Plan': 'idle',
   'Order End': 'idle',
   Offline: 'no_data',
+  // Statuses the live InfluxDB emits that the design doc never listed. Kept in
+  // step with packages/domain-shared/src/statusBucket.ts, which is the real one.
+  Pending: 'other',
+  Alarm: 'other',
+  Warning: 'other',
 };
 
 function buildCounts(total: number, seed: string, healthy: boolean): Counts {
@@ -268,14 +288,41 @@ function buildCounts(total: number, seed: string, healthy: boolean): Counts {
   const offline = 0;
   const massPro = Math.max(0, total - stop - dandori - fourM - noPlan - orderEnd - offline);
 
-  const by_status: Partial<Record<MachineStatus, number>> = {
+  /*
+   * Split the way the real backend splits it: TOTAL is RUNNING + STOP, and
+   * everything else lands in `not_counted` as context rather than in the
+   * headline. The mock is the reference implementation (BACKEND-HANDOVER §5),
+   * so it models the same rule - a mock that still folded Order End into TOTAL
+   * would disagree with the server the moment anyone flipped back to it.
+   *
+   * `Pending`, `Alarm` and `Warning` are real statuses the live InfluxDB
+   * emits that the mock never generates; every enum key is still present,
+   * because absent is not the same as zero.
+   */
+  const by_status: Record<MachineStatus, number> = {
     'Mass Pro': massPro,
     Dandori: dandori,
     Stop: stop,
+    '4M Change': 0,
+    'No Plan': 0,
+    'Order End': 0,
+    Offline: 0,
+    Pending: 0,
+    Alarm: 0,
+    Warning: 0,
+  };
+
+  const not_counted: Record<MachineStatus, number> = {
+    'Mass Pro': 0,
+    Dandori: 0,
+    Stop: 0,
     '4M Change': fourM,
     'No Plan': noPlan,
     'Order End': orderEnd,
     Offline: offline,
+    Pending: 0,
+    Alarm: 0,
+    Warning: 0,
   };
 
   const sumFor = (bucket: StatusBucket) =>
@@ -284,8 +331,9 @@ function buildCounts(total: number, seed: string, healthy: boolean): Counts {
       .reduce((a, [, v]) => a + v, 0);
 
   return {
-    total,
-    by_status: by_status as Record<MachineStatus, number>,
+    total: massPro + dandori + stop,
+    by_status,
+    not_counted,
     running: sumFor('running'),
     stopped: sumFor('stopped'),
     idle: sumFor('idle'),
@@ -306,6 +354,21 @@ function emptyCounts(): Counts {
       'No Plan': 0,
       'Order End': 0,
       Offline: 0,
+      Pending: 0,
+      Alarm: 0,
+      Warning: 0,
+    },
+    not_counted: {
+      'Mass Pro': 0,
+      Dandori: 0,
+      Stop: 0,
+      '4M Change': 0,
+      'No Plan': 0,
+      'Order End': 0,
+      Offline: 0,
+      Pending: 0,
+      Alarm: 0,
+      Warning: 0,
     },
     running: 0,
     stopped: 0,
@@ -319,18 +382,28 @@ function emptyCounts(): Counts {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-function buildKpi(plan: number, oa: number, seed: string): Kpi {
+function buildKpi(plan: number, oa: number, seed: string, stopped: number): Kpi {
   const r = rng(seed);
   const actual = Math.round(plan * (0.72 + r() * 0.4));
   return {
     oa_pct: round1(oa),
     oa_tier: tierOf(oa),
-    // Section 9.2: a plan of zero must not report 0% achievement — a machine
+    // Section 9.2: a plan of zero must not report 0% achievement - a machine
     // with no plan is not achieving zero, it is not applicable.
     achievement_pct: plan > 0 ? round1((actual / plan) * 100) : null,
     plan_qty: plan,
     actual_qty: actual,
     shot_count: Math.round(actual / 4),
+    /*
+     * Derived from the machines that are actually stopped, not drawn
+     * independently. A row reading "0 stop" and "4h 12m down" at the same time
+     * is the kind of contradiction that costs the whole board its credibility,
+     * and with two independent generators it happens on about a third of rows.
+     *
+     * Its own rng stream (`|down`) rather than another draw from `r`, so adding
+     * this field does not shift the sequence every existing figure came from.
+     */
+    downtime_sec: stopped === 0 ? 0 : Math.round(stopped * (18 + rng(`${seed}|down`)() * 62) * 60),
   };
 }
 
@@ -343,6 +416,9 @@ function unknownKpi(): Kpi {
     plan_qty: null,
     actual_qty: null,
     shot_count: null,
+    // Not `0`. A site with no gateway has not had a downtime-free window; it
+    // has had no window at all.
+    downtime_sec: null,
   };
 }
 
@@ -405,17 +481,40 @@ function buildPlant(
   const healthy = scenario === 'all-healthy';
   const oa = healthy ? Math.max(plant.oaCentre, 92 + rng(key)() * 6) : plant.oaCentre + (rng(key)() * 6 - 3);
 
+  // Counts first: the KPI's downtime is a function of them, so it cannot be
+  // built inline any more.
+  const counts = reporting ? buildCounts(plant.machines, key, healthy) : emptyCounts();
+
   return {
     code: plant.code,
     label: plant.label,
     status,
     data_readiness: seed.readiness,
     last_seen: reporting ? lastSeenFor(now, status) : null,
-    grafana_url: `/d/adz5fll?var-Lamp_var=${plant.code}&var-process_var=Injection`,
+    // No `Zone_var`: the mock has no zone data to name, so the board opens on
+    // its own default. The server's links carry the zones a plant is actually
+    // reporting.
+    grafana_url: machineStatusUrl({
+      plantCode: plant.code,
+      process: DEFAULT_LINK_PROCESS,
+      timezone: seed.timezone,
+    }),
     target_oa: null,
-    counts: reporting ? buildCounts(plant.machines, key, healthy) : emptyCounts(),
-    kpi: reporting ? buildKpi(plant.planQty, oa, key) : unknownKpi(),
+    counts,
+    kpi: reporting ? buildKpi(plant.planQty, oa, key, counts.stopped) : unknownKpi(),
   };
+}
+
+/** A company's drill-down: its first plant, since no company board exists. */
+function companyGrafanaUrl(seed: CompanySeed): string | null {
+  const plant = representativePlant(seed.plants, () => false);
+  return plant
+    ? machineStatusUrl({
+        plantCode: plant.code,
+        process: DEFAULT_LINK_PROCESS,
+        timezone: seed.timezone,
+      })
+    : null;
 }
 
 function lastSeenFor(now: Date, status: SiteStatus): string {
@@ -423,10 +522,22 @@ function lastSeenFor(now: Date, status: SiteStatus): string {
   return new Date(now.getTime() - ageSec * 1000).toISOString();
 }
 
-function buildCompany(seed: CompanySeed, now: Date, scenario: Scenario): CompanySummary {
+function buildCompany(
+  seed: CompanySeed,
+  now: Date,
+  scenario: Scenario,
+  /*
+   * The Lamp filter, applied where the plants are built rather than after the
+   * company is finished - so counts, %OA and downtime are all summed over the
+   * same plant set the reader picked. See plantMatcher in the contract.
+   */
+  plantInScope: (p: { code: string }) => boolean = () => true,
+): CompanySummary {
   const status = siteStatusFor(seed, scenario);
   const shift = resolveShift(seed, now);
-  const plants = seed.plants.map((p) => buildPlant(seed, p, now, scenario, status));
+  const plants = seed.plants
+    .filter(plantInScope)
+    .map((p) => buildPlant(seed, p, now, scenario, status));
   const reporting = status === 'online' || status === 'stale';
 
   const counts = reporting ? addCounts(plants.map((p) => p.counts)) : emptyCounts();
@@ -449,7 +560,9 @@ function buildCompany(seed: CompanySeed, now: Date, scenario: Scenario): Company
     status,
     data_readiness: seed.readiness,
     last_seen: reporting ? lastSeenFor(now, status) : null,
-    grafana_url: `/d/adz5fli?var-Company_var=${seed.code}`,
+    // A company links to one of its plants - there is no company-level board.
+    // Mock mode knows nothing about who is on the air, so it takes the first.
+    grafana_url: companyGrafanaUrl(seed),
     counts,
     kpi: {
       oa_pct: oa,
@@ -458,6 +571,9 @@ function buildCompany(seed: CompanySeed, now: Date, scenario: Scenario): Company
       plan_qty: plan,
       actual_qty: actual,
       shot_count: actual === null ? null : Math.round(actual / 4),
+      // Downtime is additive across plants, unlike %OA. Machine-hours lost sum;
+      // efficiency ratios do not, which is why that one goes through rollupOa.
+      downtime_sec: reporting ? sumOrNull(plants.map((p) => p.kpi.downtime_sec)) : null,
     },
     plants,
   };
@@ -470,7 +586,19 @@ function stripInternals(s: ResolvedShift): Shift {
   return rest;
 }
 
-function buildTrend(now: Date, centre: number, siteCount: number, seed: string): TrendPoint[] {
+/**
+ * The real backend's trend carries a machine count that moves hour to hour -
+ * measured 1 to 18 over a live day - so the mock moves one too. A fixture whose
+ * denominator never changes would let the chart's thin-hour handling look
+ * correct right up until it met production.
+ */
+function buildTrend(
+  now: Date,
+  centre: number,
+  siteCount: number,
+  machineCount: number,
+  seed: string,
+): TrendPoint[] {
   const r = rng(`${seed}|trend|${bucketKey(now)}`);
   const points: TrendPoint[] = [];
   for (let i = 23; i >= 0; i--) {
@@ -480,6 +608,7 @@ function buildTrend(now: Date, centre: number, siteCount: number, seed: string):
       ts: ts.toISOString(),
       oa_pct: round1(centre + Math.sin(i / 3) * 6 + (r() * 5 - 2.5)),
       site_count: siteCount,
+      machine_count: Math.max(1, Math.round(machineCount * (0.6 + r() * 0.5))),
     });
   }
   return points;
@@ -497,7 +626,7 @@ function buildAlerts(companies: CompanySummary[], now: Date): Alert[] {
   const reporting = companies.filter((c) => c.status === 'online' || c.status === 'stale');
   // No reporting site means no alerts, by definition. This is the guard that
   // makes "VNS reports a heater failure" unrepresentable rather than merely
-  // unlikely — it is the company detail page for an unconnected site that
+  // unlikely - it is the company detail page for an unconnected site that
   // exercises it.
   if (reporting.length === 0) return [];
 
@@ -551,7 +680,7 @@ function envelope(now: Date, scenario: Scenario) {
         name: 'mssql' as const,
         status: mssqlDown ? ('down' as const) : ('ok' as const),
         last_success: mssqlDown ? new Date(now.getTime() - 22 * 60_000).toISOString() : now.toISOString(),
-        message: mssqlDown ? 'BackflushHana_PRD unreachable — defect figures unavailable' : null,
+        message: mssqlDown ? 'BackflushHana_PRD unreachable - defect figures unavailable' : null,
       },
     ],
     build_id: 'mock',
@@ -578,24 +707,30 @@ export function buildMeta(now: Date): Meta {
       readiness_note: c.readinessNote,
       shift_config: c.shiftConfig,
       plants: c.plants.map((p) => ({ code: p.code, label: p.label, target_oa: null })),
-      grafana_url: `/d/adz5fli?var-Company_var=${c.code}`,
+      grafana_url: companyGrafanaUrl(c),
     })),
     processes: ['Injection'],
     ranges: ['8h', '24h', '7d'],
-    grafana_base_url: 'https://grafana.thaistanley.local',
+    grafana_base_url: GRAFANA_BASE_URL,
   };
 }
 
 export function buildGlobalOverview(
   now: Date,
   scenario: Scenario,
-  filters: { range: '8h' | '24h' | '7d'; process: 'Injection' | 'all'; region: string },
+  filters: { range: Range; process: Process | 'all'; region: string; plant: string },
 ): GlobalOverview {
-  const all = COMPANIES.map((c) => buildCompany(c, now, scenario));
-  const companies =
-    filters.region === 'all'
-      ? all
-      : all.filter((c) => c.country_code === filters.region || c.code === filters.region);
+  const inPlantScope = plantMatcher(filters.plant);
+  const all = COMPANIES.map((c) => buildCompany(c, now, scenario, inPlantScope));
+  // One matcher for the whole payload, and the same one the server uses: the
+  // parameter is `all` or a comma-separated list of country and company codes
+  // (see the contract's region.ts), so a reader can scope the board to Thailand
+  // plus Japan and get one denominator over both.
+  const inScope = regionMatcher(filters.region);
+  // A company with no lamp left in scope is not a row of zeroes - it is a
+  // company the reader did not ask about.
+  const narrowed = plantFilterActive(filters.plant);
+  const companies = all.filter((c) => inScope(c) && (!narrowed || c.plants.length > 0));
 
   const reporting = companies.filter((c) => c.status === 'online' || c.status === 'stale');
   const counts = addCounts(reporting.map((c) => c.counts));
@@ -615,6 +750,7 @@ export function buildGlobalOverview(
       plan_qty: plan,
       actual_qty: actual,
       shot_count: actual === null ? null : Math.round(actual / 4),
+      downtime_sec: sumOrNull(reporting.map((c) => c.kpi.downtime_sec)),
       companies_needing_attention: reporting.filter((c) => c.kpi.oa_tier === 'critical').length,
       plants_needing_attention: reporting
         .flatMap((c) => c.plants)
@@ -624,7 +760,13 @@ export function buildGlobalOverview(
       countries_total: new Set(companies.map((c) => c.country_code)).size,
     },
     companies,
-    trend: buildTrend(now, oa ?? 80, reporting.length, 'global'),
+    trend: buildTrend(
+      now,
+      oa ?? 80,
+      reporting.length,
+      reporting.reduce((n, c) => n + c.counts.total, 0),
+      'global',
+    ),
     alerts: buildAlerts(companies, now),
   };
 }
@@ -633,7 +775,7 @@ export function buildCompanyDetail(
   code: string,
   now: Date,
   scenario: Scenario,
-  filters: { range: '8h' | '24h' | '7d'; process: 'Injection' | 'all' },
+  filters: { range: Range; process: Process | 'all' },
 ): CompanyDetail | null {
   const seed = COMPANIES.find((c) => c.code === code);
   if (!seed) return null;
@@ -670,7 +812,7 @@ export function buildCompanyDetail(
     shift_config: seed.shiftConfig,
     shift_breakdown: shift ? buildShiftBreakdown(seed, now) : [],
     plants,
-    trend: buildTrend(now, summary.kpi.oa_pct ?? 80, 1, seed.code),
+    trend: buildTrend(now, summary.kpi.oa_pct ?? 80, 1, summary.counts.total, seed.code),
     alerts: buildAlerts([summary], now),
   };
 }
@@ -685,6 +827,7 @@ function buildZones(seed: CompanySeed, plant: PlantSummary, now: Date): ZoneSumm
     const total = i === zoneCount - 1 ? plant.counts.total - per * (zoneCount - 1) : per;
     const key = `${seed.code}|${plant.code}|Z${i + 1}|${bucketKey(now)}`;
     const oa = (plant.kpi.oa_pct ?? 80) + (rng(key)() * 10 - 5);
+    const counts = buildCounts(total, key, false);
     zones.push({
       code: `Z${i + 1}`,
       label: `Zone ${i + 1}`,
@@ -692,8 +835,8 @@ function buildZones(seed: CompanySeed, plant: PlantSummary, now: Date): ZoneSumm
       data_readiness: plant.data_readiness,
       last_seen: plant.last_seen,
       grafana_url: null,
-      counts: buildCounts(total, key, false),
-      kpi: buildKpi(Math.round((plant.kpi.plan_qty ?? 0) / zoneCount), oa, key),
+      counts,
+      kpi: buildKpi(Math.round((plant.kpi.plan_qty ?? 0) / zoneCount), oa, key, counts.stopped),
     });
   }
   return zones;
@@ -760,7 +903,7 @@ export function buildPlantDetail(
   plantCode: string,
   now: Date,
   scenario: Scenario,
-  filters: { range: '8h' | '24h' | '7d'; process: 'Injection' | 'all'; shift: string },
+  filters: { range: Range; process: Process | 'all'; shift: string },
 ): PlantDetail | null {
   const seed = COMPANIES.find((c) => c.code === companyCode);
   const plantSeed = seed?.plants.find((p) => p.code === plantCode);
@@ -793,7 +936,7 @@ export function buildPlantDetail(
           buckets: buildBuckets(shift, seed.timezone, now, `${seed.code}|${plantCode}`),
         }
       : null,
-    trend: buildTrend(now, plant.kpi.oa_pct ?? 80, 1, `${seed.code}|${plantCode}`),
+    trend: buildTrend(now, plant.kpi.oa_pct ?? 80, 1, plant.counts.total, `${seed.code}|${plantCode}`),
     alerts: [],
   };
 }
@@ -807,7 +950,7 @@ function buildMachines(
   if (plant.counts.total === 0) return [];
 
   // Expand the census into individual machines so the grid and the counts can
-  // never disagree — the same by_status map drives both.
+  // never disagree - the same by_status map drives both.
   const queue: MachineStatus[] = [];
   for (const [status, n] of Object.entries(plant.counts.by_status) as [MachineStatus, number][]) {
     for (let i = 0; i < n; i++) queue.push(status);
