@@ -1,0 +1,56 @@
+import Fastify, { type FastifyInstance } from 'fastify';
+import cors from '@fastify/cors';
+import type { Env } from './config/env.ts';
+import type { Deps } from './deps.ts';
+import { createInfluxClient } from './influx/client.ts';
+import authPlugin from './plugins/auth.ts';
+import globalOverviewRoutes from './routes/globalOverview.ts';
+import healthRoutes from './routes/health.ts';
+import metaRoutes from './routes/meta.ts';
+import { createSnapshotPoller } from './services/liveSnapshot.ts';
+
+/**
+ * Returns an unbound Fastify instance (not listening on a port) so tests can
+ * use `.inject()` without a live socket. Route modules register under the
+ * /api/v1 prefix to match runtime-config.json's apiBaseUrl convention on the
+ * frontend; only /healthz sits outside it.
+ *
+ * The snapshot poller is owned here, not by a module singleton: it is created
+ * per app, handed to routes through `deps`, and stopped on close. Without
+ * credentials it never starts a timer, which keeps `.inject()` tests hermetic
+ * and offline.
+ */
+export async function buildApp(env: Env): Promise<FastifyInstance> {
+  const app = Fastify({ logger: true });
+
+  const poller = createSnapshotPoller({
+    client: createInfluxClient(env),
+    intervalMs: env.SNAPSHOT_INTERVAL_MS,
+    oaIntervalMs: env.OA_REFRESH_MS,
+    trendIntervalMs: env.TREND_REFRESH_MS,
+    log: app.log,
+  });
+  const deps: Deps = { env, poller };
+
+  await app.register(cors, {
+    origin: env.CORS_ORIGIN,
+    credentials: true, // the frontend's httpAdapter sends credentials: 'include'
+  });
+
+  await app.register(authPlugin);
+  await app.register(healthRoutes);
+
+  await app.register(metaRoutes, { prefix: '/api/v1', deps });
+  await app.register(globalOverviewRoutes, { prefix: '/api/v1', deps });
+
+  app.addHook('onClose', async () => {
+    poller.stop();
+  });
+
+  // Awaited: buildApp resolves with a snapshot already in hand, so the very
+  // first request cannot see an empty one. Without credentials this is a no-op,
+  // which keeps `.inject()` tests hermetic and offline.
+  await poller.start();
+
+  return app;
+}

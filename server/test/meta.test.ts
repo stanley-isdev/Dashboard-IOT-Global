@@ -1,0 +1,41 @@
+import { describe, expect, it } from 'vitest';
+import { zMeta } from '@dashboard/contract';
+import { buildApp } from '../src/app.ts';
+import { loadEnv } from '../src/config/env.ts';
+
+describe('GET /api/v1/meta', () => {
+  it('returns a payload that satisfies the contract, with no Influx/MSSQL call', async () => {
+    const app = await buildApp(loadEnv({ CORS_ORIGIN: 'http://localhost:5173' }));
+    const res = await app.inject({ method: 'GET', url: '/api/v1/meta' });
+    expect(res.statusCode).toBe(200);
+
+    const parsed = zMeta.parse(res.json());
+    expect(parsed.companies).toHaveLength(9);
+    expect(parsed.countries.length).toBeGreaterThan(0);
+
+    // Milestone-1 reality (design doc section 11): only THS/ASI/STJ are live.
+    const live = parsed.companies.filter((c) => c.data_readiness === 'live').map((c) => c.code);
+    expect(live.sort()).toEqual(['ASI', 'STJ', 'THS']);
+
+    // Only sources this deployment actually has are listed. MSSQL is absent
+    // because it is unconfigured (D-18) - listing it permanently `down` would
+    // pin `partial` true forever and dim the dashboard over a source no route
+    // reads. Influx is present and honestly `down`: these env vars are unset
+    // in the test, so nothing has connected.
+    expect(parsed.meta.sources.map((s) => s.name)).toEqual(['influxdb']);
+    expect(parsed.meta.sources[0]!.status).toBe('down');
+    expect(parsed.meta.sources[0]!.last_success).toBeNull();
+    expect(parsed.meta.partial).toBe(true);
+
+    await app.close();
+  });
+
+  it('generated_at advances across requests, never freezing', async () => {
+    const app = await buildApp(loadEnv({ CORS_ORIGIN: 'http://localhost:5173' }));
+    const first = zMeta.parse((await app.inject({ method: 'GET', url: '/api/v1/meta' })).json());
+    await new Promise((r) => setTimeout(r, 5));
+    const second = zMeta.parse((await app.inject({ method: 'GET', url: '/api/v1/meta' })).json());
+    expect(second.meta.generated_at).not.toBe(first.meta.generated_at);
+    await app.close();
+  });
+});
