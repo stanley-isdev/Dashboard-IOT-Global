@@ -1,27 +1,174 @@
 /*
- * Self-hosted type. Closes T-12: the mockup pulled Inter, Space Grotesk and
- * IBM Plex Mono from fonts.googleapis.com, which fails on a plant network with
- * no public internet.
+ * Type.
  *
- * `wght.css` rather than `index.css` on purpose: index.css also declares the
- * italic and optical-size variants, and this dashboard uses neither. For Inter
- * that alone drops 35 of 42 woff2 files from the build output. The remaining
- * per-script subsets stay, but each @font-face carries a unicode-range so a
- * browser only ever downloads latin (plus thai, when the UI is in Thai).
+ * Self-hosted, not linked from fonts.googleapis.com. Closes T-12: a plant
+ * network has no route to the public internet, and a board whose type silently
+ * falls back to Arial on the factory floor is not the board that was approved.
+ *
+ * ## The specification
+ *
+ *   English   letters -> Poppins   numbers -> Inter
+ *   Thai      letters -> Sarabun   numbers -> Inter
+ *
+ * The same three families as THS-HR-Recruiter, in the same roles. That was a
+ * deliberate alignment: the two apps sit on the same desks and are opened by
+ * the same people, and two in-house tools set in two different Thai faces read
+ * as two unrelated systems. Sarabun replaced Noto Sans Thai here for that
+ * reason and no other. See src/styles/tokens/fonts.css in that project, which
+ * vendors the identical Google Fonts subsets under public/vendor/fonts/.
+ *
+ * Google Sans is not part of this. It is Google's proprietary corporate face,
+ * not published on Google Fonts and carrying no licence that permits
+ * redistribution, so it cannot be self-hosted here. Poppins is the closest
+ * publicly licensed geometric sans and is what the spec above settles on.
+ *
+ * Inter has no Thai coverage, so Thai *letters* resolve to Sarabun. Thai
+ * *digits* are the ordinary Western digits this dashboard prints (see
+ * i18n/format.ts, which forces the Gregorian calendar and Latin numerals), and
+ * those do come from Inter. The stack below is what makes both halves true at
+ * once.
+ *
+ * ## How "numbers in a different family" is done without markup
+ *
+ * `@font-face` is per-codepoint, not per-element. `Inter Numerals` below is the
+ * ordinary Inter variable file restricted by `unicode-range` to the glyphs that
+ * make up a reading: digits, and the separators that sit between them. Listing
+ * it first in the stack means the browser takes those codepoints from Inter and
+ * falls through to Poppins (or Sarabun) for every other character.
+ *
+ * So "83.1% of connected fleet" renders as Inter digits inside Poppins words
+ * with no spans, no per-string logic, and nothing for a future call site to
+ * forget. That is the whole reason it is done this way rather than with a
+ * `.num` class the next component to be written would omit.
  */
-@import '@fontsource-variable/inter/wght.css';
-@import '@fontsource-variable/space-grotesk/wght.css';
-@import '@fontsource-variable/noto-sans-thai/wght.css';
-@import '@fontsource/ibm-plex-mono/500.css';
-@import '@fontsource/ibm-plex-mono/600.css';
+
+@import '@fontsource/poppins/400.css';
+@import '@fontsource/poppins/500.css';
+@import '@fontsource/poppins/600.css';
+@import '@fontsource/poppins/700.css';
 
 /*
- * Language-agnostic stacks. The browser picks the Thai face only for Thai
- * codepoints, so mixed strings like "THS · โรงงาน LAMP 2" render correctly
- * with no per-string logic anywhere in the app.
+ * Sarabun ships as static weights, not a variable font, so the four the
+ * interface actually sets are imported one file each. They mirror Poppins'
+ * four exactly, which is what keeps a Thai heading and its English twin at the
+ * same visual weight. Each file still carries its own unicode-range per subset,
+ * so an English session downloads no Thai.
  */
+@import '@fontsource/sarabun/400.css';
+@import '@fontsource/sarabun/500.css';
+@import '@fontsource/sarabun/600.css';
+@import '@fontsource/sarabun/700.css';
+
+/*
+ * `wght.css` rather than `index.css`: index also declares the italic and
+ * optical-size axes, and this dashboard uses neither.
+ */
+@import '@fontsource-variable/inter/wght.css';
+
+/*
+ * Digits and the punctuation that appears inside a reading. Deliberately narrow:
+ *
+ *   U+0030-0039  0-9
+ *   U+0025       %          82.9%
+ *   U+002B 002D  + -        deltas, and the no-data dash
+ *   U+002C 002E  , .        1,180  74.5
+ *   U+002F       /          11,590 / 14,200
+ *   U+003A       :          15:14:16
+ *   U+00D7       x          multiplication sign
+ *   U+2013       en dash    08:00-09:00 spans, tier bands
+ *   U+2212       minus      Intl emits this, not U+002D
+ *
+ * U+2014 was in this range and is not any more. The em dash is banned from this
+ * project outright, in interface copy and in source comments alike, and
+ * `npm run check:nodash` fails the build if one comes back. Leaving its
+ * codepoint mapped here would silently make the first one to slip through look
+ * correct.
+ *
+ * Letters are excluded on purpose. Widening this range to Latin would put the
+ * whole interface in Inter and quietly delete Poppins from the design.
+ */
+@font-face {
+  font-family: 'Inter Numerals';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range: U+0025, U+002B-002F, U+0030-0039, U+003A, U+00D7, U+2013, U+2212;
+}
+
 :root {
-  --font-ui: 'Inter Variable', 'Noto Sans Thai Variable', system-ui, sans-serif;
-  --font-display: 'Space Grotesk Variable', 'Noto Sans Thai Variable', sans-serif;
-  --font-mono: 'IBM Plex Mono', 'Noto Sans Thai Variable', ui-monospace, monospace;
+  /*
+   * The default stack. Numerals first (see the note above), then the English
+   * text face, then Thai as the script fallback so a mixed string like
+   * "THS · โรงงาน LAMP 2" needs no per-string logic anywhere in the app.
+   *
+   * Character for character the same order as --font-sans in
+   * THS-HR-Recruiter's typography.css.
+   */
+  --font-ui: 'Inter Numerals', 'Poppins', 'Sarabun', system-ui, sans-serif;
+
+  /*
+   * For a run that is *entirely* numeric: a KPI figure, a table cell, an axis
+   * label. Same digits as above; naming it separately means a numeric slot can
+   * opt out of Poppins' wider spacing without depending on the fallback order,
+   * so a unit like "2h 14m" or "pcs" is set in Inter beside its figures rather
+   * than in the wider text face.
+   *
+   * Sarabun is on the end and is not decoration. Inter contains no Thai, so
+   * before it was added every Thai word that landed in a numeric slot fell
+   * straight past this stack to system-ui, which on Windows is Tahoma: the
+   * "%ตามแผน" and "เวลาหยุด" column heads, the live badge's age, and the KPI
+   * delta captions were all being drawn in a face this project does not ship.
+   * The stack must never end at system-ui for a script the app actually prints.
+   */
+  --font-num: 'Inter Numerals', 'Inter Variable', 'Sarabun', system-ui, sans-serif;
+
+  /*
+   * No separate display face. The design sets its hero figures in the same
+   * numerals as the table, at 34px and weight 600. `--font-display` survives as
+   * a name so existing call sites do not all have to change.
+   */
+  --font-display: var(--font-num);
+
+  /*
+   * Monospace is used for one thing only: the technical-detail block in the
+   * error state. Everything that used to be "mono for alignment" is now
+   * `font-variant-numeric: tabular-nums` on Inter, which aligns without
+   * switching family mid-table.
+   */
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', monospace;
+}
+
+/*
+ * Thai keeps the same order as English: Poppins for Latin, Sarabun for Thai.
+ *
+ * This used to be the other way round - Sarabun ahead of Poppins - on the
+ * reasoning that Sarabun carries a full Latin set of its own, so "THS LAMP 2"
+ * inside a Thai sentence would be set in the same face as the words around it
+ * instead of switching mid-line. That is defensible for a stray code inside a
+ * sentence, and wrong for this board, because a great deal of what it prints in
+ * Thai is not Thai at all: the masthead title, every plant and company code,
+ * the process names, "Mass Pro/Dandori", "%OA". A font audit of the Thai page
+ * found zero Poppins glyphs on it - the entire interface, English included, was
+ * being drawn in Sarabun, which is a different design from the one that was
+ * approved in English.
+ *
+ * Poppins ships latin, latin-ext and devanagari and no Thai, so putting it first
+ * costs the Thai text nothing: Thai codepoints fall straight through to Sarabun,
+ * one entry down. There is no per-string logic and no markup involved, exactly
+ * as with the numerals above.
+ *
+ * The accepted cost is that a mixed line changes face at the script boundary.
+ * No `size-adjust` is needed to hide the seam, which was measured rather than
+ * assumed - at 100px, Poppins' x-height is 55 and the height of a Thai base
+ * letter in Sarabun ("กอน") is 57, so the two scripts already sit on the same
+ * optical line and "กระบวนการ Injection" reads as one run. Their cap heights
+ * are 70 and 67, close enough that a code beside a Thai word does not jump.
+ * Re-measure before changing either family: a size-adjust is the fix if a
+ * replacement face does not land this close, not a font-size override at the
+ * call site.
+ */
+html[lang='th'] {
+  --font-ui: 'Inter Numerals', 'Poppins', 'Sarabun', system-ui, sans-serif;
 }

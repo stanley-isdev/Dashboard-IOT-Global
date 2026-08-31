@@ -1,9 +1,8 @@
 /*
- * Base layer: reset, page chrome, focus, and the shared primitives that the
- * ported mockup markup relies on. Component-specific rules live in CSS Modules
- * next to their component.
+ * Base layer: reset, page chrome, focus, and the shared primitives the whole
+ * board is built from. Block-specific rules live in components.css.
  *
- * No hex literals below this line — everything comes from tokens.css.
+ * No hex literals below this line - everything comes from tokens.css.
  */
 
 *,
@@ -19,20 +18,115 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/*
+ * The page is exactly one viewport tall and never scrolls. Everything that can
+ * overflow - the ranking table, an expanded plant list, the machine grid on a
+ * drill-down - scrolls inside its own panel instead.
+ *
+ * `overflow: hidden` here is the load-bearing line. Without it a single tall
+ * child silently reintroduces the page scrollbar the whole layout exists to
+ * remove, and the board row loses the height it was given.
+ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
-  background:
-    radial-gradient(ellipse at 20% -10%, rgba(12, 143, 112, 0.05), transparent 45%),
-    radial-gradient(ellipse at 90% 10%, rgba(198, 121, 10, 0.04), transparent 40%), var(--bg);
+  /* Flat. The artboard's washes read as gradient banding on the matte panels
+     these boards actually run on. */
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
   font-size: var(--fs-body);
   line-height: var(--lh-body);
-  min-height: 100vh;
-  padding: var(--sp-6) var(--sp-8) 3.75rem;
+  overflow: hidden;
+  /* Poppins is a geometric sans with fairly open default spacing; the artboard
+     is drawn slightly tighter than the metrics give. */
+  letter-spacing: -0.003em;
+  -webkit-font-smoothing: antialiased;
 }
 
-:root[data-density='tv'] body {
-  padding: var(--sp-4) var(--sp-5) var(--sp-6);
+/*
+ * Numbers.
+ *
+ * Every digit on the board comes from Inter via the `Inter Numerals` face in
+ * fonts.css, so this is not about family - it is about figure style. Tabular
+ * everywhere by default: a table column, an axis label or a clock that reflows
+ * its own width on every 30 s poll reads as the screen twitching. The KPI
+ * figures opt back out below, because a hero number set in tabular figures
+ * looks mechanical and has nothing to align with anyway.
+ */
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- the single-screen frame ---- */
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-gap);
+  /*
+   * No top or side padding. The masthead band is full-bleed white and has to
+   * reach all four of its edges, so the shell's horizontal inset moved down onto
+   * the children that still want it - the band's own padding, .topbar__filters,
+   * #main, and any shell-level banner. Only the bottom inset stays here, where
+   * nothing is full-bleed.
+   */
+  padding: 0 0 var(--shell-pad-bottom);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* A shell-level banner sits in the data region, so it takes the region's inset
+   rather than running under the band's edges. */
+.app > .banner {
+  margin-inline: var(--shell-pad-x);
+}
+
+/*
+ * The router outlet. A flex column with `min-height: 0` so a page can hand its
+ * leftover height down to a panel; `min-height: 0` is required because a flex
+ * item's default `min-height: auto` would let the table's intrinsic height push
+ * the row taller than the screen.
+ *
+ * `position: relative` so the connection banner can hang off this corner: it
+ * floats over the region rather than standing in the flow, and the region -
+ * not the viewport - is the box it has to line up with.
+ */
+#main {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-inline: var(--shell-pad-x);
+  overflow: hidden;
+}
+
+/* A page's data region: fills the outlet, distributes to its own rows. */
+.view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-gap);
+}
+
+/*
+ * Drill-down pages are taller than one screen by nature (a plant can have forty
+ * machines). They scroll inside the outlet, so the frame still never moves.
+ *
+ * `display: block` on purpose: these pages space themselves with margins, and a
+ * flex column would add the shell gap on top of every one of them.
+ */
+.view--scroll {
+  display: block;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* ---- focus. Visible ring on keyboard nav only, >=3:1 against every surface. */
@@ -42,22 +136,60 @@ body {
   border-radius: var(--r-sm);
 }
 
+/*
+ * ---- touch ----
+ *
+ * The artboard draws its controls at 28px. Apple's guidance is 44px, and on the
+ * iPad this board is deployed on, 28px is genuinely hard to hit - but growing
+ * the drawn boxes to 44px would break the layout it was designed to fit.
+ *
+ * So the drawn size stays and the *hit* area grows: a transparent pseudo-element
+ * centred on the control, expanded to --tap-min in both axes. It sits behind the
+ * control's own content (`z-index: -1` is wrong here - it would fall behind the
+ * card too), so it never intercepts anything except the gap around the control,
+ * which had no other owner.
+ */
+.tap {
+  position: relative;
+}
+.tap::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: max(100%, var(--tap-min));
+  height: max(100%, var(--tap-min));
+}
+
+/*
+ * Hover is a lie on a touchscreen: iOS fires it on first tap and then leaves it
+ * stuck until the next tap elsewhere, so a hovered row stays highlighted after
+ * the user has moved on. Every hover rule in this stylesheet is written inside
+ * this query rather than bare.
+ */
+@media (hover: none) {
+  * {
+    /* Stops the grey flash iOS paints over any tapped element. */
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
 /* ---- type helpers ---- */
+
+/*
+ * A run that is entirely numeric. Poppins' wider sidebearings are wrong for a
+ * column of figures, so these opt into the Inter-only stack rather than relying
+ * on the per-codepoint fallback.
+ */
+.num,
+.tnum,
 .mono {
-  font-family: var(--font-mono);
+  font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
 }
 .display {
   font-family: var(--font-display);
-}
-
-/*
- * KPI values use proportional figures (they are read as a single quantity, and
- * tabular figures make a hero number look mechanical), but anything in a table
- * column or on an axis must be tabular or the digits jitter on every 30 s poll.
- */
-.tnum {
-  font-variant-numeric: tabular-nums;
 }
 
 /* ---- accessible-only text ---- */
@@ -71,6 +203,15 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* A country whose flag file is missing falls back to its two-letter code. Not
+   hidden - the point is that a newly added site is visible before its asset is. */
+.visually-hidden-fallback {
+  font-size: var(--fs-nano);
+  font-weight: 600;
+  color: var(--sub);
+  letter-spacing: 0.04em;
 }
 
 /* ---- skip link ---- */
@@ -92,57 +233,173 @@ body {
   top: var(--sp-2);
 }
 
-/* ---- panel ---- */
+/* ---- panel ----
+ *
+ * A panel is a box with a definite height that clips. Its head is intrinsic and
+ * its body takes the rest, which is what lets the ranking table and the map end
+ * on exactly the same pixel however tall the viewport is.
+ */
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--r-xl);
-  padding: var(--sp-5);
+  border-radius: var(--r-lg);
+  padding: var(--panel-pad-y) var(--panel-pad-x);
   box-shadow: var(--shadow-panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  /* Containing block for absolutely positioned descendants, so they are clipped
+     here instead of escaping to the page. See .panel__scroll below. */
+  position: relative;
 }
 
+/*
+ * A panel the page has taken off the board - the ranking, while the map is
+ * expanded.
+ *
+ * Third time this trap has been laid in this stylesheet, after `.board[hidden]`
+ * and `.panel__body[hidden]`: `display: flex` above is a class selector and the
+ * UA's `[hidden] { display: none }` is a bare attribute selector, so the panel
+ * stays laid out and only *looks* dismissed. On a grid board that is not merely
+ * cosmetic - the panel keeps its track, and the map it made room for gets the
+ * 10px left over.
+ */
+.panel[hidden] {
+  display: none;
+}
+
+/*
+ * The panel head is a rule, not just a row: the artboard separates every panel
+ * title from its contents with a hairline that runs the full width of the panel,
+ * so the negative inline margin cancels the panel's own padding.
+ */
 .panel-head {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
-  flex-wrap: wrap;
+  min-height: 1.5rem;
+  padding-bottom: var(--panel-pad-y);
+  margin-inline: calc(var(--panel-pad-x) * -1);
+  padding-inline: var(--panel-pad-x);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--panel-pad-y);
 }
 .panel-head h2 {
   font-size: var(--fs-h2);
   font-weight: 600;
-  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  letter-spacing: var(--ls-title);
   line-height: var(--lh-tight);
+  white-space: nowrap;
+  color: var(--text);
 }
 .panel-head .sub {
   font-size: var(--fs-micro);
   color: var(--sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The right-hand end of a head carrying more than one thing - the map's base
+   count and the methodology opener share it. */
+.panel-head__aside {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* The part of a panel that gets the leftover height. */
+.panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * An unselected tabpanel.
+ *
+ * The `hidden` attribute is the correct ARIA state for one, and it normally
+ * carries `display: none` from the UA stylesheet - but a class selector beats a
+ * bare attribute selector, so `.panel__body`'s `display: flex` above wins and
+ * all three panels render on top of each other. This rule is what makes the
+ * attribute mean what it says.
+ */
+.panel__body[hidden] {
+  display: none;
+}
+
+/*
+ * The one scroll region on the overview. `overscroll-behavior: contain` stops a
+ * touch gesture that reaches the end of the table from chaining outward - on a
+ * locked page that would do nothing visible, but on an iPad it triggers Safari's
+ * rubber-band and looks like the board came loose.
+ *
+ * `position: relative` is not decoration either. The screen-reader labels inside
+ * status glyphs are `.visually-hidden`, i.e. absolutely positioned; with no
+ * positioned ancestor they resolve against the initial containing block, and
+ * once the table is long enough to scroll their static position lands below the
+ * fold and adds real overflow to the document. Eight invisible pixels were
+ * enough to give a deliberately unscrollable page a scrollbar.
+ */
+.panel__scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+/* Thin, quiet scrollbars - a 17px system bar inside a panel reads as chrome. */
+.panel__scroll,
+.view--scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.panel__scroll::-webkit-scrollbar,
+.view--scroll::-webkit-scrollbar {
+  width: 0.375rem;
+}
+.panel__scroll::-webkit-scrollbar-thumb,
+.view--scroll::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--r-pill);
+}
+.panel__scroll::-webkit-scrollbar-track,
+.view--scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /*
  * Stale presentation. Applied to the whole data region when the payload on
  * screen is no longer known to be current. The numbers deliberately stay
- * visible — NFR section 14 forbids blanking to zero — but they must not read
- * as live, hence the desaturation and the hatched top edge.
+ * visible - NFR section 14 forbids blanking to zero - but they must not read
+ * as live, hence the desaturation.
+ *
+ * There was a hatched 3px bar here too, drawn across the region's top edge. It
+ * landed on the same three pixels as the KPI cards' status rails - .kpi's
+ * border-top, which is the first thing inside .view - so the two drew over each
+ * other and the tape only became a line of its own in the gaps between cards.
+ * Read as a stray rule under the toolbar rather than as a mark on the board.
+ *
+ * Nothing was lost by taking it out: the state is still carried by this
+ * desaturation, by the floating connection banner naming the source that failed,
+ * by the freshness badge in the masthead, and per row by the status glyph and
+ * its word. If the hazard texture is wanted back it has to go somewhere it owns
+ * the pixels - on the card rails themselves, not over them.
  */
 .is-stale {
   filter: saturate(0.45) opacity(0.78);
-  position: relative;
-}
-.is-stale::before {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-  height: 0.1875rem;
-  background: repeating-linear-gradient(
-    135deg,
-    var(--status-warn-mark) 0 0.375rem,
-    transparent 0.375rem 0.75rem
-  );
-  pointer-events: none;
-  z-index: 3;
 }
 
 /* ---- motion ---- */

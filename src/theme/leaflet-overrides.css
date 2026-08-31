@@ -1,0 +1,568 @@
+/*
+ * Leaflet theming, and the pin layer that sits on top of it.
+ *
+ * Note what is NOT here: `.leaflet-control-attribution { display: none }`.
+ *
+ * The mockup sets `attributionControl: true` and then hides the control with
+ * that CSS rule, so the rendered result is identical to having no attribution
+ * at all. T-06 was recorded as fixed; it was only moved from JavaScript to CSS.
+ * Both OpenStreetMap's ODbL and CARTO's basemap terms permit restyling
+ * attribution and do not permit removing it, so it is styled into the theme
+ * below instead.
+ */
+
+@import 'leaflet/dist/leaflet.css';
+
+.leaflet-container {
+  background: var(--map-void);
+  font-family: var(--font-ui);
+  height: 100%;
+  width: 100%;
+}
+
+/*
+ * Attribution: small and quiet, but present, legible and clickable.
+ *
+ * It was competing with the legend across the bottom of the map, and the reason
+ * was the link colour, not the size - two green words are the only saturated
+ * ink in that corner and the eye goes straight to them. So the links drop to
+ * --sub and carry an underline instead, and the plate behind them loses some
+ * opacity.
+ *
+ * The type stays at 9px. --sub is the quietest ink that still clears AA on
+ * every surface (see the comment in tokens.css - everything below it failed),
+ * and both ODbL and CARTO's terms ask for attribution that is actually noticed,
+ * so shrinking the one control we are legally required to show is the wrong
+ * lever for a decluttering pass. Kiosk density still scales it up.
+ */
+/*
+ * `.leaflet-container` is in the selector, and it has to be. Leaflet's own sheet
+ * sets this control's fill as `.leaflet-container .leaflet-control-attribution`,
+ * which outranks a bare class no matter which stylesheet is imported last - so
+ * the plate declared here was silently losing to Leaflet's 80% white, and had
+ * been since this file was written. On the light board the two were close enough
+ * that nobody could see it. On the dark board it is a white bar across the
+ * bottom of a near-black map, which is how it was finally noticed.
+ */
+.leaflet-container .leaflet-control-attribution {
+  font-size: 0.5625rem;
+  background: var(--map-plate);
+  color: var(--sub);
+  padding: 0.0625rem 0.3125rem;
+  border-radius: var(--r-sm) 0 0 0;
+}
+.leaflet-control-attribution a {
+  color: var(--sub);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.leaflet-control-attribution a:hover,
+.leaflet-control-attribution a:focus-visible {
+  color: var(--status-good-ink);
+}
+:root[data-density='tv'] .leaflet-control-attribution {
+  font-size: 1.125rem;
+}
+
+/* --------------------------------------------------- zoom / expand stack */
+
+/*
+ * Leaflet's own `.leaflet-bar` is not styled here because it is not rendered -
+ * WorldMap sets `zoomControl={false}` and MapControls draws +, − and expand as
+ * real buttons instead - the zoom pair in one corner, expand in the other. See
+ * the comment there.
+ *
+ * Top left for the zoom pair, which is where Leaflet's bar was. The z-index
+ * clears Leaflet's own control layer (1000) so nothing the map adds later can
+ * land on top of it, and MapLabelLayer measures both stacks to keep the labels
+ * off them - so their size is a real constraint on the layout, not just a look.
+ */
+.map-controls {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+/*
+ * Expand rides the opposite corner. `right` alone would not undo the
+ * `left` above, so it is reset to `auto` - otherwise both edges are
+ * pinned and the stack stretches the full width of the map, swallowing clicks
+ * across the middle of it.
+ */
+.map-controls--right {
+  left: auto;
+  right: 0.5rem;
+}
+
+/*
+ * 1.75rem, which is 28px at the default density and scales with the kiosk
+ * switch. Under the 44px iOS likes, and deliberately: this is a comfort control
+ * on a map that also pinches, and a 44px pair is a fifth of a 460px panel's
+ * height. The row gap keeps them from being mistaken for one target.
+ */
+.map-btn {
+  width: 1.75rem;
+  height: 1.75rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: var(--panel);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-pop);
+  cursor: pointer;
+}
+.map-btn svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.map-btn:hover:not(:disabled) {
+  background: var(--panel-2);
+  border-color: var(--line-strong);
+}
+/*
+ * Disabled at a zoom limit, and it has to *look* unavailable rather than just
+ * ignore the tap - the whole reason these are buttons and not Leaflet's links.
+ * `--sub` and not something fainter: this still has to read as a control at
+ * arm's length, and everything quieter fails AA.
+ */
+.map-btn:disabled {
+  color: var(--sub);
+  opacity: 0.45;
+  cursor: default;
+}
+/* Takes whatever height the panel has left rather than a fixed 430px, so the
+   map grows with the viewport and stays flush with the ranking beside it. */
+.map-container {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+/*
+ * The legend sits bottom-left and the attribution bottom-right, which reads as
+ * safe until the map column is narrow enough that the two meet in the middle -
+ * and then the legend, which is opaque and has a z-index, sits on top of an
+ * attribution both OSM's ODbL and CARTO's terms require to stay legible.
+ *
+ * So the legend is lifted clear of the attribution's line entirely rather than
+ * width-capped against it: the attribution's width is a function of the tile
+ * provider and the locale, and is not something this rule can know.
+ */
+.map-legend {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 0.375rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: var(--fs-nano);
+  color: var(--sub);
+  background: var(--map-plate-solid);
+  border: 1px solid var(--line);
+  padding: 0.1875rem 0.4375rem;
+  border-radius: var(--r-sm);
+  z-index: 500;
+  box-shadow: var(--shadow-pop);
+  max-width: calc(100% - 0.75rem);
+}
+.map-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+.map-legend__item--quiet {
+  color: var(--status-nodata-ink);
+}
+
+/* ------------------------------------------------------------ pin layer */
+
+/*
+ * One absolutely-positioned layer portalled into the map container. Every card
+ * is an ordinary React element in an ordinary DOM tree, which is what lets it be
+ * a focusable <Link> rather than a decorative tooltip beside an invisible
+ * marker. MapLabelLayer writes the offsets; nothing here positions anything.
+ *
+ * `pointer-events: none` on the layer and `auto` on the cards: the layer covers
+ * the whole map, so without this it would swallow every pan and zoom gesture.
+ *
+ * At 450 it sits under the map's own controls (1100) and the tier legend (500),
+ * which is right now that nothing in here is a dialog. The detail panel is
+ * BaseDrawer, at the edge of the board and outside the map entirely, so the only
+ * things this layer holds are labels - furniture, which shares the panel with the
+ * buttons rather than covering them. The placement pass keeps every card clear of
+ * their measured boxes anyway.
+ */
+.pin-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 450;
+  pointer-events: none;
+}
+
+.pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+
+/*
+ * ---- paint order across the whole layer ----
+ *
+ * The nine pins are siblings with no z-index of their own, so their children all
+ * compete inside `.pin-layer`'s single stacking context and the winner is DOM
+ * order - which is payload order. That is how VNS's leader, one of the longest
+ * on the board, came to be drawn straight across STJ's card: VNS simply arrives
+ * later in the array.
+ *
+ * Four explicit levels fix it for every pair at once, rather than sorting the
+ * array by leader length and hoping. Spaced by ten, so a level can be slotted
+ * between two of them without renumbering the ladder:
+ *
+ *   0   leaders  - under everything, always. A hairline is the one thing on the
+ *                  map that may be interrupted; it is followable from either end.
+ *   10  cards    - above every leader, including leaders belonging to bases that
+ *                  come later in the payload.
+ *   20  pulses   - above the cards, so the radar ring is never sliced in half by
+ *                  a card edge, which reads as a rendering fault rather than as
+ *                  a pulse.
+ *   30  dots     - the top of the layer. The dot *is* the coordinate; it is the
+ *                  only thing on the map that is claiming to be somewhere, so
+ *                  nothing is allowed to hide it. Eight pixels over a card is a
+ *                  cheap price for never having to wonder where a base actually
+ *                  is.
+ *
+ * ---- hover and select lift the pieces, never the pin ----
+ *
+ * This used to be `.pin:hover { z-index: 2 }` - one declaration on the pin,
+ * described as lifting its four levels as a group. It does the opposite. A
+ * z-index on the pin makes that pin a stacking context, and the ladder above is
+ * then sealed inside it: the dot stops being a level-30 sibling of the other
+ * dots and becomes part of one level-2 box. Hovering a pin therefore pushed its
+ * own dot *underneath* every other base's.
+ *
+ * Invisible on eight of the nine, and glaring on the pair it matters for. THS
+ * and ASI are 20 km apart, which at world zoom is about four pixels - the two
+ * dots overlap. Hovering ASI, which is critical and red, sank ASI's dot under
+ * THS's, so the coordinate the reader was pointing at turned amber and reported
+ * THS's tier on ASI's pin. A pin that lies about its own status while under the
+ * cursor is the worst version of this bug: the reader is looking straight at it.
+ *
+ * So the lift is applied to the pieces instead, where they still compete inside
+ * the layer's one stacking context and can be ordered against every other pin's:
+ *
+ *   15  the hovered or selected card - above the other eight cards, so the 6% it
+ *       grows by is never drawn underneath a neighbour placed after it, and
+ *       still under every pulse and every dot.
+ *   35  its dot - above the other dots. This is the one deliberate exception to
+ *       "nothing hides a dot", and it is the rule the reader is asking for:
+ *       where two coordinates overlap, the one being pointed at is the one that
+ *       has to answer. It is transient and it follows the cursor, so nothing is
+ *       hidden for longer than the gesture.
+ *
+ * The leader stays at 0 whatever happens to its pin. It is a hairline, it is
+ * meant to be crossed, and lifting it over a neighbour's card buys nothing.
+ */
+.pin__line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  height: 1px;
+  background: var(--line-strong);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+/*
+ * The radar ring on a base in the red tier. Drawn only for those - see the note
+ * in CompanyPin for why motion is not spent on the amber ones.
+ *
+ * `scale` in the keyframes rather than `transform`, so it composes with the
+ * `translate` that centres the ring on the coordinate instead of replacing it.
+ * The ring fades out well before it stops growing: a ring that is still visible
+ * at full radius reads as a solid disc appearing, not as a pulse leaving.
+ */
+.pin__pulse {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  translate: -50% -50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--status-crit-mark);
+  background: color-mix(in srgb, var(--status-crit-mark) 22%, transparent);
+  pointer-events: none;
+  animation: pin-pulse 1.9s ease-out infinite;
+}
+@keyframes pin-pulse {
+  0% {
+    scale: 0.9;
+    opacity: 0.9;
+  }
+  75% {
+    opacity: 0;
+  }
+  100% {
+    scale: 3.4;
+    opacity: 0;
+  }
+}
+
+/*
+ * The coordinate itself. Shape as well as colour: a site that sends no telemetry
+ * gets a hollow, dashed, smaller dot, which survives greyscale and three metres
+ * of distance in a way a hue change does not.
+ */
+.pin__dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  translate: -50% -50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  border: 1.5px solid;
+  box-shadow: 0 0 0 2px var(--pin-halo);
+}
+.pin__dot--quiet {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  background: none !important;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+/*
+ * The footprint of a pile of dots. Invisible in itself - it exists so the count
+ * badge can hang off a corner far enough out to clear the dots.
+ *
+ * THS and ASI are 20 km apart and their dots are 0-6 px apart at every zoom this
+ * map allows, so that coordinate is permanently two bases and the dot on it can
+ * only ever wear one of their tiers. The count is what says so; what state each
+ * base is in stays on its own card. See cluster.ts.
+ *
+ * Positioned and sized by the layout pass, which knows where the members are;
+ * nothing here places it. `translate` centres it on the group's midpoint the way
+ * the dot centres on its coordinate, and it is the reason the pass can write a
+ * plain centroid into `left`/`top` without doing the arithmetic itself.
+ *
+ * At 25 it sits above the pulses and below the dots. Below the dots on purpose:
+ * the count is an annotation about the coordinate and the dots *are* the
+ * coordinate, so if the two ever fight, the sites win.
+ */
+.pin-cluster {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 25;
+  translate: -50% -50%;
+  pointer-events: none;
+}
+/*
+ * How many bases are under there - the one fact a single dot cannot carry. What
+ * state each of them is in is on their two cards, in colour, glyph and word.
+ *
+ * Up and to the right, the one diagonal the two leaders do not use - THS leans
+ * west and ASI east, and a badge on either of those sits on a leader within a
+ * pixel of the coordinate it is annotating.
+ */
+.pin-cluster__count {
+  position: absolute;
+  right: 0;
+  top: 0;
+  translate: 55% -55%;
+  font-family: var(--font-num);
+  font-size: var(--fs-nano);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-2);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.0625rem 0.1875rem;
+  pointer-events: none;
+}
+
+/*
+ * The label card. Positioned by the layout pass, centred on the offset it is
+ * given - hence the translate, which the pass does not have to know about.
+ *
+ * The left edge carries the tier's mark colour, as drawn. It is redundant with
+ * the glyph inside, and deliberately so: at world zoom the card is often the
+ * only part of a pin the eye lands on.
+ *
+ * A <button> now rather than an <a>, so `font`, `cursor` and `display` are here
+ * that were not needed before - a UA button does not inherit the panel's type
+ * and centres its own text. What it must keep is its exact drawn size: the pass
+ * measures this element and nine cards are placed against each other's boxes, so
+ * padding here is layout, not decoration.
+ */
+.pin__card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  translate: -50% -50%;
+  pointer-events: auto;
+  display: block;
+  font: inherit;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 0.125rem solid var(--status-nodata-mark);
+  border-radius: var(--r-sm);
+  padding: 0.1875rem 0.375rem;
+  text-align: left;
+  box-shadow: var(--shadow-pop);
+  line-height: var(--lh-tight);
+  text-decoration: none;
+  color: inherit;
+  white-space: nowrap;
+}
+.pin__card[data-tier='good'] {
+  border-left-color: var(--status-good-mark);
+}
+.pin__card[data-tier='warn'] {
+  border-left-color: var(--status-warn-mark);
+}
+.pin__card[data-tier='critical'] {
+  border-left-color: var(--status-crit-mark);
+}
+.pin__card--quiet {
+  background: var(--panel-2);
+}
+/*
+ * Hover lifts the card slightly.
+ *
+ * `scale` and not `transform: scale()`, because the card's centring is written in
+ * the `translate` property - one of the three independent transform properties -
+ * and a `transform` here would replace it and throw the card half its own width
+ * off its anchor. As separate properties the two compose, and the placement pass
+ * never has to know this rule exists.
+ *
+ * 6%, which is about 8px on a 130px card: enough to answer "am I pointing at
+ * this one" in a cluster where four cards are a few pixels apart, and not enough
+ * to cover a neighbour that was deliberately placed clear of it. The scale is
+ * also invisible to the pass - `offsetWidth` ignores transforms - so a hovered
+ * card cannot start a relayout, which is the one thing that would make the map
+ * squirm under the cursor.
+ *
+ * Only where hovering is real. On iOS the first tap fires :hover and leaves it
+ * stuck until the next tap elsewhere, so a tapped card would sit there enlarged
+ * long after its popup had closed.
+ */
+@media (hover: hover) {
+  .pin__card {
+    transition:
+      scale 140ms ease-out,
+      box-shadow 140ms ease-out,
+      border-color 140ms ease-out;
+  }
+  .pin__card:hover {
+    scale: 1.06;
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-pin-hover);
+  }
+}
+/*
+ * The hovered or selected pin comes forward - the card so the 6% it grows by is
+ * never drawn underneath a neighbour placed after it, the dot so an overlapping
+ * pair resolves in favour of whichever one is being pointed at.
+ *
+ * On the pieces, never on `.pin` itself: a z-index there would seal both of them
+ * into the pin's own slot and put its dot below every other base's. See the
+ * paint-order note above for the THS/ASI case that flushed this out.
+ */
+.pin:hover .pin__card,
+.pin--selected .pin__card {
+  z-index: 15;
+}
+.pin:hover .pin__dot,
+.pin--selected .pin__dot {
+  z-index: 35;
+}
+/* The card that has a popup open reads as pressed, so the reader can see which
+   of nine pins the card in front of them belongs to. */
+.pin__card[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--panel-3);
+}
+
+.pin__oa {
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-size: var(--fs-micro);
+  display: flex;
+  align-items: center;
+  gap: 0.1875rem;
+}
+.pin__name {
+  font-size: var(--fs-nano);
+  color: var(--sub);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.pin__cc {
+  color: var(--status-nodata-ink);
+  font-weight: 500;
+}
+.pin__code {
+  color: var(--ink-2);
+}
+.pin__meta {
+  font-size: var(--fs-nano);
+  color: var(--sub);
+  font-weight: 400;
+}
+
+/* ----------------------------------------------------------- selected pin */
+
+/*
+ * The base whose drawer is open.
+ *
+ * The drawer is at the edge of the board and the pin is in the middle of a map,
+ * so without this there is nothing tying the panel to the site it describes -
+ * the reader taps one of nine near-identical cards and then has to remember
+ * which. The card holds a pressed state for as long as the drawer is open.
+ *
+ * The card and dot are also lifted, for the same reason a hovered pin's are:
+ * all nine are siblings with no z-index of their own, so the selected card would
+ * otherwise still be drawn under whichever base comes after it in the payload.
+ * That lift is up with the hover rule, since it is the same two declarations.
+ */
+.pin--selected .pin__card {
+  border-color: var(--line-strong);
+  background: var(--panel-3);
+  box-shadow: var(--shadow-pin-sel);
+}
+/* The accent edge goes full-strength on the selected card: it is the tier colour
+   the drawer's own pill is showing, and the pair reading as one object is what
+   makes the connection across the board. */
+.pin--selected .pin__card::before {
+  content: '';
+  position: absolute;
+  inset: -0.1875rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  pointer-events: none;
+}

@@ -1,54 +1,125 @@
 /*
- * Design tokens — the single place any colour or size literal may live.
+ * Design tokens - the single place any colour or size literal may live.
  *
- * Ported from the approved mockup (docs/global-executive-dashboard.html) with
- * two deliberate changes:
+ * Ported from the iPad Air redraw (Canva, landscape 1180 x 820). That artboard
+ * is the specification: the board is deployed on an iPad Air in a stand, and
+ * 1180 x 820 is that device's landscape CSS viewport. Everything below is sized
+ * so the whole dashboard lands inside it with nothing below the fold and no
+ * page scrollbar.
+ *
+ * Three deliberate departures from the artboard, each load-bearing:
  *
  *   1. px -> rem everywhere, so one root font-size change scales the whole
- *      system for a 4K wall panel instead of 200 individual overrides.
+ *      system for a wall panel instead of 200 individual overrides.
  *   2. Each status colour is split into a `mark` token (fills, dots, pins,
- *      bars — a non-text graphic, needs 3:1) and an `ink` token (anything
- *      rendered as type — needs 4.5:1, 7:1 in kiosk mode).
+ *      pills, bars - a non-text graphic, needs 3:1) and an `ink` token
+ *      (anything rendered as type - needs 4.5:1, 7:1 in kiosk mode).
+ *   3. The artboard's status colours are drawn at screen-bright saturation.
+ *      As *fills* they are fine and they are kept. As *text* - and the artboard
+ *      sets "54", "11", "74.5%" and "Target 95%" in them - they measure between
+ *      2.9:1 and 3.6:1 on white, i.e. under half of AA. Every text use resolves
+ *      to the ink token beside it, which is the same hue darkened until it
+ *      passes. Measured by scripts/check-contrast.mjs against all four surfaces.
  *
- * Every value in the status blocks below is verified by scripts/check-contrast.mjs
- * against all three surfaces. Do not hand-edit a status colour without re-running
- * `npm run check:contrast`; the mockup's original green and grey clear 3:1 on
- * white but drop to 2.83 and 2.80 on --panel-2, which is exactly where the
- * expanded plant rows sit.
+ * Do not hand-edit a status colour without re-running `npm run check:contrast`,
+ * and keep the SURFACES/MARK/INK tables in that script in step with this file.
  */
 
 :root {
-  /* ---- surfaces (unchanged from the approved mockup) ---- */
-  --bg: #f4f6fa;
+  /* ---- surfaces ----
+     Cooler and lighter than the previous warm-paper set, matching the artboard:
+     the page is a pale blue-grey and the panels are pure white, which is what
+     makes a white card read as raised without needing a shadow.
+
+     Two bands, not one wash. The masthead - whose board this is, whether it is
+     live, which language - sits on a full-bleed white strip, and everything
+     that is a *reading* sits on --bg below it. That split is what separates
+     identity from data without needing a rule or a box around either, and it is
+     why --bg was lifted a step: butted against a white band, the old #eff1f4
+     read as a shadow cast by the header rather than as its own ground. */
+  --bg: #f4f6f9;
   --panel: #ffffff;
-  --panel-2: #f1f4f9;
-  --line: rgba(15, 23, 42, 0.1);
-  --line-strong: rgba(15, 23, 42, 0.18);
+  /* The masthead band. The only surface allowed to run edge to edge, which is
+     why the shell's horizontal padding now lives on the frame's children rather
+     than on the frame. --band-line is the seam where it meets --bg: a step
+     darker than --bg, because at this little separation in value the two
+     surfaces need the hairline to land as an edge rather than as a smudge. */
+  --band: #ffffff;
+  --band-line: #e6e9ee;
+  /* Nested plant rows and the inactive half of a segmented control. */
+  --panel-2: #f7f8fa;
+  /* The sticky ranking header. A real text surface - the column labels sit on
+     it - so check-contrast measures against it too. */
+  --panel-3: #f2f4f7;
+  /* The resting board tab. It used to borrow --panel-3, and that was the one
+     place the borrowing broke down: --panel-3 is a step *darker* than --bg, so
+     against the page the unselected tab lost its edge and read as nothing at
+     all - an executive could not see that a second board existed.
+     A tab is not behind the page, it is behind the *board*, so its fill belongs
+     between the two: the same blue-grey as --bg lifted six steps toward the
+     board's white. That lands it at 1.05:1 against the page - half the board's
+     own 1.09:1 separation, which is the depth being described. Both are lighter
+     than --panel-3, so that surface still sets the binding ink constraint and
+     check-contrast needs no row for these. */
+  --tab-rest: #fafcff;
+  --tab-rest-hover: #fdfeff;
 
-  /* ---- type ---- */
-  --text: #1b2333;
-  --sub: #5a6273; /* was #6B7488 in the mockup: 4.28:1, just under AA */
+  /*
+   * The one row tint on the board: the site the NEEDING ATTENTION card is
+   * counting. Far lighter than --status-crit-tint, which is sized for a 16px
+   * pill - across a whole 42px row that value reads as an error state, and it
+   * also drags --sub to 4.4:1, under AA. This is a real text surface, so
+   * check-contrast measures every ink against it.
+   */
+  --row-attention: #fdf4f3;
 
-  /* ---- status: mark tokens (fills, dots, pins, bars) ---- */
-  --status-good-mark: #0c8f70;
-  --status-warn-mark: #c6790a;
-  --status-crit-mark: #e0333f;
-  --status-nodata-mark: #727c8d;
-  --status-other-mark: #7c6bb0;
+  --line: #e4e6ea;
+  --line-strong: #d4d7dd;
+  /* Hairline between table rows: lighter than --line, which reads as a box edge. */
+  --line-row: #edeff2;
+
+  /* ---- type ----
+     Two tiers, not four. Everything quieter than --sub failed AA in the
+     artboard and has no passing equivalent below it, so all of it lands here. */
+  --text: #16181d;
+  --ink-2: #3a3d45;
+  --sub: #676c76;
+
+  /* ---- status: mark tokens (fills, dots, pins, pills, bars) ---- */
+  --status-good-mark: #12946a;
+  --status-warn-mark: #b3771a;
+  --status-crit-mark: #d63b30;
+  --status-nodata-mark: #828790;
+  --status-other-mark: #7166b5;
 
   /* ---- status: ink tokens (text) ---- */
-  --status-good-ink: #0b6e58;
-  --status-warn-ink: #8a5308;
-  --status-crit-ink: #b31c25;
-  --status-nodata-ink: #5b6472;
-  --status-other-ink: #5b4b8a;
+  --status-good-ink: #0f7a58;
+  --status-warn-ink: #8a5c11;
+  --status-crit-ink: #c0362c;
+  --status-nodata-ink: #5c616b;
+  --status-other-ink: #574b93;
 
-  /* ---- status: tint backgrounds for badges/pills ---- */
-  --status-good-tint: rgba(12, 143, 112, 0.12);
-  --status-warn-tint: rgba(198, 121, 10, 0.12);
-  --status-crit-tint: rgba(224, 51, 63, 0.1);
-  --status-nodata-tint: rgba(114, 124, 141, 0.14);
-  --status-other-tint: rgba(124, 107, 176, 0.13);
+  /* ---- status: tint backgrounds for the Run/Stop pills and badges ---- */
+  --status-good-tint: #e3f5ee;
+  --status-warn-tint: #fbf0dd;
+  --status-crit-tint: #fdeae8;
+  --status-nodata-tint: #eef0f3;
+  --status-other-tint: #eeecf8;
+
+  /*
+   * ---- chip fills: the same tints, at the weight a capsule wants ----
+   *
+   * A chip is a small shape carrying a coloured word, so its fill only has to
+   * separate it from the surface behind it - not to signal anything on its own,
+   * which the word and the dot already do. On this board the tints are that
+   * weight already, so these pass straight through; the dark block dilutes
+   * them, because the same values against a near-black page read as blocks of
+   * colour rather than as a wash and start competing with the KPI strip above.
+   */
+  --chip-fill-good: var(--status-good-tint);
+  --chip-fill-warn: var(--status-warn-tint);
+  --chip-fill-crit: var(--status-crit-tint);
+  --chip-fill-muted: var(--panel-2);
 
   /* Aliases kept so the ported mockup CSS reads the same. */
   --run: var(--status-good-ink);
@@ -56,14 +127,24 @@
   --warn: var(--status-warn-ink);
   --nodata: var(--status-nodata-ink);
 
-  /* ---- radii, elevation, focus ---- */
-  --r-sm: 0.3125rem; /* 5px  */
-  --r-md: 0.5rem; /* 8px  */
-  --r-lg: 0.75rem; /* 12px */
-  --r-xl: 0.875rem; /* 14px */
-  --shadow-panel: 0 0.0625rem 0.1875rem rgba(15, 23, 42, 0.06);
-  --shadow-pop: 0 0.25rem 0.375rem rgba(15, 23, 42, 0.08);
-  --focus-ring: 0 0 0 0.1875rem rgba(11, 110, 88, 0.45);
+  /* ---- radii, elevation, focus ----
+     Rounded. The artboard draws every box with a 1px hairline and a small
+     radius; elevation is reserved for things that genuinely float above the
+     page (map label cards, popovers, the methodology dialog).
+
+     The scale steps by a factor of two so nesting reads correctly: a chip
+     inside a panel has to be visibly *less* round than the panel around it, or
+     the two curves fight. `--r-xl` used to sit here as a duplicate of --r-lg
+     with nothing reading it, and is gone. */
+  --r-sm: 0.25rem; /* 4px  - pills, swatches, map label cards */
+  --r-md: 0.5rem; /* 8px  - chips, controls, popovers */
+  --r-lg: 0.75rem; /* 12px - panels, KPI cards, the methodology dialog */
+  --r-pill: 62.5rem;
+
+  --shadow-panel: none;
+  --shadow-pop: 0 0.0625rem 0.1875rem rgba(22, 24, 29, 0.12);
+  --shadow-modal: 0 1.125rem 3.125rem rgba(22, 24, 29, 0.18);
+  --focus-ring: 0 0 0 0.125rem rgba(15, 122, 88, 0.6);
 
   /* ---- spacing ---- */
   --sp-1: 0.25rem;
@@ -74,26 +155,179 @@
   --sp-6: 1.5rem;
   --sp-8: 2rem;
 
-  /* ---- type scale (desktop, ~1 m viewing distance) ---- */
-  --fs-kpi: 2rem; /* 32px */
-  --fs-h1: 1.0625rem; /* 17px */
-  --fs-h2: 0.875rem; /* 14px */
-  --fs-body: 0.8125rem; /* 13px */
+  /* ---- type scale (iPad Air, ~0.5 m viewing distance) ----
+     The artboard's sizes at 1:1 for a 1180-wide viewport. Its smallest tier is
+     floored at 10px: below that, body text is not readable at arm's length on a
+     glossy screen in factory light. */
+  /* 28px, not the artboard's 34. The strip is intrinsic height in a fixed-height
+     column, so every pixel it gives up goes straight to the board underneath -
+     and at 34 the six figures were reading as the loudest thing on a screen
+     whose actual subject is the map and the ranking. */
+  --fs-kpi: 1.75rem;
+  --fs-kpi-label: 0.625rem; /* 10px - card captions, uppercase and tracked */
+  --fs-h1: 1.5rem; /* 24px - dashboard title */
+  --fs-brand: 0.6875rem; /* 11px - copyright line */
+  --fs-h2: 0.75rem; /* 12px - panel titles, uppercase and tracked */
+  --fs-chip: 0.8125rem; /* 13px - filter and range controls */
   --fs-label: 0.75rem; /* 12px */
-  --fs-micro: 0.6875rem; /* 11px */
-  --fs-nano: 0.625rem; /* 10px */
+  --fs-body: 0.75rem; /* 12px - table body, the workhorse size */
+  --fs-micro: 0.6875rem; /* 11px - captions, secondary table lines */
+  --fs-nano: 0.625rem; /* 10px - column heads, legends, pills */
+
+  /* Tracking. The artboard leans on letter-spacing rather than weight to mark a
+     label as a label, so the values are tokens like the sizes are. */
+  --ls-caps: 0.08em; /* uppercase micro labels */
+  --ls-title: 0.06em; /* panel titles */
+  --ls-tight: -0.02em; /* the 34px KPI figures */
+
+  /*
+   * Brand orange.
+   *
+   * Nothing reads it at the moment. Its last consumer was the underline on the
+   * selected panel tab, and the tab strip that carried it was replaced by the
+   * folder tabs at board level, which are drawn as surfaces rather than as
+   * underlined labels. The token is kept rather than deleted because it is the
+   * brand's colour and the decision to put it back - the selected tab's leading
+   * edge is the obvious slot - is a design call, not a cleanup.
+   *
+   * It is a masthead accent, not a status signal: it deliberately carries no
+   * information, which is why it is exempt from the status contrast rules in
+   * scripts/check-contrast.mjs. Anything that must be read as status gets a
+   * glyph and a word, never a colour alone.
+   *
+   * Two former uses are gone. The KPI strip's top rail is tone-coloured now
+   * rather than six identical orange lines, and the selected language tile is a
+   * tint like the range segment beside it - which also retired `--on-accent`,
+   * the white that sat on this orange at 2.4:1 and was the board's one
+   * documented AA exception.
+   *
+   * The full-bleed gradient rails that used to frame the page top and bottom are
+   * gone too, and `--accent-grad`/`--rail-h` went with them rather than being
+   * left as tokens nothing reads.
+   */
+  --accent: #e8942e;
+
+  /*
+   * The %OA trend series.
+   *
+   * Blue, and deliberately not --status-good-mark. A green line is a claim, and
+   * for most of the day it is the wrong one: the fleet runs below the 95 target,
+   * so the artboard's green line read "healthy" while every point on it said
+   * otherwise. A measured series is not a status, so it wears a colour the
+   * status registry does not own - and the hours that *are* a status, the ones
+   * below the served warn_at, are overdrawn in --status-crit-mark by TrendChart.
+   *
+   * Blue also fixes the pairing. The line sits beside the amber target
+   * threshold, and green/amber measure a deuteranope distance of roughly 3-5
+   * against a usable floor of 6-8; blue against amber clears it comfortably.
+   *
+   * 4.99:1 on --panel and 4.53:1 on the worst surface. A mark needs 3:1, so
+   * there is headroom for a 2.5px stroke on a glossy corridor screen.
+   */
+  --trend-line: #0b74b8;
+
+  /* Area fill under the trend line. Decorative - the line itself carries the
+     data and clears 3:1 on its own. */
+  --trend-fill: rgba(11, 116, 184, 0.1);
 
   /* ---- line height. Thai stacks tone marks above and vowels below the
-     baseline; the mockup's tight leading clips them. Overridden per lang. ---- */
-  --lh-body: 1.4;
-  --lh-tight: 1.2;
+     baseline; the artboard's tight leading clips them. Overridden per lang. ---- */
+  --lh-body: 1.35;
+  --lh-tight: 1.15;
 
-  /* ---- interaction target floors ---- */
-  --target-min: 1.5rem; /* 24px desktop */
+  /* ---- interaction target floors ----
+     28px is the artboard's control height. That is under Apple's 44px guidance,
+     so `.tap` in base.css expands the *hit* area to 44px with a pseudo-element
+     without changing the drawn size. Both numbers are needed: one is what the
+     design looks like, the other is what a thumb can actually hit. */
+  --target-min: 1.75rem; /* 28px drawn */
+  --tap-min: 2.75rem; /* 44px hit area */
+
+  /*
+   * ---- single-screen layout ----
+   *
+   * The overview is a fixed board: it must land inside one viewport at 100%
+   * zoom with nothing below the fold. So the page frame is a fixed-height flex
+   * column and these are the only vertical constants in it - everything else is
+   * either intrinsic (rails, masthead, filter row, KPI strip) or flexes to fill
+   * what is left (the board row).
+   */
+  --shell-pad-x: 1.5rem; /* 24px */
+  --shell-pad-y: 0.75rem; /* 12px */
+  --shell-pad-bottom: 0.75rem;
+  --shell-gap: 0.625rem; /* 10px - between masthead, filters, KPIs, board */
+  --grid-gap: 0.5rem; /* 8px - inside the KPI strip and the board */
+  --panel-pad-x: 0.875rem; /* 14px */
+  --panel-pad-y: 0.625rem; /* 10px */
+
+  /*
+   * Board proportions: the tabbed map/trend/stops column against the ranking.
+   *
+   * Even, where it used to favour the map 1.2:1. The redraw draws the ranking
+   * as the wider of the two and the table agrees: with the Run/Stop pills side
+   * by side rather than stacked, that cell needs 95px, and the old split left it
+   * 64px with every other column already at zero slack.
+   *
+   * Even is where it stops, though, rather than going all the way to the
+   * redraw's proportions. The map column also holds the tab row, and three tabs
+   * plus the methodology opener need 527px; below that the tab labels collide.
+   * So the ranking gets what it needs and the map keeps the rest.
+   *
+   * Since then the tab row left the map panel's head for board level, and the
+   * head it left behind - a title, a base count and the methodology opener -
+   * needs about 314px against the 527px the tabs did. That released the
+   * constraint that was holding the split even, so the ranking takes the
+   * difference: it now carries a plant-count chip on its identity column and
+   * seven columns of content, where the map only loses longitude.
+   */
+  --board-cols: 1fr 1.25fr;
+
+  /* Row height floor for the ranking table. Below this the table scrolls inside
+     its panel rather than the page growing. */
+  --row-h: 2.625rem; /* 42px */
+  --row-h-plant: 1.75rem; /* 28px - nested plant rows */
 
   /* ---- map ---- */
-  --map-h: 26.875rem; /* 430px */
-  --map-void: #eaeef5;
+  --map-void: #e8eaee;
+
+  /*
+   * Plates and washes the map draws over itself - the attribution strip, the
+   * legend, the halo that keeps a pin's dot readable over a coastline - plus the
+   * scrim behind the methodology dialog and the base drawer.
+   *
+   * These six were the last colour literals living outside this file, and they
+   * are tokens now for exactly the reason the rest are: every one of them is a
+   * translucent *white* or a translucent near-black, and both of those
+   * assumptions invert with the theme. A 72%-white plate over a dark basemap is
+   * a light box with --sub drawn on it - unreadable in a way no contrast table
+   * would have caught, because the surface was not in the table.
+   */
+  /*
+   * The plate behind the brand logo.
+   *
+   * Transparent here, and load-bearing in the dark block: the logo is a raster
+   * whose wordmark is set in black - it was drawn for a white masthead and there
+   * is no dark-ground version of it (D-F16 is still open on getting the SVG).
+   * CSS cannot recolour a photograph, and inverting it turns the orange infinity
+   * mark cyan, so on the dark board it is given its own light ground instead.
+   */
+  /* --brand-plate is gone: the logo is cropped to its orange mark, which needs
+     no ground on either board. See .brand__mark in components.css. */
+
+  --scrim: rgba(22, 24, 29, 0.32);
+  --map-plate: rgba(255, 255, 255, 0.72);
+  --map-plate-solid: rgba(255, 255, 255, 0.94);
+  --pin-halo: rgba(255, 255, 255, 0.9);
+  --shadow-pin-hover: 0 0.1875rem 0.5rem rgba(22, 24, 29, 0.16);
+  --shadow-pin-sel: 0 0.125rem 0.375rem rgba(22, 24, 29, 0.18);
+
+  /*
+   * Which way the browser paints its own furniture: the scrollbar inside the
+   * ranking panel, the focus outline it falls back to, the tap highlight. Left
+   * unset, a viewer on a dark OS gets light scrollbars gouged into the dark
+   * board - the one part of the theme CSS cannot reach.
+   */
+  color-scheme: light;
 }
 
 /*
@@ -101,50 +335,312 @@
  * above. Set on <html lang> by I18nProvider.
  */
 html[lang='th'] {
-  --lh-body: 1.55;
-  --lh-tight: 1.4;
+  --lh-body: 1.5;
+  --lh-tight: 1.35;
+  /*
+   * No tracking on micro labels in Thai.
+   *
+   * `--ls-caps` exists to open up runs of Latin capitals, which is a real
+   * problem Latin has and Thai does not: Thai has no case, so
+   * `text-transform: uppercase` on `.kpi__label` does nothing to it while the
+   * 0.08em still lands, and it lands badly. A Thai syllable is a base letter
+   * with its vowels and tone marks hung off it, so tracking prises apart marks
+   * that belong to one another - "เครื่องจักรทั้งหมด" came out looking
+   * mis-spaced rather than emphasised.
+   *
+   * CSS cannot vary this per script inside one element, so this is a choice
+   * between the two: the Thai board is mostly Thai, and the English that
+   * remains on it - the machine states, the site codes - is short and reads
+   * fine untracked. If that balance ever flips, the fix is a class on the
+   * Latin-only labels, not putting the tracking back.
+   */
+  --ls-caps: 0;
+}
+
+/*
+ * ---- iPad ----
+ *
+ * Set by AppShell when the device is an iPad (see detectDevice there). The
+ * artboard is 1180 x 820 and the type sizes above are already drawn for it, so
+ * this block does not resize anything. What it does is pin the layout: the
+ * wide-viewport scaling steps at the bottom of this file are neutered, because
+ * an iPad never reaches them and a Stage Manager window that happens to be wide
+ * is not a television.
+ *
+ * Everything else about the iPad case is behaviour rather than size - hover
+ * styles suppressed, hit areas grown to 44px - and lives in base.css.
+ */
+:root[data-device='ipad'] {
+  --tap-min: 2.75rem;
 }
 
 /*
  * Kiosk / TV density. Set by AppShell when ?kiosk=1 or the viewport is very
- * wide. Floors come from angular size: at 3 m from a 55" 4K panel, 0.3 degrees
- * is roughly 25 logical px, so body text below that is unreadable.
+ * wide. Floors come from angular size: at 3 m from a 55-inch 4K panel, 0.3
+ * degrees is roughly 25 logical px, so body text below that is unreadable. This
+ * is why the artboard's 10-13px band cannot simply be scaled by a ratio - at
+ * this distance the whole band collapses to one readable size.
  *
- * Ink tokens step up to AAA 7:1 here — factory ambient light is high and the
+ * Ink tokens step up to AAA 7:1 here - factory ambient light is high and the
  * panels are usually glossy.
  */
 :root[data-density='tv'] {
   --fs-kpi: 3.5rem; /* 56px */
+  --fs-kpi-label: 1.5rem; /* 24px */
   --fs-h1: 1.75rem; /* 28px */
+  --fs-brand: 1.25rem; /* 20px */
   --fs-h2: 1.625rem; /* 26px */
-  --fs-body: 1.375rem; /* 22px */
+  --fs-chip: 1.5rem; /* 24px */
   --fs-label: 1.5rem; /* 24px */
-  --fs-micro: 1.125rem; /* 18px */
-  --fs-nano: 1.125rem; /* 18px — no smaller tier exists at this distance */
+  --fs-body: 1.375rem; /* 22px */
+  --fs-micro: 1.375rem; /* 22px */
+  --fs-nano: 1.125rem; /* 18px - no smaller tier exists at this distance */
+
+  --ls-caps: 0.06em;
+  --ls-title: 0.05em;
 
   --target-min: 2.75rem; /* 44px */
-  --map-h: 40rem;
+  --tap-min: 2.75rem;
+  --row-h: 4.5rem;
+  --row-h-plant: 3rem;
 
-  --sub: #474e5d;
-  --status-good-ink: #075744;
-  --status-warn-ink: #6e4206;
-  --status-crit-ink: #96131c;
-  --status-nodata-ink: #49505d;
-  --status-other-ink: #4c3e74;
+  --shell-pad-x: 1.5rem;
+  --shell-pad-y: 1rem;
+  --shell-pad-bottom: 1rem;
+  --shell-gap: 0.875rem;
+  --grid-gap: 0.75rem;
+  --panel-pad-x: 1rem;
+  --panel-pad-y: 0.75rem;
+
+  /*
+   * The desktop board splits its two columns evenly so the ranking can hold the
+   * Run/Stop pills on one line. Here it keeps the old 1.2:1, because the two
+   * columns run out of room in opposite orders at this density: the ranking has
+   * width to spare - its pills need 148px of a 228px cell - while the tab row
+   * does not, its three labels being set at 26px rather than 12px. Even columns
+   * clip the tabs by 107px on a 2560-wide panel.
+   */
+  --board-cols: 1.2fr 1fr;
+
+  --sub: #4a4e57;
+  --status-good-ink: #0a5b41;
+  --status-warn-ink: #6b470b;
+  --status-crit-ink: #8f2419;
+  --status-nodata-ink: #494e57;
+  --status-other-ink: #443a75;
+}
+
+/*
+ * Thai on the kiosk board.
+ *
+ * `html[lang='th']` above is (0,1,1) and `:root[data-density='tv']` is (0,2,0),
+ * so the TV block wins on specificity no matter which is written first and the
+ * tracking it sets would come back on the Thai panel - at 22px rather than
+ * 10px, where the marks pull apart further still. This carries the language
+ * rule across, and is the only reason it is repeated.
+ */
+html[lang='th']:root[data-density='tv'] {
+  --ls-caps: 0;
+}
+
+/*
+ * ============================================================== dark theme ===
+ *
+ * Set as `data-theme` on <html> by AppShell, from the viewer's stored choice
+ * (the moon/sun switch in the masthead), a one-shot `?theme=`, or the site's
+ * `defaultTheme` in runtime-config.json.
+ *
+ * The same board, not a second design. Every size, radius, weight, tracking and
+ * layout token above is shared - this block redefines colour and nothing else,
+ * which is the only reason the two themes cannot drift apart in proportion or
+ * density over time. If a rule here ever sets a length, it is a bug.
+ *
+ * Three things are inverted rather than translated:
+ *
+ *   1. The surface ladder turns over. On the light board the page is the darker
+ *      surface and a panel is white on top of it; here the page is the darkest
+ *      thing on screen and each surface *lifts* toward the viewer. The steps
+ *      keep their light-theme ratios - --panel measures 1.09:1 against --bg in
+ *      both themes - so a card still reads as raised by the same amount with no
+ *      shadow, which matters more here: a drop shadow is invisible on a dark
+ *      ground, so the value step is doing the whole job.
+ *   2. Which surface binds the contrast check moves with it. On white, --panel-3
+ *      is the *darkest* text surface and every ink has to clear it; here it is
+ *      the *lightest*, and it is still the binding one. Same row in
+ *      check-contrast.mjs, opposite end of the ladder.
+ *   3. Mark and ink swap order. On white, an ink is its mark darkened until it
+ *      passes as type; on a dark ground it is the mark *lightened*. Nothing else
+ *      about the two-token split changes - a fill still needs 3:1 and type still
+ *      needs 4.5:1 (7:1 at kiosk density).
+ *
+ * --text is #eef2f8 rather than #ffffff on purpose. Pure white on a near-black
+ * ground haloes on the glossy panels these boards run on, and at 12px that
+ * bloom closes up Thai tone marks.
+ *
+ * Do not hand-edit a colour here without re-running `npm run check:contrast` -
+ * it measures both palettes, and the DARK tables in that script are this block.
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* ---- surfaces ---- */
+  --bg: #0a1020;
+  --panel: #101a2c;
+  /* The masthead keeps its light-theme relationship to the page: one step
+     lifted, with a hairline at the seam. Identity still reads as a band rather
+     than as more board. */
+  --band: #101a2c;
+  --band-line: #223049;
+  --panel-2: #16223a;
+  /* The sticky ranking header - the lightest text surface, so every ink below is
+     measured against it. */
+  --panel-3: #1c2942;
+  /* The resting board tab sits between page and board here too: above --bg,
+     below --panel. Same arithmetic as the light theme, opposite direction. */
+  --tab-rest: #0d1524;
+  --tab-rest-hover: #101a2a;
+
+  /* The attention row. Same job as its light counterpart - it carries a whole
+     42px row, so it is a wash and not the pill-strength --status-crit-tint - and
+     the same constraint: every ink has to clear it. */
+  --row-attention: #2c1821;
+
+  --line: #223049;
+  --line-strong: #2e3f5c;
+  /* Between-row hairline: quieter than --line, or the ranking reads as a grid. */
+  --line-row: #1a2438;
+
+  /* ---- type ---- */
+  --text: #eef2f8;
+  --ink-2: #c3ccda;
+  --sub: #94a2b8;
+
+  /* ---- status: mark tokens (fills, dots, pins, pills, bars) ---- */
+  --status-good-mark: #10c987;
+  --status-warn-mark: #f0a52a;
+  --status-crit-mark: #ef4a5c;
+  --status-nodata-mark: #7d8ba1;
+  --status-other-mark: #8b7ce8;
+
+  /* ---- status: ink tokens (text) ---- */
+  --status-good-ink: #3fe0a8;
+  --status-warn-ink: #fbbf4a;
+  --status-crit-ink: #ff7080;
+  --status-nodata-ink: #a3b0c2;
+  --status-other-ink: #a99bf5;
+
+  /* ---- status: tints ----
+     Not the light tints darkened by a filter: each one is its own hue mixed into
+     --panel far enough to read as "this pill is green" and no further. A pill is
+     a text surface, so each is checked against the ink that sits on it. */
+  --status-good-tint: #0e2b23;
+  --status-warn-tint: #2e2412;
+  --status-crit-tint: #34181e;
+  --status-nodata-tint: #1e293b;
+
+  /*
+   * Chip fills, diluted to 60% against the panel they sit on.
+   *
+   * At full strength these read as filled blocks here rather than as the wash
+   * they are on the light board - the surface ladder is inverted, so a tint
+   * mixed for white is doing far more work against #101a2c. 60% was picked by
+   * eye against the alternatives: 100% competes with the KPI strip, and at 35%
+   * the muted chip stops being a chip at all.
+   *
+   * Only the fill moves. The ink and the dot keep their full-strength tokens,
+   * so nothing about legibility changes - the contrast check still runs against
+   * the same pairs it always did.
+   */
+  --chip-fill-good: color-mix(in oklab, var(--status-good-tint) 60%, var(--panel));
+  --chip-fill-warn: color-mix(in oklab, var(--status-warn-tint) 60%, var(--panel));
+  --chip-fill-crit: color-mix(in oklab, var(--status-crit-tint) 60%, var(--panel));
+  --chip-fill-muted: color-mix(in oklab, var(--panel-2) 60%, var(--panel));
+  --status-other-tint: #231f3e;
+
+  /* --run/--stop/--warn/--nodata are `var()` aliases declared on :root, so they
+     resolve against the winning declarations above and need no rows here. */
+
+  /* ---- elevation, focus ----
+     Darker and heavier than the light theme's. A shadow on a dark ground has
+     only the shadow's own darkness to work with, so the alpha roughly doubles;
+     it still only carries things that genuinely float (map cards, the dialog). */
+  --shadow-pop: 0 0.0625rem 0.1875rem rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 1.125rem 3.125rem rgba(0, 0, 0, 0.6);
+  --shadow-pin-hover: 0 0.1875rem 0.5rem rgba(0, 0, 0, 0.5);
+  --shadow-pin-sel: 0 0.125rem 0.375rem rgba(0, 0, 0, 0.55);
+  --focus-ring: 0 0 0 0.125rem rgba(63, 224, 168, 0.7);
+
+  /* Brand orange, one step brighter: the light theme's #e8942e is mixed for
+     white and goes muddy against --panel. Still a masthead accent carrying no
+     information, so it stays exempt from the status contrast rules. */
+  --accent: #f2a94a;
+
+  /* The %OA trend series, lightened for the dark ground the way an ink is.
+     8.13:1 on --panel, 6.78:1 on the lightest surface. */
+  --trend-line: #38bdf8;
+
+  /* Area fill under the trend line. A shade more opaque than the light theme's
+     10%: the same wash over a dark ground reads as nothing at all. */
+  --trend-fill: rgba(56, 189, 248, 0.16);
+
+  /* ---- map ----
+     The void is the one surface that goes *below* --bg. Ocean should be the
+     furthest thing away, and the bundled Natural Earth landmasses are drawn in
+     --panel-2, so this is what separates coastline from sea when the raster
+     basemap is absent. */
+  --map-void: #070c16;
+
+  /*
+   * The plates the map draws over itself, and the modal scrim. Each is the light
+   * theme's translucent white turned into a translucent near-black at a slightly
+   * higher opacity - a wash has to be more opaque here to lift a plate off a
+   * basemap that is already dark.
+   */
+  /* No --brand-plate here either. It was an off-white chip carrying the PNG's
+     black wordmark, and even at the least ground that wordmark could be read on
+     it was the brightest thing on a near-black masthead - on a board whose
+     subject is nine plants. Cropping the wordmark away removed the need. */
+
+  --scrim: rgba(3, 6, 12, 0.66);
+  --map-plate: rgba(10, 16, 32, 0.78);
+  --map-plate-solid: rgba(16, 26, 44, 0.94);
+  --pin-halo: rgba(7, 12, 22, 0.92);
+}
+
+/*
+ * Dark at kiosk/TV density: AAA 7:1, the same rule as the light theme's tv
+ * block, reached by lightening instead of darkening.
+ *
+ * This block has to exist rather than inheriting either parent, because the
+ * light tv overrides above are absolute values, not deltas - without it a dark
+ * board on a wall panel would take the light theme's near-black inks. It wins on
+ * specificity (three attributes to two) regardless of source order, and it sets
+ * no sizes: the tv block above already did that, and those are theme-neutral.
+ */
+:root[data-theme='dark'][data-density='tv'] {
+  --sub: #b3bfd0;
+  --ink-2: #d8e0ec;
+  --text: #f4f7fb;
+  --status-good-ink: #6fe9bd;
+  --status-warn-ink: #fcd34d;
+  --status-crit-ink: #ff9aa4;
+  --status-nodata-ink: #c0cbdb;
+  --status-other-ink: #c3b8ff;
 }
 
 /*
  * Very large viewports scale the whole layout, not just the type. This is a
  * separate axis from density: density says "the viewer is far away", this says
- * "there are simply more pixels".
+ * "there are simply more pixels". Never applied on an iPad - see the note in
+ * the [data-device='ipad'] block above.
  */
 @media (min-width: 2560px) {
-  html {
+  html:not([data-device='ipad']) {
     font-size: 20px;
   }
 }
 @media (min-width: 3400px) {
-  html {
+  html:not([data-device='ipad']) {
     font-size: 24px;
   }
 }
