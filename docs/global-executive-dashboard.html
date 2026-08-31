@@ -182,33 +182,33 @@
   <div class="kpis">
     <div class="kpi">
       <div class="label">Total Machines</div>
-      <div class="value mono" id="kpiTotal">—</div>
+      <div class="value mono" id="kpiTotal">-</div>
       <!-- อัปเดตประเทศเป็น 6 ประเทศ -->
       <div class="delta up" id="kpiTotalSub">9 bases · 7 countries</div>
     </div>
     <div class="kpi run">
       <div class="label">Running</div>
-      <div class="value mono" id="kpiRun">—</div>
+      <div class="value mono" id="kpiRun">-</div>
       <div class="delta up" id="kpiRunSub"></div>
     </div>
     <div class="kpi stop">
       <div class="label">Stopped</div>
-      <div class="value mono" id="kpiStop">—</div>
+      <div class="value mono" id="kpiStop">-</div>
       <div class="delta down" id="kpiStopSub"></div>
     </div>
     <div class="kpi warn">
       <div class="label">Global %OA Avg</div>
-      <div class="value mono" id="kpiOA">—</div>
+      <div class="value mono" id="kpiOA">-</div>
       <div class="delta down" id="kpiOASub">Target <span id="kpiOATarget"></span>%</div>
     </div>
     <div class="kpi">
       <div class="label">Global Achievement</div>
-      <div class="value mono" id="kpiAchv">—</div>
+      <div class="value mono" id="kpiAchv">-</div>
       <div class="delta down">Plan 14,200 / Actual 11,590 pcs</div>
     </div>
     <div class="kpi stop">
       <div class="label">Plants Needing Attention</div>
-      <div class="value mono" id="kpiAlert">—</div>
+      <div class="value mono" id="kpiAlert">-</div>
       <div class="delta down" id="kpiAlertSub"></div>
     </div>
   </div>
@@ -216,7 +216,7 @@
   <div class="main">
     <div class="panel">
       <div class="panel-head">
-        <h2>World Map — %OA by Plant</h2>
+        <h2>World Map - %OA by Plant</h2>
         <span class="sub">pin color = health · number = %OA avg</span>
       </div>
       <!-- โครงสร้าง Container สำหรับ Leaflet -->
@@ -241,7 +241,7 @@
   <div class="bottom">
     <div class="panel">
       <div class="panel-head">
-        <h2>Global %OA Trend — 24h</h2>
+        <h2>Global %OA Trend - 24h</h2>
         <span class="sub">hourly average, all plants</span>
       </div>
       <svg class="trend-svg" id="trendSvg" viewBox="0 0 600 150" preserveAspectRatio="none"></svg>
@@ -265,7 +265,7 @@
 const TARGET_OA = 95;
 
 // ==========================================================
-// Data model v2 — matches Design Doc v3.1
+// Data model v2 - matches Design Doc v3.1
 // 1 pin = 1 codeCompany (ฐานการผลิต). Each company rolls up
 // its own plant codes (e.g. THS -> 6332/6337/6338/6321).
 // Companies with no live IoT connection yet are marked
@@ -309,7 +309,7 @@ function getShiftInfo(timezone, shiftType){
 
 // plants: [] for companies not yet connected (data readiness = ❓/🔄 in the doc).
 // run/stop/oa/plan/actual are per-plant. Company-level numbers are ALWAYS
-// rolled up in JS below — never hardcoded (fixes T-01).
+// rolled up in JS below - never hardcoded (fixes T-01).
 const companies = [
   {code:'THS', country:'Thailand', flag:'🇹🇭', lat:14.006904532327685, lng:100.56213418111764,
    timezone:'Asia/Bangkok', shiftType:'2', status:'online', lastSeen:'2026-08-04T10:14:52+07:00',
@@ -377,7 +377,7 @@ document.getElementById('mapLegend').innerHTML = `
 `;
 
 // ==========================================================
-// KPI strip — only companies with live data count toward
+// KPI strip - only companies with live data count toward
 // machines / run / stop / OA / achievement (T-11 fix: a
 // disconnected site must never silently read as "stopped").
 // ==========================================================
@@ -399,9 +399,9 @@ const alertCompanies = online.filter(c=>tier(c.rollup.oa)==='alert');
 document.getElementById('kpiTotal').textContent = totalMachines;
 document.getElementById('kpiTotalSub').textContent = `${companies.length} bases · ${countries} countries · ${noData.length} not yet connected`;
 document.getElementById('kpiRun').textContent = totalRun;
-document.getElementById('kpiRunSub').textContent = totalMachines ? `${(totalRun/totalMachines*100).toFixed(1)}% of connected fleet` : '—';
+document.getElementById('kpiRunSub').textContent = totalMachines ? `${(totalRun/totalMachines*100).toFixed(1)}% of connected fleet` : '-';
 document.getElementById('kpiStop').textContent = totalStop;
-document.getElementById('kpiStopSub').textContent = totalMachines ? `${(totalStop/totalMachines*100).toFixed(1)}% of connected fleet` : '—';
+document.getElementById('kpiStopSub').textContent = totalMachines ? `${(totalStop/totalMachines*100).toFixed(1)}% of connected fleet` : '-';
 document.getElementById('kpiOA').textContent = globalOA.toFixed(1) + '%';
 document.getElementById('kpiOATarget').textContent = TARGET_OA;
 document.getElementById('kpiAchv').textContent = globalAchv.toFixed(1) + '%';
@@ -409,7 +409,7 @@ document.getElementById('kpiAlert').textContent = alertCompanies.length;
 document.getElementById('kpiAlertSub').textContent = alertCompanies.length ? alertCompanies.map(c=>c.code).join(' · ') : 'None';
 
 // ==========================================================
-// Map — Leaflet.js, pins at COMPANY level (§3: pinning per
+// Map - Leaflet.js, pins at COMPANY level (§3: pinning per
 // plant would overlap since plants sit at the same site).
 // ==========================================================
 const map = L.map('mapWrap', {
@@ -445,7 +445,7 @@ companies.forEach(c=>{
 });
 
 // ==========================================================
-// Ranking table — company summary row, expandable to show
+// Ranking table - company summary row, expandable to show
 // the underlying plant codes (§3 point 3).
 // ==========================================================
 const rankBody = document.getElementById('rankBody');
@@ -470,12 +470,12 @@ sortedCompanies.forEach((c,idx)=>{
       <span class="caret">▶</span> ${c.flag} ${c.code}
       <span class="sub2">${c.country}${c.plants.length>1 ? ' · '+c.plants.length+' plants' : ''}</span>
       ${shift ? `<span class="shift-chip">${shift.code} · ${shift.localTime} local</span>` : ''}
-      ${isNoData ? `<span class="last-seen">Not connected — no telemetry</span>` : ''}
+      ${isNoData ? `<span class="last-seen">Not connected - no telemetry</span>` : ''}
     </td>
     <td>${isNoData ? `<span class="badge nodata">no data</span>` : `<span class="badge run">${r.run} run</span> <span class="badge stop">${r.stop} stop</span>`}</td>
-    <td>${isNoData ? `<span class="pct nodata">—</span>` : `<span class="pct ${t==='alert'?'low':t==='warn'?'mid':'high'}">${r.oa.toFixed(1)}%</span>`}</td>
-    <td class="mono">${isNoData ? '—' : r.achv.toFixed(1)+'%'}</td>
-    <td class="mono" style="color:var(--sub)">${isNoData ? '—' : (r.stop>0 ? 'active' : '0.0h')}</td>
+    <td>${isNoData ? `<span class="pct nodata">-</span>` : `<span class="pct ${t==='alert'?'low':t==='warn'?'mid':'high'}">${r.oa.toFixed(1)}%</span>`}</td>
+    <td class="mono">${isNoData ? '-' : r.achv.toFixed(1)+'%'}</td>
+    <td class="mono" style="color:var(--sub)">${isNoData ? '-' : (r.stop>0 ? 'active' : '0.0h')}</td>
   </tr>`;
 
   c.plants.forEach(p=>{
@@ -500,7 +500,7 @@ rankBody.querySelectorAll('.row-company').forEach(row=>{
   });
 });
 
-// ---- trend chart (still mock data — see T-05, needs real 1h-bucket query) ----
+// ---- trend chart (still mock data - see T-05, needs real 1h-bucket query) ----
 const trendSvg = document.getElementById('trendSvg');
 const hours = 24;
 const data = Array.from({length:hours}, (_,i)=> globalOA + Math.sin(i/3)*7 + (Math.random()*5-2.5));
@@ -518,7 +518,7 @@ trendSvg.innerHTML = `
   </linearGradient></defs>
 `;
 
-// ---- alerts (still mock — see §5, needs Q-06 top-5 longest active stop) ----
+// ---- alerts (still mock - see §5, needs Q-06 top-5 longest active stop) ----
 const alerts = [
   {plant:'VNS · Hanoi', machine:'P2I1 - Heater Failure', dur:'7:06:12'},
   {plant:'ISE · Jakarta', machine:'IC9 - Material Jam', dur:'6:24:09'},
