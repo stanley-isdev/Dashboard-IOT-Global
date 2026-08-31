@@ -10,15 +10,15 @@ import {
   zRange,
   zSiteCore,
   zTrendPoint,
-} from './common';
-import { zCount } from './primitives';
+} from './common.ts';
+import { zCount } from './primitives.ts';
 
 /**
  * `GET /api/v1/global-overview?range=24h&process=Injection&region=all`
  *
  * Section 13 of the design doc, corrected. The differences from the example
  * payload there are all cases where the example could not express something the
- * screen has to say — see the comments below and docs/DATA-CONTRACT.md.
+ * screen has to say - see the comments below and docs/DATA-CONTRACT.md.
  */
 
 export const zPlantSummary = zSiteCore.extend({
@@ -61,7 +61,18 @@ export type GlobalTotals = z.infer<typeof zGlobalTotals>;
 export const zFiltersApplied = z.object({
   range: zRange,
   process: z.union([zProcess, z.literal('all')]),
-  region: z.string(), // 'all' | country_code | company_code
+  // 'all', or a comma-separated list of country and/or company codes. See
+  // region.ts, which owns the encoding and the matcher both sides use.
+  region: z.string(),
+  /**
+   * 'all', or a comma-separated list of PLANT codes - the Lamp picker.
+   *
+   * One level below `region`, and the two intersect. It exists so this board can
+   * be put side by side with the per-plant operator boards, which are scoped by
+   * `Lamp_var`: without it, "THS 30" and "Lamp 2: 29" look like a disagreement
+   * when they are two different questions. See plantMatcher in region.ts.
+   */
+  plant: z.string(),
 });
 export type FiltersApplied = z.infer<typeof zFiltersApplied>;
 

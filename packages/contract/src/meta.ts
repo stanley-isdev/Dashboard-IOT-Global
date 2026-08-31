@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { zDataReadiness, zEnvelope, zPolicyBlock, zProcess, zRange, zShiftConfig } from './common';
-import { zCountryCode, zIanaTz } from './primitives';
+import { zDataReadiness, zEnvelope, zPolicyBlock, zProcess, zRange, zShiftConfig } from './common.ts';
+import { zCountryCode, zIanaTz } from './primitives.ts';
 
 /**
  * `GET /api/v1/meta`
@@ -26,7 +26,7 @@ export const zCompanyMeta = z.object({
   timezone: zIanaTz,
   /**
    * Turns the section 11 readiness matrix into something the legend can state
-   * plainly — "3 live · 1 installing · 5 planned" — instead of implying nine
+   * plainly - "3 live · 1 installing · 5 planned" - instead of implying nine
    * equivalent pins.
    */
   data_readiness: zDataReadiness,

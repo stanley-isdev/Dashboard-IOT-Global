@@ -11,9 +11,9 @@ import {
   zShiftConfig,
   zSiteCore,
   zTrendPoint,
-} from './common';
-import { zIsoOffset, zPct, zQty } from './primitives';
-import { zPlantSummary } from './globalOverview';
+} from './common.ts';
+import { zIsoOffset, zPct, zQty } from './primitives.ts';
+import { zPlantSummary } from './globalOverview.ts';
 
 /**
  * `GET /api/v1/companies/{company}?range=24h&process=Injection`

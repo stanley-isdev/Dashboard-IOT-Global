@@ -3,13 +3,14 @@ import {
   zClockTime,
   zCount,
   zCountryCode,
+  zDurationSec,
   zIanaTz,
   zIsoOffset,
   zIsoUtc,
   zPct,
   zPlainDate,
   zQty,
-} from './primitives';
+} from './primitives.ts';
 
 /* ------------------------------------------------------------------ enums */
 
@@ -25,7 +26,7 @@ import {
  *   stale          was reporting, has gone quiet past the backend's threshold
  *   degraded       some children report, some do not (ASI today, once its
  *                  second plant is wired)
- *   no_data        connected, but nothing in the selected window — a holiday,
+ *   no_data        connected, but nothing in the selected window - a holiday,
  *                  or a machine with no production order
  *   not_connected  no IoT gateway commissioned yet (section 11). SEH is mid
  *                  installation on 16 machines; VNS has no date. Those are
@@ -58,6 +59,13 @@ export const zMachineStatus = z.enum([
   'No Plan',
   'Order End',
   'Offline',
+  // Found in the live InfluxDB, absent from the design doc's section 8.4 table
+  // (BACKEND-HANDOVER 4.5). Over 71h: Pending 62 rows, Alarm 6, Warning 6.
+  // They bucket to `other` - see BUCKET_OF - because folding an unreviewed
+  // status into running or stopped would move a headline number on a guess.
+  'Pending',
+  'Alarm',
+  'Warning',
 ]);
 export type MachineStatus = z.infer<typeof zMachineStatus>;
 
@@ -68,7 +76,7 @@ export type MachineStatus = z.infer<typeof zMachineStatus>;
  *
  * `other` exists precisely so an undecided or newly-added status has somewhere
  * truthful to go. A status the UI does not recognise lands there with its raw
- * label — the display stops being complete but never becomes wrong.
+ * label - the display stops being complete but never becomes wrong.
  */
 export const zStatusBucket = z.enum(['running', 'stopped', 'idle', 'other', 'no_data']);
 export type StatusBucket = z.infer<typeof zStatusBucket>;
@@ -106,8 +114,9 @@ export type OaAggregation = z.infer<typeof zOaAggregation>;
  * the payload and rendered inside the value, never inferred from context.
  */
 export const zQtyUnit = z.enum(['pcs', 'shots']);
+export type QtyUnit = z.infer<typeof zQtyUnit>;
 
-/** Colour tier for a %OA value. Resolved by the backend — see zTierPolicy. */
+/** Colour tier for a %OA value. Resolved by the backend - see zTierPolicy. */
 export const zTier = z.enum(['good', 'warn', 'critical', 'unknown']);
 export type Tier = z.infer<typeof zTier>;
 
@@ -133,7 +142,7 @@ export type TierPolicy = z.infer<typeof zTierPolicy>;
 
 /**
  * Freshness thresholds. The front end must never decide "stale" by comparing
- * `last_seen` to `Date.now()` — that is business logic, and the acceptable
+ * `last_seen` to `Date.now()` - that is business logic, and the acceptable
  * silence differs by site. The backend owns the decision and sets `status`;
  * these values exist so the UI can word the banner and, if the payload itself
  * stops advancing, refuse to keep calling it live.
@@ -155,7 +164,7 @@ export type Freshness = z.infer<typeof zFreshness>;
  * covering 8h15m and the other 12h. Rendering `B Shift (2 of 3)` is what makes
  * a cross-site comparison honest.
  *
- * `end_local` may be earlier than `start_local` — STJ's C shift runs 22:15 to
+ * `end_local` may be earlier than `start_local` - STJ's C shift runs 22:15 to
  * 06:00. The backend has already resolved which calendar day each bound falls
  * on, so the UI never does date arithmetic.
  */
@@ -195,13 +204,25 @@ export type ShiftConfig = z.infer<typeof zShiftConfig>;
  *
  * The mockup computes `machines = run + stop`, which silently drops No Plan,
  * Order End, 4M Change and Offline. Total Machines then under-reports and
- * Running% is divided by the wrong denominator — exactly the trap section 10
+ * Running% is divided by the wrong denominator - exactly the trap section 10
  * flags as Q-08. `by_status` is the source of truth and
  * `sum(by_status) === total` is asserted at runtime.
  */
 export const zCounts = z.object({
   total: zCount,
   by_status: z.record(zMachineStatus, zCount),
+  /**
+   * The machines TOTAL deliberately leaves out, by status.
+   *
+   * TOTAL is RUNNING + STOP, so a machine sitting in Order End, No Plan or
+   * Pending reaches neither figure - and without this it would vanish from the
+   * board entirely, which is the same defect as showing a fabricated zero. It
+   * is a SEPARATE record rather than more keys on `by_status`, because
+   * `sum(by_status) === total` is an invariant the whole census rests on.
+   *
+   * Read it as context beside a headline, never added to one.
+   */
+  not_counted: z.record(zMachineStatus, zCount),
   /** Bucket roll-ups for the headline tiles. Derived from by_status server-side. */
   running: zCount,
   stopped: zCount,
@@ -214,16 +235,48 @@ export type Counts = z.infer<typeof zCounts>;
 /* ------------------------------------------------------------------- kpi */
 
 /**
- * The metric block that appears at every level of the hierarchy — global,
- * company, plant, zone, machine — so one set of components renders all of them.
+ * The metric block that appears at every level of the hierarchy - global,
+ * company, plant, zone, machine - so one set of components renders all of them.
  */
 export const zKpi = z.object({
   oa_pct: zPct,
   oa_tier: zTier,
+  /**
+   * How many machines are behind `oa_pct` - the denominator of its average.
+   *
+   * Load-bearing, not decorative. %OA only exists for a machine with a
+   * production order loaded, and on the live data that is a minority: 4 of the
+   * 29 machines on one plant's board at the time of writing. Without this
+   * number the card reads as though it describes the whole floor, and an
+   * executive has no way to tell 91% across four machines from 91% across
+   * thirty. It is what lets the info panel state its own denominator, the same
+   * way every other card on the strip does.
+   *
+   * Distinct from `Counts.total`, which counts machines by status regardless of
+   * whether any of them was producing against an order.
+   *
+   * Optional so the mock payloads stay valid without inventing one; the UI
+   * renders "-" in its place.
+   */
+  oa_machine_count: zCount.optional(),
   achievement_pct: zPct,
   plan_qty: zQty,
   actual_qty: zQty,
   shot_count: zQty,
+  /**
+   * Accumulated stopped time in the selected window.
+   *
+   * This is the one number on the board that %OA deliberately does not contain
+   * (D-19: cycles longer than standard + 100 s are counted as standard, so
+   * downtime is excluded from the efficiency figure). Without it the exec view
+   * can show a base at 83% with no indication that four of those hours were a
+   * dead line, and the two facts are not recoverable from each other.
+   *
+   * Distinct from the alert list, which only carries stops that are *still*
+   * open. A shift with three resolved one-hour stops has no alerts and three
+   * hours of downtime.
+   */
+  downtime_sec: zDurationSec,
   /**
    * D-18: defect comes from MSSQL on a different cadence to Influx and is not
    * on the exec view yet. Optional so it can appear later with no UI change.
@@ -245,6 +298,17 @@ export const zTrendPoint = z.object({
    * this the chart cannot tell the reader that.
    */
   site_count: zCount,
+  /**
+   * The real denominator: machines that had an order loaded and produced in
+   * that hour. `site_count` was written for the SEH case - a whole site joining
+   * - but the live data moves this one far harder: measured over 24 h on
+   * 2026-08-26 it swung between 1 and 18 while `site_count` stayed at 1 or 2,
+   * and the 1-machine hour drew a point on the chart indistinguishable from the
+   * 18-machine one beside it.
+   *
+   * Optional so a payload predating it still validates.
+   */
+  machine_count: zCount.optional(),
 });
 export type TrendPoint = z.infer<typeof zTrendPoint>;
 
@@ -268,7 +332,7 @@ export const zAlert = z.object({
   production_order: z.string().nullable(),
   part_name: z.string().nullable(),
   /**
-   * Role and team only — never a person's name. The mockup hardcodes
+   * Role and team only - never a person's name. The mockup hardcodes
    * "Contact: Pi Surapoj" (T-08), and this dashboard is destined for a screen
    * in a factory corridor.
    */
@@ -290,6 +354,7 @@ export const zSourceHealth = z.object({
   last_success: zIsoUtc.nullable(),
   message: z.string().nullable().optional(),
 });
+export type SourceHealth = z.infer<typeof zSourceHealth>;
 
 /**
  * Present on every response. Health rides along with the data rather than
