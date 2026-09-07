@@ -3,25 +3,28 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { formatAgeShort } from '../../i18n/format';
 
 /**
- * Freshness indicator - the left half of the status bar in the masthead.
+ * Freshness indicator - the left end of the status bar in the masthead.
  *
- * It draws no box of its own. The artboard joins it to the language switch as
- * one bordered pill, so `.statusbar` in TopBar owns the border, the radius and
- * the clipping, and this component contributes only its contents. Splitting it
- * that way keeps the freshness logic here and the language logic there, which
- * is where each belongs.
+ * One capsule, divided by a hairline: the state on the left, the age on the
+ * right. It was briefly two separate capsules, and that was wrong - the two
+ * answer one question between them ("is this board live" is answered by "how old
+ * is what I am reading"), so they belong inside one outline with a rule between
+ * them rather than as two chips a reader has to work out are related.
  *
- * The artboard draws a green bar, a dot, the word "Live", and "updated 3s ago".
- * In the mockup that counter was driven by a one-second interval - i.e. it
- * climbed whether or not any data ever arrived. Here the age is the real age of
+ * What the capsule lost is the coloured lozenge that used to sit inset in its
+ * left edge. It was a third channel for the state on top of the glyph and the
+ * word, and it had nowhere to sit once the dot owned that edge; the state is
+ * still carried three ways - the dot's colour, the dot's *shape*, and the word -
+ * which is what lets the colour do any work at all here.
+ *
+ * The artboard's counter was driven by a one-second interval - i.e. it climbed
+ * whether or not any data ever arrived. Here the age is the real age of
  * `generated_at`, so it resets when a payload lands and keeps climbing when one
  * does not, which is the only version that can tell a live board from a hung one.
  *
  * Nothing pulses. This screen runs all day, and a perpetually animating element
  * is both a burn-in risk and, after the first hour, invisible to the people who
  * sit under it.
- *
- * State is carried three ways over: the bar's colour, a glyph, and the word.
  */
 export function LiveBadge({ info }: { info: ConnectionInfo }) {
   const { t, lang } = useI18n();
@@ -43,14 +46,12 @@ export function LiveBadge({ info }: { info: ConnectionInfo }) {
 
   return (
     <span className={`livebadge livebadge--${variant}`}>
-      {/* The upright bar at the left edge, as drawn. Decoration that repeats
-          what the glyph and the word already say, so it carries no meaning on
-          its own - which is what lets it be a colour with no text beside it. */}
-      <span className="livebadge__bar" aria-hidden="true" />
-      <span className="livebadge__dot glyph" aria-hidden="true">
-        {glyph}
+      <span className="livebadge__state">
+        <span className="livebadge__dot glyph" aria-hidden="true">
+          {glyph}
+        </span>
+        {t(labelKey)}
       </span>
-      <span className="livebadge__state">{t(labelKey)}</span>
       {info.ageSec !== null ? (
         <span className="livebadge__age">
           {t('live.age', { age: formatAgeShort(info.ageSec, lang) })}

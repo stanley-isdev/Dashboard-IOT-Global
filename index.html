@@ -2,7 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- The tab icon is the orange infinity off the brand lockup - the same
+         artwork the masthead draws, cropped to the mark alone by
+         scripts/make-favicon.mjs. The wordmark is left out on purpose: it is
+         300px of type in the source and a grey smear at 16px.
+
+         Three sizes rather than one, because the browser picks and a 16px
+         downscale of a 512px raster is muddier than a file drawn for the size:
+         32 is the tab and the bookmark bar, 512 is the high-DPI tab and the
+         installed-app tile, 180 is what iOS asks for on the home screen.
+         A raster, not an SVG, for the same reason the masthead is one - the
+         mark is a rendered drawing with a dotted texture, not flat vector
+         shapes (see the note on .brand__mark in theme/components.css). -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon-180.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- The board ships both themes now, so the browser is told both are real.
          Which one is in force is a `color-scheme` declaration in tokens.css,

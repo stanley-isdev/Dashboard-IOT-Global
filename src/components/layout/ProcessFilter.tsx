@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useMeta } from '../../api/queries';
 import type { Process } from '../../api/contract';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -91,12 +91,17 @@ export function ProcessFilter() {
 
   const label = (p: Process | 'all') => (p === 'all' ? t('filter.all') : p);
 
+  /* Whether the capsule is holding a process, which draws it in the brand
+     pastel. This one needs no guard: 'all' is both the default and what the
+     parameter reads while the control is still disabled. */
+  const narrowed = filters.process !== 'all';
+
   return (
     <div className="regionfilter" ref={wrap}>
       <button
         ref={trigger}
         type="button"
-        className="filter tap"
+        className={narrowed ? 'filter filter--on tap' : 'filter tap'}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -119,8 +124,14 @@ export function ProcessFilter() {
       </button>
 
       {open ? (
+        /* .regionmenu, not the narrow .refreshmenu this began on: the four
+           filters sit in one row and drop one menu each, and a panel with its
+           own border, radius and shadow hanging off the third of them read as a
+           different control. The --compact modifier keeps that shared frame but
+           lets it shrink to a list of single words instead of standing at the
+           Region menu's 17rem. */
         <div
-          className="refreshmenu"
+          className="regionmenu regionmenu--compact"
           id={menuId}
           role="menu"
           aria-label={t('filter.process')}
@@ -128,20 +139,25 @@ export function ProcessFilter() {
           onKeyDown={onMenuKey}
         >
           {choices.map((c) => (
-            <button
-              key={c}
-              type="button"
-              role="menuitemradio"
-              aria-checked={c === filters.process}
-              className="refreshmenu__opt"
-              tabIndex={-1}
-              onClick={() => pick(c)}
-            >
-              <span className="refreshmenu__label">{label(c)}</span>
-              <span className="refreshmenu__check" aria-hidden="true">
-                {c === filters.process ? '✓' : ''}
-              </span>
-            </button>
+            <Fragment key={c}>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={c === filters.process}
+                className="regionmenu__opt"
+                tabIndex={-1}
+                onClick={() => pick(c)}
+              >
+                <span className="regionmenu__label">{label(c)}</span>
+                <span className="regionmenu__check" aria-hidden="true">
+                  {c === filters.process ? '✓' : ''}
+                </span>
+              </button>
+              {/* The All row is a scope of its own, not the first process in
+                  the list, so it gets the hairline the country groups draw for
+                  it in the Region and Lamp menus. */}
+              {c === 'all' ? <div className="regionmenu__sep" role="separator" /> : null}
+            </Fragment>
           ))}
         </div>
       ) : null}

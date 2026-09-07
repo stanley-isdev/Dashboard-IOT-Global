@@ -111,7 +111,7 @@ export function MeasureValue({
       style={{ color: token.inkVar, fontStyle: 'italic', fontWeight: 500 }}
     >
       <StatusGlyph token={token} />
-      <span>{emphasis === 'pin' || emphasis === 'kpi' ? label : '-'}</span>
+      {emphasis === 'pin' || emphasis === 'kpi' ? <span>{label}</span> : null}
       {emphasis === 'cell' || emphasis === 'inline' ? (
         <span className="visually-hidden">{label}</span>
       ) : null}

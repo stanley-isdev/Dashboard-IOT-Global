@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { zGlobalOverview, zProcess, zRange } from '@dashboard/contract';
+import { zGlobalOverview, zPlainDate, zProcess, zRange } from '@dashboard/contract';
 import { assertOrCollect, checkGlobalOverview } from '@dashboard/domain-shared';
 import type { Deps } from '../deps.ts';
 import { respondValidated } from '../lib/respondValidated.ts';
 import { buildGlobalOverview } from '../services/globalOverviewService.ts';
+import { RETENTION_DAYS } from '../influx/queries.ts';
+import { resolveWindow } from '../services/windowedSnapshot.ts';
+import { toPlainDate } from '@dashboard/domain-shared';
 
 /**
  * Query defaults mirror what the frontend's httpAdapter always sends, so the
@@ -34,6 +37,31 @@ const zQuery = z.object({
    * contract's region.ts for why this is a separate filter and not a submenu.
    */
   plant: z.string().default('all'),
+  /**
+   * The Zone picker: `all`, `none`, or a comma-separated list of zone tags.
+   * Intersects with `plant` the way `plant` intersects with `region`, and is
+   * matched on the machine rather than on a site row - zone is a tag on the
+   * machine and nothing above it carries one. See zoneMatcher in the contract's
+   * region.ts for why the tags are not qualified by plant.
+   */
+  zone: z.string().default('all'),
+  /**
+   * The calendar's two ends, as plain days in the reference zone.
+   *
+   * Optional and independent of `range`, which stays required: `range` is what
+   * the capsule prints and what the board falls back to when a pair is
+   * unusable. Both must be present for either to count - one end of a range is
+   * not a range, and guessing the other from `range` would answer a question
+   * the reader did not ask.
+   */
+  from: zPlainDate.optional(),
+  to: zPlainDate.optional(),
+  /**
+   * How many rows the longest-active-stops panel asks for - the Top-N picker
+   * beside its title (T-11). Bounded at 50 so a hand-typed query cannot make
+   * `buildLongestActiveStops` sort and slice an unbounded list.
+   */
+  alertsLimit: z.coerce.number().int().positive().max(50).default(10),
 });
 
 export default async function globalOverviewRoutes(
@@ -49,11 +77,85 @@ export default async function globalOverviewRoutes(
       });
     }
 
-    const payload = buildGlobalOverview({
-      snapshot: opts.deps.poller.current(),
-      filters: query.data,
-      env: opts.deps.env,
+    const { env, poller, windows } = opts.deps;
+
+    /*
+     * The window, resolved before anything is read.
+     *
+     * `earliestDate` is the retention floor - the oldest day the instance still
+     * answers for - so a pick reaching past it is clamped here rather than
+     * turning into a spread of empty chunks. It is derived from RETENTION_DAYS
+     * rather than probed per request: probing would cost a query on every
+     * request to move a boundary that moves once a day.
+     */
+    const resolved = resolveWindow({
+      request: query.data,
+      now: new Date(),
+      timeZone: env.REFERENCE_TIMEZONE,
+      earliestDate: toPlainDate(
+        new Date(Date.now() - RETENTION_DAYS * 86_400_000),
+        env.REFERENCE_TIMEZONE,
+      ),
     });
+
+    /*
+     * The default window comes out of the poller, exactly as it always has -
+     * one background read serving every screen. Only a window the poller does
+     * not hold reaches InfluxDB, and only then.
+     */
+    let snapshot = poller.current();
+    let windowError: string | null = null;
+    if (!resolved.isDefault) {
+      try {
+        snapshot = await windows.get(resolved.window);
+      } catch (err) {
+        /*
+         * The picked window could not be read. Serving the poller's 24 h under
+         * the reader's chosen dates would be the exact lie this endpoint is
+         * written against, so the board gets an empty census, a degraded
+         * envelope and a warning naming the window - not yesterday's numbers
+         * wearing last week's label.
+         */
+        windowError = err instanceof Error ? err.message : String(err);
+        request.log.error({ err: windowError, window: resolved.window }, 'windowed fetch failed');
+        snapshot = {
+          ...snapshot,
+          plants: {},
+          machines: {},
+          unknownStatuses: [],
+          oa: [],
+          trend: [],
+          ok: false,
+          error: windowError,
+          oaOk: false,
+          oaError: windowError,
+          trendOk: false,
+          trendError: windowError,
+        };
+      }
+    }
+
+    const payload = buildGlobalOverview({
+      snapshot,
+      filters: query.data,
+      window: resolved.served,
+      env,
+    });
+
+    /* Said on the envelope, not swallowed: each of these is a case where what
+       the reader asked for and what the board is showing them differ. */
+    if (resolved.rejection) payload.meta.warnings.push(resolved.rejection);
+    if (resolved.served.clamped) {
+      payload.meta.warnings.push(
+        `the picked window reaches further back than this InfluxDB instance holds; ` +
+          `showing ${Math.round(resolved.served.hours)} h from ${resolved.served.from}`,
+      );
+    }
+    if (windowError) {
+      payload.meta.warnings.push(
+        `could not read ${resolved.served.from} .. ${resolved.served.to} from InfluxDB (${windowError})`,
+      );
+    }
 
     // zod proves the shape; these prove it makes sense - that the census adds
     // up and an unconnected site contributes nothing to any denominator. The

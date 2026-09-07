@@ -161,7 +161,14 @@ export function oaFromPoGroup(input: {
  * `plan_qty = 0` on every row; "the plan is zero" and "we do not know the
  * plan" are different statements and only one of them is true there (R2).
  */
-export function planFromSlots(row: MachineOaRow, slotIndices: number[]): number | null {
+export function planFromSlots(
+  /* Structural, not `MachineOaRow`: the hourly rows carry the same four plan
+     columns and must apply the same rule to them. This function's own header
+     makes the point about `orderSlots` - one definition, or the chart and the
+     card disagree about what a machine was planning to make. */
+  row: Pick<MachineOaRow, 'plan0' | 'plan1' | 'plan2' | 'plan3'>,
+  slotIndices: number[],
+): number | null {
   const plans = [row.plan0, row.plan1, row.plan2, row.plan3];
   const active = slotIndices
     .map((i) => finite(plans[i] ?? null))

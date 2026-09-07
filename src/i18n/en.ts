@@ -14,9 +14,14 @@
 export const en = {
   /* ------------------------------------------------------------- shell */
   'app.title': 'One Stanley Narong-Pat Global Executive Dashboard',
+  /*
+   * The masthead lockup, split across the two lines the brand mark is drawn
+   * with. Never translated - it is the group name, like the company codes
+   * above, so both locales carry the same two strings and th.ts repeats them
+   * rather than romanising them. `app.title` stays the whole name and is what
+   * the tab, the alt text and the link label use.
+   */
   'app.bases': 'THS · ASI (Thailand) · VNS (Vietnam) · ISE (Indonesia) · STJ (Japan) · SUS · IIS (USA) · SMX (Mexico) · SEH (Hungary)',
-  'app.copyright': '© 2026 Thai Stanley Electric PCL',
-  'app.globalBases': '{count} Global Bases',
   'nav.skip': 'Skip to main content',
   'nav.overview': 'Global overview',
   'nav.back': 'Back',
@@ -44,6 +49,20 @@ export const en = {
   'filter.plantCount.one': '{count} lamp',
   'filter.plantCount.other': '{count} lamps',
   'filter.noPlants': 'No lamps selected',
+  /* "Zone", untranslated for the same reason "Lamp" is: it is `Zone_var` on the
+     operator board and the word on the tag itself. The VALUES are never
+     translated either - a zone is called `2A-A` in every language. */
+  'filter.zone': 'Zone',
+  'filter.allZones': 'All · {count} zones',
+  'filter.zoneCount.one': '{count} zone',
+  'filter.zoneCount.other': '{count} zones',
+  'filter.noZones': 'No zones selected',
+  /* Beside a zone tag that more than one lamp in scope reports. Zone tags are
+     plant-local and they collide - `A` exists at 6051 and at 6338 - so ticking
+     one can widen further than a reader expects; saying how many lamps it
+     covers is what stops that being a surprise. Not shown for a tag only one
+     lamp has, which is the common case and needs no explaining. */
+  'filter.zoneLamps': 'in {count} lamps',
   /* The refresh control, mirroring the plant board's. The interval values
      themselves (5s, 1m) are not translated - see the note on `label` in
      RefreshPicker.tsx. */
@@ -53,13 +72,34 @@ export const en = {
   'range.8h': 'Last 8h',
   'range.24h': 'Last 24h',
   'range.7d': 'Last 7 days',
-  /* The segmented control has ~70px per option, so it uses these rather than
-     the sentence forms above, which are still used by anything that names a
-     range in prose. */
+  /* The picker's trigger has room for one short string beside the clock and
+     the offset, so it uses these; the sentence forms above label the rows
+     inside the panel and anything that names a range in prose. */
   'range.8h.short': '8 hours',
   'range.24h.short': '24 hours',
   'range.7d.short': '7 days',
   'filter.time': 'Time',
+  /* The export control at the end of the filter row. `export.label` is the word
+     on the button; the next two are its tooltip, which is the only place there
+     is room to say what the file contains and why it is sometimes unavailable.
+     "PDF" is not translated - it is a format, like `5s` is a unit.
+
+     `export.busy` replaces the label for the second or so the board is being
+     photographed and the two rendering libraries are being fetched. It is a
+     word and not a spinner because the button is 100px of orange with a word in
+     it, and swapping the word is the one change at that size a reader notices
+     without looking for it.
+
+     The last two are the header printed at the top of the file. Both are
+     timestamps and they usually differ by seconds, so the labels have to be
+     specific about which is which: one is when the numbers were measured, the
+     other is when this copy of them was taken. */
+  'export.label': 'Export',
+  'export.busy': 'Exporting…',
+  'export.pdf': 'Download this board as a PDF',
+  'export.generated': 'Data generated',
+  'export.exported': 'Exported',
+  'export.empty': 'Nothing to export yet',
 
   /* --------------------------------------------------------- live badge */
   'live.live': 'Live',
@@ -69,6 +109,15 @@ export const en = {
   'live.offline': 'Offline',
 
   /* ------------------------------------------------------------ toggles */
+  /* The language menu's trigger and the menu's own heading: the generic word,
+     so the capsule does not change width when the locale does. */
+  'lang.label': 'Language',
+  /* The two locale names are endonyms and are deliberately *not* translated -
+     they are the same two strings in th.ts. Someone who cannot read the
+     language currently on screen can still recognise their own language's name
+     in its own script, and that is the whole population this control is for. */
+  'lang.th': 'ไทย',
+  'lang.en': 'English',
   'lang.toggle': 'ภาษาไทย',
   'lang.current': 'English',
   /* The theme switch is icon-only, so these two are its whole label - they are
@@ -83,6 +132,36 @@ export const en = {
   'time.siteLocal': 'Site local',
   'time.reference': 'HQ time',
   'time.referenceNote': 'Timestamps in {tz} · metrics still use each site’s own shift',
+  /* The footer's other half: the same promise about the metrics, for the mode
+     where there is no single zone to name. */
+  'time.siteLocalNote': 'Timestamps in each site’s own clock · metrics use each site’s own shift',
+
+  /* ------------------------------------------------------- time picker ----
+     Grafana's wording, deliberately: this board is read beside one, and the
+     two controls should not use two vocabularies for the same thing. */
+  'time.range': 'Time range',
+  'time.quick': 'Quick ranges',
+  'time.absolute': 'Absolute time range',
+  'time.from': 'From',
+  'time.to': 'To',
+  'time.apply': 'Apply time range',
+  'time.selectRange': 'Select a time range',
+  'time.closeCalendar': 'Close the calendar',
+  'time.openCalendar': 'Pick a date',
+  'time.prevMonth': 'Previous month',
+  'time.nextMonth': 'Next month',
+  'time.pickHint': 'First click = start date · click again = end date',
+  'time.clear': 'Clear',
+  /* Shown while a calendar window is the live one, with the escape back to the
+     quick ranges beside it. The quick list still shows a tick against whichever
+     range it would fall back to, so without this line there is nothing on the
+     panel saying which of the two halves the board is actually on. */
+  'time.absoluteActive': 'The board is on the dates above.',
+  'time.backToQuick': 'Back to a quick range',
+  /* Warns, before Apply is pressed, that this window costs several reads.
+     ~71 h is all one InfluxDB query can scan on this instance, so a week is
+     three - and a reader told nothing assumes the slow paint is a hang. */
+  'time.absoluteChunks': 'A window this wide is read in {n} parts, so it takes longer to load.',
 
   /* ---------------------------------------------------------------- KPI ----
      Labels are one or two words. The strip is six columns of 10px uppercase in
@@ -130,11 +209,13 @@ export const en = {
    */
   'kpi.achievement.planShort': 'Plan {qty}',
   'kpi.achievement.actualUnit': 'Actual {qty} {unit}',
-  // The shortfall against plan, in the payload's own unit. Points would have
-  // been the consistent choice beside the %OA card, and it is the wrong one:
-  // this card's plan is a quantity, and "1,299 pieces short" is what a
-  // production meeting can act on.
-  'kpi.achievement.gap': '{delta} {unit}',
+  // The shortfall against plan. It carried the payload's unit until the six-card
+  // strip narrowed this card's figure row: "-1,573 pcs" overran it by 10px at
+  // 1180px and rendered as "-1,57…", which is a truncated *number* and the one
+  // thing on this board that must never happen. The unit is not lost - the foot
+  // directly below prints "Actual 21,626 pcs" on the same card - so what came
+  // off is the only word here that was already on screen twice.
+  'kpi.achievement.gap': '{delta}',
   'kpi.attention': 'Needing attention',
   // Two keys rather than one interpolated string: `t` does plain substitution,
   // so a single "{count} plants" prints "1 plants" for a single-plant base.
@@ -383,18 +464,115 @@ export const en = {
   'banner.config.title': 'Configuration problem',
   'banner.retry': 'Retry now',
   'banner.dismiss': 'Dismiss this notice',
-  'banner.mock.title': 'Sample data',
-  'banner.mock.body': 'This build is showing generated data, not the production database.',
+  /*
+   * The end of an outage. The body leads with the gap rather than with the
+   * recovery, because the gap is the fact a reader cannot get anywhere else:
+   * the badge already says the board is live, and nothing else on screen says
+   * the trend they are about to read has a hole in it. See describeRecovery.
+   */
+  'banner.recovered.title': 'Connection restored',
+  'banner.recovered.body': 'The board was not current for {gap}, so the trend has a gap.',
+
+  /* ------------------------------------------------------- state pages */
+  /*
+   * The screens with no numbers on them. See HardErrorState.tsx for why there
+   * are nine of these rather than one: the six ApiError kinds are six different
+   * faults with six different owners, and a reader who cannot tell them apart
+   * from the screen has to go and ask somebody.
+   *
+   * House style for every one of them, and the reason the strings are this
+   * shape rather than shorter:
+   *
+   *   the title  names what is wrong, as a statement, never with an "!"
+   *   the body   says what still works and how long this lasts
+   *   check1..n  are imperatives in the order to work through them, from what
+   *              the reader can do alone to what needs somebody else
+   *
+   * No apologies anywhere. "Sorry, something went wrong" costs a line and tells
+   * a person on a factory floor nothing they can act on.
+   */
+  'state.try': 'Try:',
+  'state.reload': 'Reload',
+  'state.retryNow': 'Retry now',
+  'state.retrying': 'Reconnecting — attempt {n} of {total}',
+  'state.retryAuto': 'The board keeps trying on its own.',
+  /* Said plainly, because with refresh off nothing will clear this screen and a
+     reader who expects it to recover would sit in front of it. */
+  'state.retryOff': 'Automatic refresh is off, so this will not clear on its own.',
+  'state.copy': 'Copy the details',
+  'state.copied': 'Copied',
+
+  'state.loading.overview': 'Loading the global board',
+  'state.loading.scope': 'Loading {name}',
+  'state.loading.body': '{range} · {process}',
+  'state.loading.code': 'WAITING FOR THE FIRST RESPONSE',
 
   /* ------------------------------------------------------------ errors */
+  /*
+   * The flat keys are the page TITLES, which is what `ApiError.messageKey`
+   * resolves to. They were full sentences when they were the whole of a
+   * one-line panel; each now heads a page that says the rest.
+   */
   'error.title': 'Could not load this view',
-  'error.network': 'The server could not be reached.',
-  'error.timeout': 'The server did not respond in time.',
-  'error.http': 'The server returned an error.',
-  'error.unauthorized': 'You are not signed in.',
-  'error.contract': 'The server sent data in an unexpected format.',
-  'error.notfound': 'That site does not exist.',
-  'error.detail': 'Technical detail',
+  'error.network': 'Cannot reach the server',
+  'error.timeout': 'The server did not answer within {sec} seconds',
+  'error.http': 'Cannot reach the database',
+  'error.unauthorized': 'Sign in to view this board',
+  'error.contract': 'The data does not match the agreed format',
+  'error.notfound': 'That site does not exist',
+
+  'error.network.body':
+    'The API could not be contacted at all, so the fault is the network or a server that is not running.',
+  'error.network.check1': 'That this machine is on the site network',
+  'error.network.check2': 'That the API service is running',
+
+  'error.timeout.body':
+    'The window in force may be wider than the database can answer for. Narrow it and load again.',
+  'error.timeout.check1': 'A shorter range in the time picker',
+  'error.timeout.check2': 'A narrower Region or Process filter',
+  /* The button that does check1 in one tap, since the row it names is the one
+     control the shell keeps on screen for this state. */
+  'error.timeout.narrow': 'Load the last 24 hours',
+
+  'error.http.body':
+    'The server is running, but it could not read from InfluxDB. This board stays empty until that connection is back.',
+  'error.http.check1': 'That InfluxDB is running',
+  'error.http.check2': 'The token and the bucket in the server environment',
+  'error.http.check3': 'If it persists, send IT the line at the foot of this page',
+
+  'error.contract.body':
+    'This is a fault in the server, not on this machine. Copy the line below and send it to the development team.',
+
+  'error.unauthorized.body':
+    'The session has expired, or this browser has not signed in with a company account.',
+
+  'error.notfound.body':
+    'The code {code} is not in the system. It may have been renumbered, or this is an old link.',
+  'error.notfound.home': 'Back to the global overview',
+
+  /* ------------------------------------------------------ empty result */
+  /*
+   * Not an error, and worded so nobody reads it as one. The query returned 200
+   * with an empty list because of a choice the reader made, so the first thing
+   * the body says is that the system is fine.
+   */
+  'empty.title': 'No data matches the current filters',
+  'empty.noRegion': 'Everything is working — no Region is ticked, so there is no base to show.',
+  'empty.narrowed': 'Everything is working. The filters in force match nothing in this window.',
+  'empty.selectAll': 'Select every base',
+  'empty.clear': 'Clear the filters',
+
+  /*
+   * The panel-level version, for a drill-down where the site is real and its
+   * KPI cards are correct and only one list came back empty. Both name Process
+   * and nothing else, because ScopeQuery and PlantQuery carry `range` and
+   * `process` only - see the notes at the call sites. Naming Lamp or Zone here
+   * would send the reader to clear a control that is not the cause.
+   */
+  'empty.panel.plants': 'No plant at this base runs {process}.',
+  'empty.panel.machines': 'No machine in this plant runs {process}.',
+  'empty.panel.clearProcess': 'Show every process',
+  'empty.panel.working': 'Everything else on this page is current.',
 
   /* --------------------------------------------------------------- map */
   // The two board tabs. They name what the reader is about to look at, not the
@@ -405,7 +583,6 @@ export const en = {
   'map.bases': '{count} Bases Global',
   'map.sub': 'pin colour and shape = reporting state · number = %OA',
   'map.legend.noData': 'No data',
-  'map.offlineBasemap': 'Offline basemap',
   'map.reset': 'Reset view',
   'map.zoomIn': 'Zoom in',
   'map.zoomOut': 'Zoom out',
@@ -458,9 +635,11 @@ export const en = {
   /* ------------------------------------------------------------- table */
   'table.title': 'Plant ranking',
   'table.sub': 'sorted by %OA, worst first',
-  /* Names the cause and the cure. An empty panel with no sentence on it is
-     indistinguishable from one that failed to load. */
-  'table.noRegion': 'No bases selected. Pick one or more under Region.',
+  /* `table.noRegion` was here, and it said the same thing `empty.noRegion` now
+     says a level up: RankingTable used to explain an empty region inside its
+     own panel, and OverviewPage answers it for the whole board instead, because
+     a region picked down to nothing empties the KPI strip, the map and the
+     trend beside it. See the note in RankingTable where the branch used to be. */
   'table.base': 'Plant',
   'table.plant': 'Plant',
   'table.dateTime': 'Date/Time',
@@ -514,10 +693,29 @@ export const en = {
      say which window the line covers, and that window is selectable. */
   'trend.tab': 'Global %OA trend · {range}',
   'alerts.tab': 'Longest active stops & alerts',
+  /* The Top-N picker beside the title above - "Top 5" / "Top 10" / "Top 20" /
+     "Top 50". Also the aria-label for its trigger and its menu. */
+  'alerts.top': 'Top {n}',
+  'alerts.topAria': 'Number of stops shown',
 
   /* ------------------------------------------------------------- trend */
   'trend.title': 'Trend',
-  'trend.sub': 'Hourly average across all connected plants · last 24 h',
+  /* The caption under the panel title: what the line covers, in two halves.
+
+     The scope half differs by page - the global board averages every connected
+     plant, the drill-down is one site - and saying "all connected plants" over
+     a single base's chart was the reason this was not simply shared.
+
+     The span half is the one that must name what is *drawn* rather than what
+     was picked. `trend.span` is the ordinary case; `trend.spanShort` is the one
+     the backend forces - the Flux window tops out at 71 hours
+     (MAX_WINDOW_HOURS), so "Last 7d" is drawn over the 24 hours that exist, and
+     the caption says so rather than letting the title's "7 days" stand over a
+     day of data. */
+  'trend.sub': 'Hourly average across all connected plants · {span}',
+  'trend.subSite': 'Hourly average for this site · {span}',
+  'trend.span': 'last {hours} h',
+  'trend.spanShort': 'last {hours} h of {range} served',
   'trend.now': 'now',
   'trend.ago24': '−24h',
   'trend.oaAvg': '%OA Avg',
@@ -526,6 +724,12 @@ export const en = {
   'trend.peak': 'Peak',
   'trend.dip': 'Low',
   'trend.below': 'Below {threshold}',
+  /* %OA is standard over actual time, so it has no ceiling at 100 (D-27). The
+     axis stops where the readable band stops; this says what is above it. */
+  'trend.offscale': '{count} h off scale',
+  /* The label on the zoom that answers it. "Axis max" and not "Zoom": what the
+     control moves is a number the reader can already see on the axis. */
+  'trend.ceiling': 'Axis max',
   'trend.vsTarget': 'vs target',
   'trend.showTable': 'Table',
   'trend.showChart': 'Chart',
@@ -538,8 +742,8 @@ export const en = {
   'trend.machines': 'Machines',
 
   /* ------------------------------------------------------------ alerts */
-  'alerts.title': 'Active stops',
-  'alerts.sub': 'top 5 across reporting bases',
+  'alerts.title': 'Top 10 Active stops',
+  'alerts.sub': 'top 10 across reporting bases',
   'alerts.none': 'No active alerts.',
   'alerts.owner': '{role}',
   'severity.critical': 'Critical',

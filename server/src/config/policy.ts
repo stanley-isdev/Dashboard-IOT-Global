@@ -1,4 +1,4 @@
-import type { Freshness, OaAggregation, QtyUnit, TierPolicy } from '@dashboard/contract';
+import type { Freshness, OaAggregation, QtyUnit, Severity, TierPolicy } from '@dashboard/contract';
 
 /**
  * Ported from src/mocks/generate.ts's POLICY_BLOCK - the server-owned policy
@@ -66,6 +66,27 @@ export const QTY_UNIT: QtyUnit = 'pcs';
  * board it links to, and `PlantSummary.grafana_url` still hands the user
  * `var-process_var=Injection` because that board has to pick one.
  */
+
+/**
+ * Q-06's severity, until (if ever) `production_alarm_logs` is wired in as a
+ * real per-stop source. `production_machine_status` carries no severity,
+ * class or reason of its own - only `Result='Stop'` and how long it has held
+ * - so this buckets purely by duration. A placeholder policy, not a fact:
+ * flag for the design-doc owner if duration is the wrong signal to color
+ * `zAlert.severity` by. Ordered longest-threshold-first so the first match
+ * wins.
+ */
+export const STOP_SEVERITY_BY_DURATION_SEC: { atOrAboveSec: number; severity: Severity }[] = [
+  { atOrAboveSec: 2 * 60 * 60, severity: 'critical' },
+  { atOrAboveSec: 30 * 60, severity: 'major' },
+  { atOrAboveSec: 0, severity: 'minor' },
+];
+
+export function severityForStopDuration(durationSec: number): Severity {
+  const rule = STOP_SEVERITY_BY_DURATION_SEC.find((r) => durationSec >= r.atOrAboveSec);
+  // Unreachable: the last rule's threshold is 0, so it always matches.
+  return rule?.severity ?? 'info';
+}
 
 export const POLICY_BLOCK = {
   target_oa: TARGET_OA,

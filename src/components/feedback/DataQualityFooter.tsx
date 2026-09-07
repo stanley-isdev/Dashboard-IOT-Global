@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/en';
 import { formatDateTime } from '../../i18n/format';
 import { useConfig } from '../../config/AppContext';
+import { CloseMark } from '../primitives/CloseMark';
 import { StatusIcon } from '../primitives/StatusIcon';
 
 /**
@@ -51,7 +52,7 @@ export function DataQualityFooter({
 
       <button
         type="button"
-        className="chip chip--quiet tap"
+        className="quality-footer__info tap"
         onClick={() => setOpen((v) => !v)}
         title={t('methodology.open')}
       >
@@ -83,8 +84,20 @@ export function DataQualityFooter({
           <div className="methodology__card" onClick={(e) => e.stopPropagation()}>
             <div className="panel-head">
               <h2>{t('methodology.title')}</h2>
-              <button type="button" className="chip" onClick={() => setOpen(false)} autoFocus>
-                {t('methodology.close')}
+              {/* The same mark the base drawer uses - one component and one CSS
+                  rule, so the two modal surfaces cannot drift apart - and not a
+                  worded chip: it is the only control in this head, and the mark
+                  already means "dismiss" everywhere else on the board. The word
+                  stays as the accessible name. */}
+              <button
+                type="button"
+                className="methodology__close tap"
+                onClick={() => setOpen(false)}
+                title={t('methodology.close')}
+                autoFocus
+              >
+                <CloseMark />
+                <span className="visually-hidden">{t('methodology.close')}</span>
               </button>
             </div>
             <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem' }}>
@@ -117,8 +130,12 @@ export function DataQualityFooter({
                 {formatDateTime(payload.meta.generated_at, cfg.referenceTimezone, lang)}
               </dd>
 
+              {/* The API this board is reading, which is the whole of "where did
+                  this come from" now that there is one adapter. It used to
+                  print `dataSource` - `mock` or `http` - and that mattered
+                  only while a build could quietly be serving generated data. */}
               <dt>{t('methodology.source')}</dt>
-              <dd className="mono">{cfg.dataSource}</dd>
+              <dd className="mono">{cfg.apiBaseUrl}</dd>
             </dl>
 
             {violations.length > 0 ? (

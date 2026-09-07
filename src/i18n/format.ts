@@ -100,6 +100,23 @@ export function formatClockSeconds(isoUtc: string, timeZone: string, lang: Lang)
 }
 
 /**
+ * `4 Aug` in the given zone - the trend axis when its window spans days.
+ *
+ * The axis prints clock times, which is right while the chart is a day wide and
+ * useless the moment it is not: a seven-day chart ticks at midnight, and seven
+ * labels all reading `00:00` tell a reader nothing about which midnight. No
+ * weekday, unlike `formatWeekdayDate` - the axis is tight on width and the
+ * chart's own tooltip carries the full instant.
+ */
+export function formatDayShort(isoUtc: string, timeZone: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(localeFor(lang), {
+    timeZone,
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(isoUtc));
+}
+
+/**
  * `Tue, 4 Aug` in the given zone - the day half of the Date/Time column.
  *
  * The weekday is not decoration. STJ is four hours ahead of Bangkok and Mexico
@@ -113,6 +130,55 @@ export function formatWeekdayDate(isoUtc: string, timeZone: string, lang: Lang):
     month: 'short',
     day: 'numeric',
   }).format(new Date(isoUtc));
+}
+
+/**
+ * `September 2026` / `กันยายน 2026`, for a calendar's month heading.
+ *
+ * Month and year only, so it takes numbers rather than a date: the heading
+ * belongs to a grid, and passing it the 1st to have the 1st thrown away invites
+ * an off-by-one at the call site the day someone passes the wrong day.
+ *
+ * Gregorian, via `localeFor` - see the note at the top of this file. A Thai
+ * calendar heading reading 2569 over a grid of Gregorian day numbers would be
+ * the exact fault that note exists to prevent.
+ */
+export function formatMonthYear(year: number, month: number, lang: Lang): string {
+  return new Intl.DateTimeFormat(localeFor(lang), {
+    year: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(Date.UTC(year, month - 1, 1));
+}
+
+/**
+ * The seven weekday column heads, starting on `weekStart` (0 = Sunday).
+ *
+ * Built from a known week rather than from a hardcoded list, so Thai gets
+ * `อา จ อ พ พฤ ศ ส` for nothing. 4 January 1970 was a Sunday, which is what
+ * makes the offset arithmetic below trivial.
+ */
+export function weekdayLabels(lang: Lang, weekStart: 0 | 1): string[] {
+  const fmt = new Intl.DateTimeFormat(localeFor(lang), { weekday: 'short', timeZone: 'UTC' });
+  return Array.from({ length: 7 }, (_, i) =>
+    fmt.format(Date.UTC(1970, 0, 4 + ((i + weekStart) % 7))),
+  );
+}
+
+/**
+ * Which day a week starts on, per language: Monday for English, Sunday for
+ * Thai.
+ *
+ * Hardcoded, deliberately. `Intl.Locale.prototype.getWeekInfo()` is the correct
+ * source and it is not on every engine this board runs on - it landed in Safari
+ * 17, and an iPad kept on 16 is exactly the deployment this project plans
+ * around - so a feature test here would mean two different calendars depending
+ * on how old the tablet is. Two locales, one line each, is the honest version
+ * of the same data. `en-GB` starts on Monday (this is not a US board) and Thai
+ * wall calendars start on Sunday.
+ */
+export function weekStartFor(lang: Lang): 0 | 1 {
+  return lang === 'th' ? 0 : 1;
 }
 
 /** `4 Aug 2026`. Accepts a plain `YYYY-MM-DD` business date. */
@@ -153,6 +219,49 @@ export function zoneAbbrev(isoUtc: string, timeZone: string): string {
 }
 
 /**
+ * A zone's current UTC offset, spelled the way a time picker spells it:
+ * `UTC+07:00`.
+ *
+ * Not an abbreviation, and that is the point of having both. `ICT` is the right
+ * label on a chart axis, where the reader wants to know which clock the ticks
+ * are in and already knows where the sites are; an offset is the right one in
+ * the time picker's footer, where the question is what "15:14" means against
+ * the reader's own watch. Grafana prints the offset there for the same reason.
+ *
+ * `longOffset` yields `GMT+07:00`, and the plain `GMT` for UTC itself. Both are
+ * rewritten: this is an engineering interface and it says UTC.
+ *
+ * Formatted for `now` rather than for a timestamp, because the caller is
+ * describing a preference and not a reading. Zones with a DST rule therefore
+ * report the offset in force today, which is the honest answer to "what does
+ * the clock on this board mean".
+ */
+export function zoneOffset(timeZone: string, at: Date = new Date()): string {
+  const name = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'longOffset',
+  })
+    .formatToParts(at)
+    .find((p) => p.type === 'timeZoneName')?.value;
+  if (!name) return timeZone;
+  return name === 'GMT' ? 'UTC+00:00' : name.replace('GMT', 'UTC');
+}
+
+/**
+ * The same offset, compressed for a badge beside the window: `+07`, `-06`,
+ * `+05:30`.
+ *
+ * The minutes survive when they are not zero. Half-hour and quarter-hour zones
+ * are not a curiosity to be rounded off - India is UTC+05:30 and Nepal
+ * UTC+05:45 - and a badge reading `+05` on a board anchored to either would be
+ * wrong rather than merely short.
+ */
+export function zoneOffsetShort(timeZone: string, at: Date = new Date()): string {
+  const full = zoneOffset(timeZone, at).replace('UTC', '');
+  return full.endsWith(':00') ? full.slice(0, -3) : full;
+}
+
+/**
  * Relative age, e.g. `12 seconds ago` / `8 นาทีที่แล้ว`.
  *
  * Used for last_seen and the live badge. Note this formats an age the caller
@@ -166,6 +275,37 @@ export function formatAge(seconds: number, lang: Lang): string {
   if (s < 3600) return rtf.format(-Math.round(s / 60), 'minute');
   if (s < 86_400) return rtf.format(-Math.round(s / 3600), 'hour');
   return rtf.format(-Math.round(s / 86_400), 'day');
+}
+
+/**
+ * A length of time, as opposed to a point in the past: "4 minutes", "2 hours".
+ *
+ * `formatAge` above is not this, and reaching for it here produced exactly the
+ * sentence that made this function necessary - "the board was not current for
+ * 5 seconds ago". RelativeTimeFormat always renders a *when*; a gap is a *how
+ * long*, and the two are only interchangeable in English at a glance.
+ *
+ * `Intl.NumberFormat` with a unit rather than `Intl.DurationFormat`, which is
+ * still not in every browser this board is opened in - including the Safari on
+ * the iPad the artboard is drawn for. The tiers match formatAge's, so a gap and
+ * an age of the same length are described in the same words.
+ */
+export function formatGap(seconds: number, lang: Lang): string {
+  const s = Math.max(0, Math.round(seconds));
+  const [value, unit] =
+    s < 60
+      ? [s, 'second' as const]
+      : s < 3600
+        ? [Math.round(s / 60), 'minute' as const]
+        : s < 86_400
+          ? [Math.round(s / 3600), 'hour' as const]
+          : [Math.round(s / 86_400), 'day' as const];
+
+  return new Intl.NumberFormat(localeFor(lang), {
+    style: 'unit',
+    unit,
+    unitDisplay: 'long',
+  }).format(value);
 }
 
 /**

@@ -1,16 +1,24 @@
+import { useMemo } from 'react';
 import { useParams } from 'react-router';
-import { usePlant } from '../api/queries';
+import { usePlant, useRetryState } from '../api/queries';
 import { useConfig } from '../config/AppContext';
-import { deriveConnection, useFreezeDetector, useNow } from '../domain/connectionState';
+import {
+  deriveConnection,
+  useFreezeDetector,
+  useNow,
+  useRecovery,
+} from '../domain/connectionState';
 import { toMeasure } from '../domain/measure';
 import { BUCKET_ORDER, bucketToken, siteToken } from '../domain/status';
 import { useI18n } from '../i18n/I18nProvider';
 import { formatInt } from '../i18n/format';
 import { useFilters } from '../state/useFilters';
+import { usePublishExport } from '../state/exportStore';
+import { plantExportDoc } from '../domain/exportDoc';
 import { ConnectionBanner } from '../components/feedback/ConnectionBanner';
-import { HardErrorState } from '../components/feedback/HardErrorState';
+import { HardErrorState, LoadingState } from '../components/feedback/HardErrorState';
+import { PanelEmpty } from '../components/feedback/PanelEmpty';
 import { GrafanaLink } from '../components/common/GrafanaLink';
-import { Breadcrumb } from '../components/layout/Breadcrumb';
 import { useShellConnection } from '../components/layout/AppShell';
 import { KpiCard } from '../components/kpi/KpiCard';
 import { HourlyOutputTable } from '../components/machines/HourlyOutputTable';
@@ -22,7 +30,7 @@ export function PlantPage() {
   const { companyCode = '', plantCode = '' } = useParams();
   const { t, lang } = useI18n();
   const cfg = useConfig();
-  const [filters] = useFilters();
+  const [filters, setFilters] = useFilters();
 
   const query = usePlant(companyCode, plantCode, {
     range: filters.range,
@@ -34,13 +42,39 @@ export function PlantPage() {
   const now = useNow();
   const frozen = useFreezeDetector(data?.meta.generated_at);
   const connection = deriveConnection(
-    { envelope: data?.meta, freshness: data?.freshness, isError, isPending, nowMs: now },
+    { envelope: data?.meta, freshness: data?.freshness, isError, isPending, error, nowMs: now },
     frozen,
   );
-  useShellConnection(connection, null);
+  useShellConnection(connection);
 
-  if (!data && isError) return <HardErrorState error={error} onRetry={() => void refetch()} />;
-  if (!data) return <div className="skeleton" style={{ height: '24rem' }} />;
+  /* What the board is doing about a failure, for the error page to say out loud.
+     Read unconditionally because it is a hook; only the error branch uses it. */
+  const retry = useRetryState(query);
+
+  /* The outage that just ended, if one did. Reports the gap it left in the
+     trend; takes itself off after eight seconds. */
+  const recovery = useRecovery(connection.state, now);
+
+  /* The Export button in the filter row photographs whichever board is on screen -
+     here, the machine-level list - and this names the file it writes. Memoised
+     on the payload for the reason the store gives: the value is what the
+     publish effect keys on. */
+  const exportDoc = useMemo(() => (data ? plantExportDoc(data) : null), [data]);
+  usePublishExport(exportDoc);
+
+  if (!data && isError) {
+    return (
+      <HardErrorState
+        error={error}
+        onRetry={() => void refetch()}
+        retry={retry}
+        siteCode={plantCode}
+      />
+    );
+  }
+  /* The plant code, not its name: the name is in the payload this is waiting
+     for, and the code is what the reader typed or tapped to get here. */
+  if (!data) return <LoadingState name={plantCode} />;
 
   const { plant, company } = data;
   const token = siteToken(plant.status);
@@ -53,14 +87,7 @@ export function PlantPage() {
         info={connection}
         referenceTimezone={cfg.referenceTimezone}
         onRetry={() => void refetch()}
-      />
-
-      <Breadcrumb
-        trail={[
-          { label: t('nav.overview'), to: '/overview' },
-          { label: company.code, to: `/company/${company.code}` },
-          { label: `${plant.code} ${plant.label}` },
-        ]}
+        recovery={recovery}
       />
 
       {/* Drill-downs are taller than one screen by nature, so this region scrolls
@@ -136,7 +163,39 @@ export function PlantPage() {
             <h2>{t('table.plant')}</h2>
             <span className="sub">{int(data.machines.length)}</span>
           </div>
-          <MachineGrid machines={data.machines} />
+          {/*
+           * Two causes, two answers - and the decision lives here rather than
+           * in MachineGrid because the filters do.
+           *
+           * An empty machine list means either that Process excluded every
+           * machine this plant runs, or that the plant has none reporting.
+           * MachineGrid printed "No telemetry yet" for both, which over a plant
+           * that is reporting perfectly - because somebody left a process
+           * picked - sends an engineer to check a gateway that is fine.
+           *
+           * Process and nothing else, and that is checked rather than assumed:
+           * PlantQuery in DashboardApi.ts carries `range`, `process` and
+           * `shift`, so those are the only parameters that reach this payload.
+           * Region, Lamp and Zone are all in the filter row above and none of
+           * them is sent here - zone is applied on the global-overview route
+           * only, per zoneMatcher's own note - so naming any of them in this
+           * message would send the reader to clear a control that is not the
+           * cause. THS 6332 runs Injection and Surface, so asking it for
+           * Assembly is the way in.
+           */}
+          {data.machines.length === 0 && filters.process !== 'all' ? (
+            <PanelEmpty
+              message={t('empty.panel.machines', { process: filters.process })}
+              action={{
+                label: t('empty.panel.clearProcess'),
+                onClick: () => setFilters({ process: 'all' }),
+              }}
+            />
+          ) : data.machines.length === 0 ? (
+            <PanelEmpty glyph="database" message={t('site.neverConnected')} />
+          ) : (
+            <MachineGrid machines={data.machines} />
+          )}
         </section>
       </div>
     </>

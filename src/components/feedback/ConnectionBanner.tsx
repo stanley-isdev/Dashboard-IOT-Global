@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import type { ConnectionInfo } from '../../domain/connectionState';
+import type { ConnectionInfo, Recovery } from '../../domain/connectionState';
 import type { StatusIconName } from '../../domain/status';
 import { useI18n, type Lang, type TFunction } from '../../i18n/I18nProvider';
-import { formatAge, formatDateTime } from '../../i18n/format';
+import { formatAge, formatDateTime, formatGap } from '../../i18n/format';
 import { StatusIcon } from '../primitives/StatusIcon';
 
 /**
@@ -30,7 +30,11 @@ import { StatusIcon } from '../primitives/StatusIcon';
 interface Notice {
   /** Identity of the message, so dismissing one fault does not silence the next. */
   key: string;
-  tone: 'warn' | 'crit';
+  /*
+   * `good` is here for exactly one message - the end of an outage - and it is
+   * the only one that takes itself off screen. See describeRecovery.
+   */
+  tone: 'good' | 'warn' | 'crit';
   /* Drawn, not typed. The set in StatusIcon is where a warning already looks
      like a warning - a rounded exclamation triangle rather than a ▲ the font
      happens to draw as a pointy bullet. */
@@ -97,19 +101,59 @@ function describe(
   return null;
 }
 
+/**
+ * The one notice that reports something good, and the only one that leaves on
+ * its own.
+ *
+ * It exists for the gap, not for the recovery. A reader who looked away during
+ * an outage comes back to a green Live badge and a trend line with a hole in
+ * it, and nothing on the board would otherwise say the hole is there. So the
+ * body leads with how long the board was not current; "reconnected" is just
+ * what makes that sentence make sense.
+ *
+ * Only raised while the board is genuinely live again - useRecovery returns
+ * null the moment anything degrades - so it can never sit over stale numbers
+ * claiming they are current.
+ */
+function describeRecovery(recovery: Recovery, t: TFunction, lang: Lang): Notice {
+  return {
+    key: `recovered:${recovery.since}`,
+    tone: 'good',
+    icon: 'check-circle',
+    /* `status`, not `alert`: nothing needs interrupting to say a fault ended,
+       and on a wall panel an outage that flaps would interrupt on every cycle. */
+    role: 'status',
+    retry: false,
+    title: t('banner.recovered.title'),
+    body: t('banner.recovered.body', { gap: formatGap(recovery.gapSec, lang) }),
+  };
+}
+
 export function ConnectionBanner({
   info,
   referenceTimezone,
   onRetry,
+  recovery,
 }: {
   info: ConnectionInfo;
   referenceTimezone: string;
   onRetry: () => void;
+  /** The outage that just ended, from useRecovery. Null when there was none. */
+  recovery?: Recovery | null;
 }) {
   const { t, lang } = useI18n();
   const [dismissed, setDismissed] = useState<string | null>(null);
 
-  const notice = describe(info, t, lang, referenceTimezone);
+  /*
+   * A fault beats a recovery, and the order says so rather than a comment
+   * having to. In practice they cannot both be live - useRecovery only fires on
+   * the way into `live` and clears on the way out - but the precedence has to
+   * be stated somewhere, and "never cover a current fault with a past
+   * recovery" is the direction it has to fall.
+   */
+  const notice =
+    describe(info, t, lang, referenceTimezone) ??
+    (recovery ? describeRecovery(recovery, t, lang) : null);
   if (!notice || notice.key === dismissed) return null;
 
   return (
@@ -138,29 +182,20 @@ export function ConnectionBanner({
   );
 }
 
-/** Shown whenever the build is serving generated data, so a demo is never mistaken for production. */
-export function MockDataBanner() {
-  const { t } = useI18n();
-  return (
-    <div className="banner banner--info" role="status">
-      <span className="glyph" aria-hidden="true">
-        ◇
-      </span>
-      <div className="banner__body">
-        <div className="banner__title">{t('banner.mock.title')}</div>
-        <div>{t('banner.mock.body')}</div>
-      </div>
-    </div>
-  );
-}
-
-/** Shown when runtime-config.json could not be read and defaults are in use. */
+/**
+ * Shown when runtime-config.json could not be read and defaults are in use.
+ *
+ * `alert-triangle` for the same reason the one above changed, and it is the
+ * triangle rather than the octagon because the board is still working - it is
+ * working on the wrong settings, which is a warning about what is on screen
+ * and not a report that nothing is.
+ */
 export function ConfigProblemBanner({ problem }: { problem: string }) {
   const { t } = useI18n();
   return (
     <div className="banner banner--crit" role="alert">
-      <span className="glyph" aria-hidden="true">
-        ■
+      <span className="banner__icon" aria-hidden="true">
+        <StatusIcon name="alert-triangle" size="1.4em" />
       </span>
       <div className="banner__body">
         <div className="banner__title">{t('banner.config.title')}</div>

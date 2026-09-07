@@ -21,7 +21,6 @@ import { z } from 'zod';
 export type ThemePref = 'light' | 'dark' | 'system';
 
 export const zRuntimeConfig = z.object({
-  dataSource: z.enum(['mock', 'http']),
   apiBaseUrl: z.string(),
   refreshMs: z.number().int().positive(),
   requestTimeoutMs: z.number().int().positive(),
@@ -57,12 +56,12 @@ export const zRuntimeConfig = z.object({
 export type RuntimeConfig = z.infer<typeof zRuntimeConfig>;
 
 /**
- * Used when the config file is missing or malformed. The app must still start -
+  * Used when the config file is missing or malformed. The app must still start -
  * a dashboard that white-screens because one JSON file has a trailing comma is
- * worse than one that starts in mock mode and says so.
+ * worse than one that starts against the default API path and says so in a
+ * banner - which is what ConfigProblemBanner does with the `problem` below.
  */
 export const FALLBACK_CONFIG: RuntimeConfig = {
-  dataSource: 'mock',
   apiBaseUrl: '/api/v1',
   refreshMs: 30_000,
   requestTimeoutMs: 10_000,
@@ -111,13 +110,22 @@ export async function loadRuntimeConfig(): Promise<LoadedConfig> {
     };
   }
 
-  // The build-time default is a fallback for the file, not an override of it:
-  // whoever edits the file on the server must win.
-  const envSource = import.meta.env.VITE_DATA_SOURCE;
-  const config =
-    envSource === 'mock' || envSource === 'http'
-      ? { ...parsed.data, dataSource: parsed.data.dataSource ?? envSource }
-      : parsed.data;
-
-  return { config, problem: null };
+  /*
+   * There is no `dataSource` any more, and no VITE_DATA_SOURCE override.
+   *
+   * Both existed to switch this app between a generated dataset and the real
+   * API. The generator has gone - the backend grew the two endpoints it was
+   * standing in for (server/src/routes/scope.ts) - and with one adapter left
+   * there is nothing to choose between. `apiBaseUrl` is now the whole of "where
+   * does the data come from", which is one question with one answer instead of
+   * two that could disagree.
+   *
+   * The escape hatch it provided is not missed. Its purpose was a developer or
+   * a demo with no route to the backend, and what they got was a build that
+   * silently never called the API - a `.env.local` in the wrong place turned
+   * `npm run build` into a demo artifact and nothing on screen said so. A dead
+   * API is now a dead API on every build, and HardErrorState names which part
+   * of it is dead.
+   */
+  return { config: parsed.data, problem: null };
 }

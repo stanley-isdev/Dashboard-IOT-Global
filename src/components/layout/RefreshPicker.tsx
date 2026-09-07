@@ -134,7 +134,7 @@ export function RefreshPicker() {
           }
         }}
       >
-        <span aria-hidden="true">▼</span>
+        <span className="refreshpicker__chev" aria-hidden="true" />
       </button>
 
       {open ? (

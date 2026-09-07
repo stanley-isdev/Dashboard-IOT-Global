@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CompanySummary } from '../../api/contract';
 import { toMeasure } from '../../domain/measure';
 import { isReporting, siteToken, tierToken } from '../../domain/status';
@@ -54,13 +55,19 @@ import { MeasureValue } from '../primitives/MeasureValue';
  * instead: installing, planned. That is the one thing about a dark base anybody
  * actually wants to know.
  */
-export function CompanyPin({
+/*
+ * Memoised, because the layer above it re-renders on things a pin has no stake
+ * in - a board tab, a banner, the expand toggle. `company` is a reference out of
+ * the query payload and `registerCard` is a stable callback, so between polls
+ * this compares equal and the nine cards are left alone. Selection is read from
+ * the store per pin rather than passed down, which is what keeps that true when
+ * one of them is tapped; see the note on the subscription below.
+ */
+export const CompanyPin = memo(function CompanyPin({
   company,
-  nowMs,
   registerCard,
 }: {
   company: CompanySummary;
-  nowMs: number;
   /** Hands the card element to the layout pass. */
   registerCard: (code: string, el: HTMLElement | null) => void;
 }) {
@@ -80,8 +87,6 @@ export function CompanyPin({
   /* The same test the NEEDING ATTENTION card counts and the ranking tints its
      rows with, so the pulsing dots and the strip's figure can never disagree. */
   const alert = reporting && company.kpi.oa_tier === 'critical';
-
-  void nowMs; // the clock lives in the ranking; the pin shows the shift code only
 
   return (
     <div className={`pin${selected ? ' pin--selected' : ''}`} data-pin={company.code}>
@@ -165,4 +170,4 @@ export function CompanyPin({
 
     </div>
   );
-}
+});

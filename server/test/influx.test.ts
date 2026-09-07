@@ -71,6 +71,7 @@ describe('latestMachineStatusSql', () => {
     expect(sql).toContain('"plant"');
     expect(sql).toContain('"machine"');
     expect(sql).toContain('"Result"');
+    expect(sql).toContain('"StatusStartTime"');
     expect(sql).toContain(`INTERVAL '${HOT_WINDOW_HOURS} hours'`);
   });
 

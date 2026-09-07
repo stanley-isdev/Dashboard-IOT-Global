@@ -10,8 +10,23 @@ import { zCompanyDetail, zGlobalOverview, zMeta, zPlantDetail } from './contract
  * holds no business logic" promise checkable rather than aspirational.
  */
 
-function buildUrl(base: string, path: string, params: Record<string, string>): string {
-  const qs = new URLSearchParams(params).toString();
+function buildUrl(
+  base: string,
+  path: string,
+  params: Record<string, string | number | null | undefined>,
+): string {
+  const qs = new URLSearchParams(
+    Object.entries(params)
+      /*
+       * A null parameter is left OFF the query rather than sent as the string
+       * "null". The absolute window's `from`/`to` are null whenever the reader
+       * is on a quick range, which is most of the time, and `?from=null` would
+       * reach the server's `zPlainDate` as a malformed date - a 400 on the
+       * common path.
+       */
+      .filter((entry): entry is [string, string | number] => entry[1] != null)
+      .map(([k, v]) => [k, String(v)]),
+  ).toString();
   const sep = base.endsWith('/') ? '' : '/';
   return `${base}${sep}${path}${qs ? `?${qs}` : ''}`;
 }

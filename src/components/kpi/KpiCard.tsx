@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { interpolateNodes } from '../../i18n/interpolate';
 import { en, type TKey } from '../../i18n/en';
 import { MeasureValue } from '../primitives/MeasureValue';
+import { KpiMark, type KpiMarkName } from './KpiMark';
 import { StatusIcon } from '../primitives/StatusIcon';
 
 export interface Coverage {
@@ -191,6 +192,44 @@ export interface KpiCardProps {
    * genuinely has more to say, not a default nobody revisits.
    */
   infoWide?: boolean;
+  /**
+   * Where the qualifier sits: beside the label, or beside the figure.
+   *
+   * `'head'` is the strip's default and the position the card was drawn for -
+   * label left, qualifier right, on one line. It stops working when the label is
+   * long: the head is one flex line about 150px wide at the iPad Air viewport
+   * this board is deployed on, and a 73px pill on it leaves "%Achievement" 27px
+   * to render in. That is what produced "Av…" and "%…".
+   *
+   * `'figure'` moves it down a row, to the right of the number, stacked above
+   * whatever `delta` the card has. The figure row is where the space actually is
+   * - a percentage occupies about 97px of the same 150px and nothing else is
+   * competing for the rest - so the qualifier comes back without costing the
+   * label a character or the card a row. The foot stays where it is, which is
+   * the point: the bottom line of all six cards still reads as one line.
+   *
+   * Per-card rather than a blanket switch, because the three cards with short
+   * labels and short pills - RUNNING at "82.3%", STOP at "17.7%" - lose nothing
+   * in the head and read better there, tucked against the label they qualify.
+   */
+  metaAt?: 'head' | 'figure';
+  /**
+   * The orange subject mark in the head, and the card style that comes with it.
+   *
+   * One prop and not two, because they are one decision: a mark, a sentence-case
+   * label at reading size, the qualifier as a tinted pill rather than as loose
+   * type, and a larger figure. A mark on a card that kept the tracked micro-caps
+   * label would be an icon bolted to the old card, and a card in the new style
+   * with no mark has a hole where the mark goes. So `mark` is what turns on
+   * `.kpi--feature`, and the style is documented against that class in
+   * components.css.
+   *
+   * All six cards of the overview strip pass it. It stays optional because the
+   * drill-down grids - CompanyPage's four and PlantPage's census - do not, and
+   * because taking a card back off the style is then a matter of deleting one
+   * line rather than of unpicking a class.
+   */
+  mark?: KpiMarkName;
 }
 
 /**
@@ -243,6 +282,8 @@ export function KpiCard({
   infoParams,
   infoFixed,
   infoWide = false,
+  metaAt = 'head',
+  mark,
 }: KpiCardProps) {
   const { t, tNode } = useI18n();
   const partial = coverageNote === 'auto' && coverage.reporting < coverage.total;
@@ -294,7 +335,10 @@ export function KpiCard({
   const tooltip = tooltipKey in en ? t(tooltipKey as TKey, tooltipParams) : undefined;
 
   return (
-    <div className={`kpi kpi--${valueTone} kpi--rail-${rail}`} data-tier={tier ?? 'neutral'}>
+    <div
+      className={`kpi kpi--${valueTone} kpi--rail-${rail}${mark ? ' kpi--feature' : ''}`}
+      data-tier={tier ?? 'neutral'}
+    >
       {/*
        * Label first, figure second - the redraw's order, and the order a screen
        * reader wants anyway: "Running, 54" is a fact, while "54, Running" is a
@@ -308,6 +352,14 @@ export function KpiCard({
          * `kpi__meta`; against the label it reads as belonging to it.
          */}
         <div className="kpi__title">
+          {/*
+           * Inside the title group rather than before it, so the mark travels
+           * with the label when the head wraps at kiosk density. A mark left
+           * ranged against the card edge with its label on the line below reads
+           * as a second qualifier - which is the same mistake the note on
+           * `.kpi__info` above is placed here to avoid.
+           */}
+          {mark ? <KpiMark name={mark} /> : null}
           <div className="kpi__label" title={tooltip}>
             {t(labelKey)}
           </div>
@@ -371,13 +423,35 @@ export function KpiCard({
             </>
           )}
         </div>
-        {meta == null ? null : <div className={`kpi__meta kpi__meta--${metaTone}`}>{meta}</div>}
+        {meta == null || metaAt !== 'head' ? null : (
+          <div className={`kpi__meta kpi__meta--${metaTone}`}>{meta}</div>
+        )}
       </div>
 
       <div className="kpi__value">
         <MeasureValue measure={measure} format={format} emphasis="kpi" />
-        {delta == null ? null : (
-          <span className={`kpi__delta kpi__delta--${deltaTone}`}>{delta}</span>
+        {/*
+         * The right-hand column of the figure row: the qualifier over the delta.
+         *
+         * A column and not two more items in the figure's flex row, because the
+         * two of them together are wider than what a percentage leaves - "86.4%"
+         * takes 97px of 150, and "Target 95%" plus "-8.6 pts" side by side want
+         * 100 more. Stacked they want the width of the wider one and the figure
+         * row is tall enough to hold both without the card growing, because a
+         * 32px number leaves more vertical room beside it than either line uses.
+         *
+         * Rendered whenever either half exists, so a card with only a delta
+         * (NEEDING ATTENTION's badge) is unchanged by this wrapper.
+         */}
+        {delta == null && (meta == null || metaAt !== 'figure') ? null : (
+          <div className="kpi__aside">
+            {meta == null || metaAt !== 'figure' ? null : (
+              <div className={`kpi__meta kpi__meta--${metaTone}`}>{meta}</div>
+            )}
+            {delta == null ? null : (
+              <span className={`kpi__delta kpi__delta--${deltaTone}`}>{delta}</span>
+            )}
+          </div>
         )}
       </div>
 

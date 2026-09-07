@@ -18,6 +18,7 @@ const obs = (pairs: [string, MachineStatus][]): MachineObservation[] =>
     zone: null,
     status,
     lastSeen: null,
+    statusStartTime: null,
   }));
 
 const census = (pairs: [string, MachineStatus][], machineExclusions: string[] = []) =>

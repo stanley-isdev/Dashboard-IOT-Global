@@ -143,6 +143,19 @@ const SHAPES: Record<StatusIconName, React.ReactNode> = {
     </>
   ),
 
+  /* A minor alert. The calmest interior in the set: a ring around a single dot,
+     which is the exclamation with its stem taken away. It is what `minor` draws
+     now that `critical` has moved onto the exclamation ring - and the quieter
+     mark suits it, since a minor alert is a thing noted rather than a thing
+     shouted. Separable from `circle-ellipsis` by count, and from a filled dot
+     by having a ring at all. */
+  'dot-circle': (
+    <>
+      <path d={RING} />
+      <Dot cx={8} cy={8} />
+    </>
+  ),
+
   /* Genuinely inapplicable - achievement against a zero plan. A bare dash, and
      no container: there is no state here to draw a badge around. */
   minus: <path d="M4.3 8h7.4" />,

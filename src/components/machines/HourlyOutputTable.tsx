@@ -1,6 +1,6 @@
 import type { ShiftOutput } from '../../api/contract';
 import { useI18n } from '../../i18n/I18nProvider';
-import { formatInt } from '../../i18n/format';
+import { formatInt, formatPct } from '../../i18n/format';
 
 /**
  * Output per bucket across the current shift.
@@ -101,6 +101,29 @@ export function HourlyOutputTable({ output }: { output: ShiftOutput }) {
                 style={{ textAlign: 'right', color: 'var(--sub)' }}
               >
                 {b.qty_per_hour === null ? dash : formatInt(b.qty_per_hour, lang)}
+              </td>
+            ))}
+          </tr>
+          {/*
+           * %OA per bucket, and the row this table was missing.
+           *
+           * The three rows above are quantities, and the backend's hourly query
+           * selects none of them - it selects %OA and nothing else (see the
+           * header of server/src/services/scopeService.ts). So against a real
+           * database this panel drew twelve columns of dashes while the one
+           * figure it did have went unprinted. The efficiency of each hour of a
+           * shift is exactly what this table is read for, so it belongs here
+           * whether or not the quantities ever arrive.
+           *
+           * Its own row rather than a replacement for one: pieces, shots and
+           * %OA are three different facts, which is the same reason section 8.5
+           * gives for keeping pieces and shots apart.
+           */}
+          <tr>
+            <th scope="row">{t('kpi.oa.short')}</th>
+            {buckets.map((b) => (
+              <td key={b.index} className="mono" style={{ textAlign: 'right' }}>
+                {b.oa_pct === null ? dash : formatPct(b.oa_pct, lang)}
               </td>
             ))}
           </tr>

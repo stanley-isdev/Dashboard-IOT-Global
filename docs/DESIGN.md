@@ -119,7 +119,7 @@ codeCountry    (Country Code)  ── ประเทศ                  เช
 │  - หมุด = ระดับ company         │  - เรียงจาก %OA ต่ำสุดก่อน      │
 │  - %OA + ธง + run/total        │  - ขยายดู plant ย่อยได้         │
 ├───────────────────────────────┼───────────────────────────────┤
-│  Global %OA Trend (24h line)  │  Longest Active Stops (top 5)  │
+│  Global %OA Trend (24h line)  │  Longest Active Stops (top 10) │
 └───────────────────────────────┴───────────────────────────────┘
 Responsive: < 1100px → KPI 3 คอลัมน์, main/bottom เป็น 1 คอลัมน์
 ```
@@ -446,7 +446,7 @@ Dashboard เดิมทุกตัวกรองทีละ plant → **ไ
 | Q-03 | %OA เฉลี่ยต่อ plant → company → global | ✅ **ทำแล้ว** - `server/src/domain/oa.ts` (ปิด D-20 แล้ว) |
 | Q-04 | %Achievement roll-up (Σplan / Σactual) | ✅ **ทำแล้ว** - `achievementFrom()` · plan อ่านด้วย `MAX` ไม่ใช่ `SUM` (เป็น attribute ของ PO ซ้ำทุกแถว) · ยืนยันกับบอร์ด I5: 295/400 = 73.8% · **PO เดียวหลายเครื่อง: วัดแล้วไม่พบ** (26 orders, 0 เคสใช้ร่วม) - ยังไม่ถูก disprove แค่ยังไม่เกิด · เครื่องหลาย slot ใช้งานจริงและทดสอบแล้ว (ASI `plan_qty1..3` = 700 ต่อ slot) |
 | Q-05 | Trend %OA 24 ชม. แบ่ง bucket 1 ชม. | ✅ **ทำแล้ว** - `server/src/domain/trend.ts` · `date_bin(INTERVAL '1 hour', time)` bucket ตามนาฬิกา UTC 24 จุด จุดสุดท้ายคือชั่วโมงที่กำลังเดินอยู่ · **ในเครื่องเดียวกันชั่วโมงเดียวกัน ถ้ามีหลายใบสั่ง บวกตัวตั้ง/ตัวหารก่อนแล้วค่อยหาร** (11 จาก 287 machine-hour) · **ข้ามเครื่องใช้ค่าเฉลี่ยอย่างง่ายเหมือนการ์ด** (D-20) · ชั่วโมงที่ไม่มีเครื่องไหนโหลดใบสั่งส่ง `null` ไม่ใช่ 0 · ทุกจุดพก `machine_count` ไปด้วย เพราะวัดจริงแล้วแกว่ง **1 ถึง 18 เครื่อง** ใน 24 ชม. ขณะที่ `site_count` อยู่แค่ 1-2 |
-| Q-06 | Top-5 longest active stop ข้ามทุกไซต์ | จาก `StatusStartTime` ของ `Result='Stop'` |
+| Q-06 | Top-10 longest active stop ข้ามทุกไซต์ | จาก `StatusStartTime` ของ `Result='Stop'` |
 | Q-07 | **Last-seen ต่อ plant** (สำหรับสถานะ `no_data`) | ของใหม่ทั้งหมด ไม่มีในระบบเดิม |
 | Q-08 | Master list ของ machine ที่ควรมี (สำหรับ Total Machines) | ปัจจุบัน derive จาก run+stop ซึ่งพลาดเครื่องที่ offline |
 

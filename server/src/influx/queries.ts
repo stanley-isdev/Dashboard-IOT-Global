@@ -1,11 +1,52 @@
 import { ident, literal } from './client.ts';
 
 /**
- * Hard ceiling from BACKEND-HANDOVER §4.2: windows of 4 days and wider return
- * HTTP 500 with an empty body. 71h keeps a margin under the 72h boundary that
- * still worked, so a caller cannot walk off the cliff by passing a big number.
+ * The widest window ONE query may scan.
+ *
+ * BACKEND-HANDOVER §4.2 recorded this as "queries spanning more than 3 days
+ * fail" with an **empty-bodied HTTP 500** and the cause unknown - possibly
+ * retention expiry, possibly a schema conflict in older parquet files, and
+ * only diagnosable by someone with InfluxDB host log access.
+ *
+ * **Re-measured 2026-09-03, and the instance now names it:**
+ *
+ * ```
+ *   24h / 36h / 48h / 60h / 71h   OK   (5,405 -> 11,633 rows)
+ *   96h                           HTTP 500: External error: Query would scan
+ *                                 432 Parquet files, exceeding the file limit
+ * ```
+ *
+ * So it is a **file-scan cap, not retention and not width**, and that
+ * distinction is what makes the absolute time picker possible: the cap counts
+ * files per query, so a wider window can be served as SEVERAL bounded queries
+ * that each stay under it. See `chunkWindow` below. Bounded windows well into
+ * the past answer fine - a 48 h window ending 24 h ago returned 6,305 rows in
+ * 200 ms, and single-day windows answer back to the retention edge.
+ *
+ * 71 keeps a margin under the 72 h boundary that still worked.
  */
-const MAX_WINDOW_HOURS = 71;
+export const MAX_WINDOW_HOURS = 71;
+
+/**
+ * How far back the instance still holds data, in days - the calendar's `min`.
+ *
+ * Measured 2026-09-03 by walking single-day windows backwards: 28 days ago
+ * returned 1,127 rows, 29 days ago returned none. This is the default the
+ * poller starts from and re-probes; it is published on `/meta` rather than
+ * compiled into the bundle because retention moves and a stale `min` lets a
+ * reader pick a fortnight the instance threw away last night.
+ */
+export const RETENTION_DAYS = 28;
+
+/**
+ * The widest window the server will assemble out of chunks.
+ *
+ * A ceiling on the chunk count, not a statement about the data: without it a
+ * hand-written `?from=2020-01-01` would ask this instance for four hundred
+ * sequential queries. Set to the retention depth, because nothing beyond it
+ * can return a row anyway.
+ */
+export const MAX_ASSEMBLED_HOURS = RETENTION_DAYS * 24;
 
 /**
  * One query serves both Q-07 (last-seen per plant) and Q-01 (latest status per
@@ -89,6 +130,20 @@ export interface LatestMachineStatusRow {
   /** Raw `Result`. Not typed as MachineStatus - the DB is free to emit anything. */
   result: string | null;
   last_seen: string | null;
+  /**
+   * Epoch milliseconds, UTC, marking when the current `Result` began - Q-06's
+   * input (DESIGN.md §10, "top-10 longest active stop ... from `StatusStartTime`
+   * of `Result='Stop'`").
+   *
+   * BACKEND-HANDOVER §4.6 had flagged this as "a Float64 of unknown epoch".
+   * Resolved against the live instance on 2026-09-02: a `Stop` row's own
+   * `StatusStartTime` matched its `time` column to the millisecond on the poll
+   * that first observed the stop (e.g. `1788316143298` -> `2026-09-02T02:29:
+   * 03.298Z`, equal to that row's `time`), and an older, still-active stop's
+   * `StatusStartTime` decoded to a plausible earlier UTC instant. Millisecond
+   * Unix epoch, UTC - see domain/alerts.ts for the duration math.
+   */
+  status_start_time: number | null;
 }
 
 function assertWindow(windowHours: number): void {
@@ -135,21 +190,114 @@ const SUBSTANTIVE_STATUSES = [
   'Offline',
 ];
 
+/* ------------------------------------------------------------ windows */
+
+/**
+ * A half-open instant window, `[from, to)`, both ISO-8601 UTC.
+ *
+ * Half-open rather than closed so adjacent chunks tile the window exactly once:
+ * a closed pair would count every boundary row twice, which for the %OA sums
+ * below is not a rounding error but a doubled numerator.
+ */
+export interface Window {
+  from: string;
+  to: string;
+}
+
+const HOUR_MS = 3_600_000;
+
+/** `timestamp '...'` - the literal form the v3 SQL endpoint accepts for a time bound. */
+function instant(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) throw new Error(`not an ISO instant: ${iso}`);
+  return `timestamp ${literal(new Date(ms).toISOString())}`;
+}
+
+/**
+ * Splits a window into pieces no wider than `maxHours`, oldest first.
+ *
+ * **Aligned to whole hours from the far end, not from the near one.** The
+ * hourly trend bins with `date_bin(INTERVAL '1 hour', time)`, whose buckets sit
+ * on absolute clock hours; a chunk boundary in the middle of one would split
+ * that bucket across two queries and the merge would emit the same hour twice,
+ * each holding half its rows. Cutting only on hour edges means every bucket
+ * lands wholly inside exactly one chunk, so merging chunks is concatenation
+ * rather than re-aggregation.
+ *
+ * Returns at least one chunk, so a caller never has to special-case an empty
+ * plan for a zero-width window.
+ */
+export function chunkWindow(w: Window, maxHours: number = MAX_WINDOW_HOURS): Window[] {
+  const from = Date.parse(w.from);
+  const to = Date.parse(w.to);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) {
+    throw new Error(`chunkWindow needs two ISO instants (got ${w.from} .. ${w.to})`);
+  }
+  if (to <= from) return [{ from: new Date(from).toISOString(), to: new Date(to).toISOString() }];
+
+  const span = maxHours * HOUR_MS;
+  const out: Window[] = [];
+  let cursor = from;
+  while (cursor < to) {
+    /* Land the cut on the hour boundary at or below the naive end, so the trend
+       buckets stay whole. Never below `cursor` - a sub-hour remainder would
+       otherwise produce a zero-width chunk and loop forever. */
+    const naive = Math.min(cursor + span, to);
+    const aligned = naive === to ? to : Math.max(cursor + HOUR_MS, Math.floor(naive / HOUR_MS) * HOUR_MS);
+    const end = Math.min(aligned, to);
+    out.push({ from: new Date(cursor).toISOString(), to: new Date(end).toISOString() });
+    cursor = end;
+  }
+  return out;
+}
+
+/**
+ * The `WHERE` fragment for a bounded window.
+ *
+ * The relative builders below keep their `now() - INTERVAL` form rather than
+ * being rewritten in terms of this: that form is what the production board's
+ * own SQL says, it is what every measurement in this file was taken against,
+ * and it bounds on the DATABASE's clock. A server whose clock has drifted
+ * still asks for "the last 24 hours" and not for a window the instance
+ * considers partly in the future.
+ */
+function betweenClause(w: Window): string {
+  return `${ident('time')} >= ${instant(w.from)} AND ${ident('time')} < ${instant(w.to)}`;
+}
+
 /** Q-01: one row per machine, carrying its most recent status inside the window. */
 export function latestMachineStatusSql(windowHours: number = HOT_WINDOW_HOURS): string {
   assertWindow(windowHours);
+  return latestMachineStatusWhere(`${ident('time')} > now() - INTERVAL '${windowHours} hours'`);
+}
+
+/**
+ * Q-01 over an explicit window - one chunk of an absolute or multi-day pick.
+ *
+ * Each chunk returns the latest substantive row per machine *within that
+ * chunk*, so the chunks must be merged by taking the newest per machine rather
+ * than concatenated (`mergeLatestStatus` in services/windowedSnapshot.ts). That
+ * merge is exact: the newest row of the newest chunk holding one is the newest
+ * row of the whole window, because the chunks tile it without overlap.
+ */
+export function latestMachineStatusInSql(w: Window): string {
+  return latestMachineStatusWhere(betweenClause(w));
+}
+
+function latestMachineStatusWhere(whereTime: string): string {
   return [
-    'SELECT plant, machine, process, zone, result, last_seen FROM (',
+    'SELECT plant, machine, process, zone, result, last_seen, status_start_time FROM (',
     `  SELECT ${ident('plant')} AS plant,`,
     `         ${ident('machine')} AS machine,`,
     `         ${ident('process')} AS process,`,
     `         ${ident('zone')} AS zone,`,
     `         ${ident('Result')} AS result,`,
     `         ${ident('time')} AS last_seen,`,
+    `         ${ident('StatusStartTime')} AS status_start_time,`,
     `         ROW_NUMBER() OVER (PARTITION BY ${ident('plant')}, ${ident('machine')}`,
     `                            ORDER BY ${ident('time')} DESC) AS rn`,
     '  FROM production_machine_status',
-    `  WHERE ${ident('time')} > now() - INTERVAL '${windowHours} hours'`,
+    `  WHERE ${whereTime}`,
     // No `process` predicate here on purpose - the column travels on the row and
     // each request narrows it (config/policy.ts). One poll, every scope.
     //
@@ -264,6 +412,27 @@ export interface MachineOaRow {
  */
 export function machineOaSql(windowHours: number = OA_WINDOW_HOURS): string {
   assertWindow(windowHours);
+  return machineOaWhere(`${ident('time')} > now() - INTERVAL '${windowHours} hours'`);
+}
+
+/**
+ * Q-03/Q-04 over an explicit window - one chunk of an absolute or multi-day pick.
+ *
+ * Merging chunks is exact arithmetic and not an approximation: every column
+ * here re-aggregates (MIN of MINs, SUM of SUMs, COUNT of COUNTs, MAX of MAXs),
+ * so the per-order group assembled from three chunks equals the one a single
+ * query would have returned - which is the property that makes chunking a
+ * legitimate answer to the file-scan cap rather than a way to blur it.
+ *
+ * The one column that is NOT a sum is `last_row`, and MAX is what it needs:
+ * the whole window's newest row for that group is the newest of the chunks'
+ * newest, and `last_row` is what identifies the order a machine is running now.
+ */
+export function machineOaInSql(w: Window): string {
+  return machineOaWhere(betweenClause(w));
+}
+
+function machineOaWhere(whereTime: string): string {
   const slots = ['ProductionOrder0', 'ProductionOrder1', 'ProductionOrder2', 'ProductionOrder3'];
   const plans = ['plan_qty0', 'plan_qty1', 'plan_qty2', 'plan_qty3'];
   const created = ['vCreateDateTxt0', 'vCreateDateTxt1', 'vCreateDateTxt2', 'vCreateDateTxt3'];
@@ -285,7 +454,7 @@ export function machineOaSql(windowHours: number = OA_WINDOW_HOURS): string {
     `                ELSE ${ident('cycle_time')} * ${ident('qty')} END) AS weighted_time,`,
     `       MAX(${ident('time')}) AS last_row`,
     '  FROM production_machine_io',
-    `  WHERE ${ident('time')} > now() - INTERVAL '${windowHours} hours'`,
+    `  WHERE ${whereTime}`,
     `  GROUP BY ${ident('plant')}, ${ident('machine')}, ${ident('process')}, ${slots.map(ident).join(', ')}`,
   ].join('\n');
 }
@@ -300,9 +469,14 @@ export function machineOaSql(windowHours: number = OA_WINDOW_HOURS): string {
 export const TREND_POINTS = 24;
 
 /**
- * One row per (hour x plant x machine x PO slots). Same shape as `MachineOaRow`
- * minus the plan and shot columns, which the trend does not use - the chart
- * plots a ratio, and Q-04's plan belongs to the KPI strip.
+ * One row per (hour x plant x machine x PO slots).
+ *
+ * The same shape as `MachineOaRow` minus `process` and `last_row`, which
+ * nothing hourly reads. It used to be minus the plan and shot columns too, on
+ * the grounds that "the chart plots a ratio, and Q-04's plan belongs to the KPI
+ * strip" - true of the chart, and wrong the moment anything else needed an
+ * hour's output. The shift breakdown and the hourly output table both do, and
+ * both reported every quantity as unknown until these arrived.
  */
 export interface MachineHourOaRow {
   /** `date_bin` output: the hour's start, UTC, with no zone marker. */
@@ -313,8 +487,15 @@ export interface MachineHourOaRow {
   po1: string | null;
   po2: string | null;
   po3: string | null;
+  /** Q-04's TotalPlan inputs for the hour, one per slot. `MAX`, never `SUM`. */
+  plan0: number | null;
+  plan1: number | null;
+  plan2: number | null;
+  plan3: number | null;
   min_std_time: number | null;
   sum_qty: number | null;
+  /** §8.5: shots are `COUNT(cavity)`, pieces are `SUM(qty)`. */
+  shot_count: number | null;
   weighted_time: number | null;
 }
 
@@ -351,23 +532,63 @@ export function machineHourOaSql(points: number = TREND_POINTS): string {
         'Wider windows return HTTP 500 with an empty body - see BACKEND-HANDOVER §4.2.',
     );
   }
+  return machineHourOaWhere(
+    // `points - 1`, not `points`: the newest bucket is the hour in progress, so
+    // asking for a full `points` hours back would return one extra partial
+    // bucket at the far end that the chart has no slot for.
+    ` ${ident('time')} >= date_bin(INTERVAL '1 hour', now()) - INTERVAL '${points - 1} hours'`,
+  );
+}
+
+/**
+ * Q-05 over an explicit window - one chunk of an absolute or multi-day pick.
+ *
+ * Safe to concatenate rather than re-aggregate, unlike the %OA chunks above,
+ * because `chunkWindow` cuts only on whole-hour boundaries and `date_bin` bins
+ * to those same absolute hours: no bucket can straddle two chunks, so no hour
+ * is ever emitted twice holding half its rows.
+ */
+export function machineHourOaInSql(w: Window): string {
+  return machineHourOaWhere(betweenClause(w));
+}
+
+function machineHourOaWhere(whereTime: string): string {
   const slots = ['ProductionOrder0', 'ProductionOrder1', 'ProductionOrder2', 'ProductionOrder3'];
+  const plans = ['plan_qty0', 'plan_qty1', 'plan_qty2', 'plan_qty3'];
   const bin = `date_bin(INTERVAL '1 hour', ${ident('time')})`;
   return [
     `SELECT ${bin} AS bucket,`,
     `       ${ident('plant')} AS plant,`,
     `       ${ident('machine')} AS machine,`,
     ...slots.map((c, i) => `       ${ident(c)} AS po${i},`),
+    /*
+     * The three quantity columns, added 2026-09-07 for the shift breakdown and
+     * the hourly output table - see services/scopeService.ts, which had to
+     * report every one of those figures as `null` without them.
+     *
+     * Additive and provably so: the GROUP BY below is untouched, and no
+     * existing column's expression changed, so `min_std_time`, `sum_qty` and
+     * `weighted_time` - the three the %OA the chart plots is computed from -
+     * cannot move. Verified against the live instance the same day by
+     * capturing `/global-overview`'s 24 trend points either side of this
+     * change: identical, point for point.
+     *
+     * `MAX` on the plans and not `SUM`, for the reason `MachineOaRow` records
+     * at length: `plan_qty` is an attribute of the ORDER repeated on every shot
+     * row, and summing it reported a plan of 400 as 118,000.
+     */
+    ...plans.map((c, i) => `       MAX(${ident(c)}) AS plan${i},`),
     `       MIN(${ident('std_time')}) AS min_std_time,`,
     `       SUM(${ident('qty')}) AS sum_qty,`,
+    /* Shots are `COUNT(cavity)`, pieces are `SUM(qty)` - DESIGN.md §8.5. The
+       two get separate columns here for the same reason they get separate rows
+       in the table: they are different facts and they get swapped. */
+    `       COUNT(${ident('cavity')}) AS shot_count,`,
     `       SUM(CASE WHEN ${ident('cycle_time')} > ${ident('std_time')} + 100`,
     `                THEN ${ident('std_time')} * ${ident('qty')}`,
     `                ELSE ${ident('cycle_time')} * ${ident('qty')} END) AS weighted_time`,
     '  FROM production_machine_io',
-    // `points - 1`, not `points`: the newest bucket is the hour in progress, so
-    // asking for a full `points` hours back would return one extra partial
-    // bucket at the far end that the chart has no slot for.
-    ` WHERE ${ident('time')} >= date_bin(INTERVAL '1 hour', now()) - INTERVAL '${points - 1} hours'`,
+    ` WHERE ${whereTime}`,
     // Unfiltered by `process`, like the KPI strip above it: a chart measuring a
     // different set of machines than the cards is worse than no chart.
     ` GROUP BY bucket, ${ident('plant')}, ${ident('machine')}, ${slots.map(ident).join(', ')}`,

@@ -1,6 +1,6 @@
 import type { TrendPoint } from '@dashboard/contract';
 import type { MachineHourOaRow } from '../influx/queries.ts';
-import { finiteNumber, orderSlots, round1 } from './oa.ts';
+import { finiteNumber, orderSlots, planFromSlots, round1 } from './oa.ts';
 import { influxTimeToIsoUtc } from '../influx/time.ts';
 
 /**
@@ -49,6 +49,56 @@ export interface MachineHourOa {
   oaPct: number | null;
   /** The most PO slots any of its order groups carried that hour. 1 unless D-27 applies. */
   poSlots: number;
+
+  /** Pieces produced in the hour, `SUM(qty)`. Null when none were (R2). */
+  qtyPcs: number | null;
+  /** Shots in the hour, `COUNT(cavity)` - a different fact from pieces (§8.5). */
+  shotCount: number | null;
+  /**
+   * The plan of each order group this machine ran in the hour, keyed by the
+   * group's PO string.
+   *
+   * A map and not a total, and that is the whole reason this field is shaped
+   * this way. `plan_qty` is an attribute of the ORDER, not of an hour: a
+   * twelve-hour shift running one order sees the same 400-piece plan in twelve
+   * buckets, so a consumer that sums the hourly totals reports a plan of 4,800.
+   * That is the same class of error `MachineOaRow.plan0` records at length,
+   * one axis over. Keyed by order, a shift can union the maps and add each
+   * plan exactly once - see `sumPlans`.
+   */
+  plans: Record<string, number>;
+}
+
+/**
+ * Adds up the plans of a set of hours without counting an order twice.
+ *
+ * The union of the per-hour maps, then one sum over the distinct orders. Null
+ * rather than 0 when no order in the set carried a plan, because "nothing was
+ * planned" and "we were not told the plan" are different statements and only
+ * the second is true of THS 6338, whose gateway sends `plan_qty = 0` on every
+ * row (R2, and see planFromSlots).
+ */
+export function sumPlans(hours: readonly MachineHourOa[]): number | null {
+  const byOrder = new Map<string, number>();
+  for (const h of hours) {
+    for (const [order, plan] of Object.entries(h.plans)) {
+      // MAX, not sum: the same order in two hours is one plan, and the two
+      // reads of it should agree - if they do not, the larger is the lot size.
+      byOrder.set(order, Math.max(byOrder.get(order) ?? 0, plan));
+    }
+  }
+  if (byOrder.size === 0) return null;
+  const total = [...byOrder.values()].reduce((a, b) => a + b, 0);
+  return total > 0 ? total : null;
+}
+
+/** Sums a nullable field over hours, staying null when not one hour reported it. */
+export function sumHours(
+  hours: readonly MachineHourOa[],
+  pick: (h: MachineHourOa) => number | null,
+): number | null {
+  const values = hours.map(pick).filter((v): v is number => v !== null);
+  return values.length === 0 ? null : values.reduce((a, b) => a + b, 0);
 }
 
 /**
@@ -63,7 +113,17 @@ export interface MachineHourOa {
 export function foldMachineHours(rows: MachineHourOaRow[]): MachineHourOa[] {
   const acc = new Map<
     string,
-    { ts: string; plant: string; machine: string; num: number; den: number; poSlots: number }
+    {
+      ts: string;
+      plant: string;
+      machine: string;
+      num: number;
+      den: number;
+      poSlots: number;
+      qty: number | null;
+      shots: number | null;
+      plans: Record<string, number>;
+    }
   >();
 
   for (const row of rows) {
@@ -79,13 +139,51 @@ export function foldMachineHours(rows: MachineHourOaRow[]): MachineHourOa[] {
     const key = `${ts}|${row.plant}|${row.machine}`;
     const held =
       acc.get(key) ??
-      { ts, plant: row.plant, machine: row.machine, num: 0, den: 0, poSlots: 0 };
+      {
+        ts,
+        plant: row.plant,
+        machine: row.machine,
+        num: 0,
+        den: 0,
+        poSlots: 0,
+        qty: null,
+        shots: null,
+        plans: {},
+      };
     acc.set(key, held);
     held.poSlots = Math.max(held.poSlots, slots.length);
 
     const minStd = finiteNumber(row.min_std_time);
     const qty = finiteNumber(row.sum_qty);
     const weighted = finiteNumber(row.weighted_time);
+    const shots = finiteNumber(row.shot_count);
+
+    /*
+     * The output is accumulated HERE, above the %OA guards below, and the order
+     * matters.
+     *
+     * Those guards drop a row whose standard time or cycle time is unusable -
+     * correct for a ratio, which cannot be computed from them - but the pieces
+     * that row reports were still made. Accumulating after them would have lost
+     * real output from the hourly table for every machine whose gateway sends
+     * no `std_time`, and lost it silently, which is the failure mode this
+     * codebase is most careful about.
+     *
+     * A row with no order loaded is still dropped, up at the `slots` check:
+     * output attributable to no order is not something the plant boards count
+     * either, so counting it here would put this table above them.
+     */
+    if (qty !== null) held.qty = (held.qty ?? 0) + qty;
+    if (shots !== null) held.shots = (held.shots ?? 0) + shots;
+
+    const plan = planFromSlots(row, slots.map(({ i }) => i));
+    if (plan !== null) {
+      // Keyed by the order group, so a shift can add each plan once. See
+      // `plans` on MachineHourOa and `sumPlans` beside it.
+      const orderKey = slots.map(({ po }) => po).join('|');
+      held.plans[orderKey] = Math.max(held.plans[orderKey] ?? 0, plan);
+    }
+
     // Same guards as oaFromPoGroup: a std_time of 0 would make the whole hour
     // read 0%, and an order that produced nothing has no time to divide by.
     if (minStd === null || minStd <= 0) continue;
@@ -104,6 +202,9 @@ export function foldMachineHours(rows: MachineHourOaRow[]): MachineHourOa[] {
       machine: m.machine,
       oaPct: pct !== null && Number.isFinite(pct) ? round1(pct) : null,
       poSlots: m.poSlots,
+      qtyPcs: m.qty,
+      shotCount: m.shots,
+      plans: m.plans,
     };
   });
 }

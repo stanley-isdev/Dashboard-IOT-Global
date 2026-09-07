@@ -105,6 +105,11 @@ body {
   flex-direction: column;
   padding-inline: var(--shell-pad-x);
   overflow: hidden;
+  /* Closes part of .app's --shell-gap above the outlet, so the KPI strip
+     (the outlet's first row) sits a little closer under the masthead/filters
+     without touching --shell-gap itself, which also spaces the strip from
+     the board below. */
+  margin-top: calc(-0.25 * var(--sp-2));
 }
 
 /* A page's data region: fills the outlet, distributes to its own rows. */
@@ -288,11 +293,28 @@ body {
   border-bottom: 1px solid var(--line);
   margin-bottom: var(--panel-pad-y);
 }
+/*
+ * A panel title, set as a title rather than as a label.
+ *
+ * It used to be 12px uppercase on 0.06em of tracking, which is the treatment
+ * the KPI captions still take - and there it is right, because a caption is a
+ * field name for the figure under it. A panel head is not that: it is the name
+ * of a thing on the board, and the redraw sets it in sentence case at the body
+ * size, one weight up. Three effects, and the third is the reason:
+ *
+ *   1. "Device Location & Health" reads at a glance instead of being spelled
+ *      out. Runs of capitals lose the word shapes a reader scans by.
+ *   2. The tracking hack for Thai goes away with it. `--ls-caps`/`--ls-title`
+ *      have to be zeroed for Thai (see tokens.css) because Thai has no case and
+ *      the letter-spacing prises tone marks off their base letters; a title in
+ *      sentence case needs neither the transform nor the exception.
+ *   3. It stops the four panel heads competing with the KPI strip. Six tracked
+ *      uppercase captions and four more above the board was ten shouted labels
+ *      on a screen whose subject is a map and a ranking.
+ */
 .panel-head h2 {
-  font-size: var(--fs-h2);
+  font-size: var(--fs-chip);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--ls-title);
   line-height: var(--lh-tight);
   white-space: nowrap;
   color: var(--text);
@@ -313,6 +335,25 @@ body {
   gap: var(--sp-2);
   min-width: 0;
   flex-shrink: 0;
+}
+
+/* Title plus an inline mark after it - the map head puts the methodology opener
+   here, tucked against the end of the title instead of out at the right edge.
+   --sp-1, the exact gap the KPI strip sets between a card's label and its ⓘ. */
+.panel-head__titrow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+/* The opener is a .chip, which pads ~11px on each side where the KPI strip's ⓘ
+   button (`.kpi__info`) has none - so left as-is the mark starts a chip-width
+   away from the title instead of one --sp-1 gap away like on the cards. Strip
+   the horizontal padding to match; the tap target keeps its height from
+   .chip's min-height. */
+.panel-head__titrow .chip {
+  padding-inline: 0;
 }
 
 /* The part of a panel that gets the leftover height. */

@@ -1,12 +1,13 @@
 import type {
   CompanySummary,
   FiltersApplied,
+  ServedWindow,
   GlobalOverview,
   Kpi,
   PlantSummary,
   Process,
 } from '@dashboard/contract';
-import { plantFilterActive, plantMatcher, regionMatcher } from '@dashboard/contract';
+import { plantFilterActive, plantMatcher, regionMatcher, zoneMatcher } from '@dashboard/contract';
 import {
   addCounts,
   DEFAULT_LINK_PROCESS,
@@ -26,6 +27,8 @@ import {
   type PlantMasterData,
 } from '../config/masterData.ts';
 import { FRESHNESS, POLICY_BLOCK, TIER_POLICY } from '../config/policy.ts';
+import { OA_WINDOW_HOURS } from '../influx/queries.ts';
+import { buildLongestActiveStops } from '../domain/alerts.ts';
 import { buildPlantCensus } from '../domain/counts.ts';
 import { buildEnvelope } from '../domain/envelope.ts';
 import {
@@ -40,7 +43,6 @@ import {
 } from '../domain/oa.ts';
 import { latestSeen, plantStatusFrom, rollUpCompanyStatus } from '../domain/siteStatus.ts';
 import { buildTrend, trendWarnings } from '../domain/trend.ts';
-import { TREND_POINTS } from '../influx/queries.ts';
 import { sourceHealthFrom } from '../lib/sourceHealth.ts';
 import type { LiveSnapshot } from './liveSnapshot.ts';
 
@@ -57,16 +59,24 @@ import type { LiveSnapshot } from './liveSnapshot.ts';
  * the average and why it is a plain mean. It also makes **%Achievement** real (Q-04) - see `planFromSlots` in
  * server/src/domain/oa.ts for why the plan is `MAX`, not `SUM`, and
  * `ACHIEVEMENT_SCOPE_WARNING` for what the ratio is measured against. What
- * stays `null` is downtime (needs `StatusStartTime`) and defect (D-18, out of
- * scope) - `null` rather than `0`, because the contract's rule R2 says absence
- * is never a fabricated zero.
+ * stays `null` is downtime_sec (needs a per-machine cumulative rollup - see
+ * Phase 6 below for the one thing `StatusStartTime` DOES now feed) and defect
+ * (D-18, out of scope) - `null` rather than `0`, because the contract's rule
+ * R2 says absence is never a fabricated zero.
  *
  * Phase 4 makes the **hourly trend** real (Q-05) - see server/src/domain/trend.ts.
  * It is filtered through exactly the gates the KPI strip is, so the chart is a
  * history of the machines the cards are measuring. It deliberately does NOT
  * print the same number as the strip: the strip is the order each machine has
  * loaded now over a rolling 24 h, the chart is every order worked in each clock
- * hour. What is left is `alerts` (Q-06, an open decision).
+ * hour.
+ *
+ * Phase 6 (2026-09-02) makes **`alerts`** real (Q-06) - see domain/alerts.ts.
+ * It reads only `production_machine_status` (`Result='Stop'` + confirmed-UTC
+ * `StatusStartTime`), the same rows Q-01 already polls, so it costs no second
+ * query. `production_alarm_logs` (severity, class, message) is NOT joined in,
+ * so `severity`/`category`/`owner` on each entry are placeholders, not real
+ * classifications - flagged where they are built.
  *
  * Phase 5 (2026-08-27) **reconciles the census and %OA against the production
  * board**, using the panel source recovered into
@@ -113,7 +123,7 @@ import type { LiveSnapshot } from './liveSnapshot.ts';
  */
 
 const KPI_WARNING =
-  'phase-4: %OA (Q-03), %Achievement (Q-04) and the hourly trend (Q-05) are real. The two %OA figures answer different questions and will not match: the KPI strip is the order each machine has loaded NOW over a rolling 24 h - the rule the production board follows - while each trend point is every order worked in that clock hour. Downtime is still null (StatusStartTime is a Float64 of unknown epoch), alerts are an open decision (Q-06) and defect is out of scope (D-18)';
+  'phase-6: %OA (Q-03), %Achievement (Q-04), the hourly trend (Q-05) and alerts (Q-06) are real. The two %OA figures answer different questions and will not match: the KPI strip is the order each machine has loaded NOW over a rolling 24 h - the rule the production board follows - while each trend point is every order worked in that clock hour. Downtime is still null (needs a per-machine cumulative downtime rollup, not just each machine\'s current stop - see domain/alerts.ts), alerts severity/category/owner are duration-based placeholders pending a production_alarm_logs decision, and defect is out of scope (D-18)';
 
 /**
  * What `plan_qty` actually is, said on the payload rather than left to the
@@ -138,7 +148,7 @@ const RECONCILIATION_WARNING =
  * `averageOa`. An empty list yields nulls throughout, which is what a site with
  * no telemetry must report.
  */
-function buildKpi(machines: MachineOa[]): Kpi {
+export function buildKpi(machines: MachineOa[]): Kpi {
   const oaPct = averageOa(machines);
   // Q-04. Both sums are over the SAME machine set and the SAME scope as
   // `oa_pct` - the order each machine has loaded now - because the card shows
@@ -159,28 +169,69 @@ function buildKpi(machines: MachineOa[]): Kpi {
     actual_qty: actual,
     shot_count: sumMachineField(machines, (m) => m.shotCount),
     // Not `0`. A site with no measured window has not had a downtime-free
-    // window; it has had no window at all. Needs `StatusStartTime`, which is a
-    // Float64 of unknown epoch in the live schema (§4.3d).
+    // window; it has had no window at all. `StatusStartTime`'s epoch is now
+    // confirmed (influx/queries.ts), but this still needs a per-machine
+    // cumulative-downtime rollup over the window, not just each machine's
+    // CURRENT stop, which is all domain/alerts.ts computes.
     downtime_sec: null,
   };
+}
+
+/**
+ * The two machine-level filters, travelling together because they narrow the
+ * same rows in the same two places and a payload where only one of them reached
+ * the %OA set is the exact defect the filter row exists to prevent.
+ */
+interface MachineScope {
+  /** True for a machine row the Process filter keeps. */
+  process: (m: { process: string | null }) => boolean;
+  /** True for a machine row the Zone filter keeps. */
+  zone: (m: { zone: string | null }) => boolean;
+  /**
+   * One machine's zone tag, or `null` when the census has not seen it.
+   *
+   * The %OA rows come from `production_machine_io`, which carries no `zone`
+   * column, so the tag is looked up on the machine instead of selected in the
+   * query. Zone is an attribute of the machine, not of a shot, so the census's
+   * answer is the same answer a `GROUP BY zone` would have given - and this
+   * costs no second query and no change to a reconciled SQL statement.
+   *
+   * A machine producing shots that the status query has no row for resolves to
+   * `null` and is therefore dropped by any narrowed zone, which is the same
+   * rule an untagged machine gets.
+   */
+  zoneOf: (plant: string, machine: string) => string | null;
 }
 
 function buildCompany(
   company: CompanyMasterData,
   snapshot: LiveSnapshot,
   oaByPlant: Map<string, MachineOa[]>,
+  /** The instant liveness and freshness are measured from - the window's end. */
+  asOf: Date,
+  /** The wall clock, for the site's header clock only. Never for an age. */
   now: Date,
+  /**
+   * True when the served window spans more than one shift, which switches off
+   * `Order End` layer 2 - see the note at its call site.
+   */
+  multiShiftWindow: boolean,
   warnings: string[],
   plantInScope: (p: { code: string }) => boolean,
-  processInScope: (m: { process: string | null }) => boolean,
+  scope: MachineScope,
   /**
    * The one process the Grafana drill-down opens on. Not `all`: the board's
    * SQL compares `"process"` to a single value, so a link has to choose even
    * where this board does not (config/policy.ts).
    */
   linkProcess: Process,
-): { company: CompanySummary; oaMachines: MachineOa[]; oaPlants: PlantMasterData[] } {
-  const nowMs = now.getTime();
+): {
+  company: CompanySummary;
+  oaMachines: MachineOa[];
+  oaPlants: PlantMasterData[];
+  censusPlants: PlantMasterData[];
+} {
+  const nowMs = asOf.getTime();
 
   /**
    * The zones this plant is reporting on the process the link opens on, so the
@@ -191,7 +242,13 @@ function buildCompany(
   const zonesOf = (plantCode: string): string[] => {
     const zones = new Set<string>();
     for (const m of snapshot.machines[plantCode] ?? []) {
-      if (m.zone && (m.process === null || m.process === linkProcess)) zones.add(m.zone);
+      // Narrowed by the Zone filter too, so a reader who has scoped this board
+      // to one zone lands on that zone rather than on the plant's whole list.
+      // Without the gate the link would widen the scope the click came from,
+      // which is the one thing a drill-down must never do.
+      if (m.zone && (m.process === null || m.process === linkProcess) && scope.zone(m)) {
+        zones.add(m.zone);
+      }
     }
     return [...zones].sort();
   };
@@ -241,10 +298,21 @@ function buildCompany(
   // are zeroed too, so a company never disagrees with the sum of its plants.
   const reporting = isReporting(status);
 
-  // Resolved before the plants are built, not after: `Order End` layer 2 judges
-  // each machine's loaded order against THIS company's current shift, so the
-  // shift has to exist before any plant's %OA set is decided.
-  const shift = resolveShift(company.shiftConfig, now);
+  /*
+   * Resolved before the plants are built, not after: `Order End` layer 2 judges
+   * each machine's loaded order against THIS company's current shift, so the
+   * shift has to exist before any plant's %OA set is decided.
+   *
+   * As at `asOf`, not `now`, for the same reason liveness is. The rule asks
+   * "was this order created in the shift being looked at" - and against a
+   * window that ended three weeks ago, the shift running at THIS instant is not
+   * a shift any of those orders could have been created in. Every machine then
+   * fails layer 2, drops out of the %OA set, and the strip's efficiency,
+   * achievement and attention cards all come back null on a window whose rows
+   * are full of production. That is the whole KPI half of the board going blank
+   * on exactly the historical windows the date picker exists to serve.
+   */
+  const shift = resolveShift(company.shiftConfig, asOf);
 
   const built = base.map((b) => {
     const census = reporting
@@ -271,7 +339,9 @@ function buildCompany(
            * whose plants have ALL gone silent rolls up to `no_data` and zeroes
            * here.
            */
-          observations: (snapshot.machines[b.master.code] ?? []).filter(processInScope),
+          observations: (snapshot.machines[b.master.code] ?? [])
+            .filter(scope.process)
+            .filter(scope.zone),
           machineExclusions: b.master.machineExclusions,
         })
       : null;
@@ -305,10 +375,11 @@ function buildCompany(
     const observedOa = publishes
       ? (oaByPlant.get(b.master.code) ?? [])
           .filter((m) => !b.master.machineExclusions.includes(m.machine))
-          // Same process gate as the census above it. A %OA averaged over a
-          // different machine set than the one TOTAL counts is the defect the
-          // whole filter row exists to prevent.
-          .filter(processInScope)
+          // The same two gates as the census above it, in the same order. A
+          // %OA averaged over a different machine set than the one TOTAL counts
+          // is the defect the whole filter row exists to prevent.
+          .filter(scope.process)
+          .filter((m) => scope.zone({ zone: scope.zoneOf(m.plant, m.machine) }))
       : [];
 
     /*
@@ -322,11 +393,45 @@ function buildCompany(
      * THS on 2026-08-27. See domain/orderShift.ts for why BACKEND-HANDOVER
      * §4.5(c) concluded it could not be done, and what the panel source shows.
      */
+    /*
+     * ...and it is applied ONLY while the board is showing a single shift.
+     *
+     * Layer 2 is a "what is loaded right now" rule. Its whole justification is
+     * that a machine sitting at `Order End` with last shift's order should not
+     * drag down the shift being watched - which presupposes there IS one shift
+     * being watched. Over a window the reader chose, there is not: 14-16 August
+     * is six shifts, and asking "was this order created in the single shift
+     * running at the window's end" throws away five sixths of the work by
+     * construction.
+     *
+     * Measured on the live instance, 2026-09-03, before this gate: the window
+     * 14-16 Aug holds 11,082 rows carrying a real order and 16,071 pieces, and
+     * the board reported %OA, %Achievement and plants-needing-attention as
+     * `null`, `null` and `0` - three of the six KPI cards blank over two days
+     * of genuine production. Worse than blank, it was *inconsistent*: 6-10
+     * August happened to end inside a shift its orders belonged to and read
+     * 83.8%, so the same board answered two comparable windows in two
+     * incompatible ways with nothing on screen to say why.
+     *
+     * So the rule keeps its scope and loses what was never its scope. Nothing
+     * changes for the live board or for any quick range up to a day - the
+     * overwhelming majority of requests - and a multi-shift window measures
+     * every order worked inside it, which is the only reading the window itself
+     * supports. The envelope says which of the two happened rather than leaving
+     * a reader to infer it from a number.
+     *
+     * Flagged for the design-doc owner: this is a scope decision about a
+     * reconciled metric (DESIGN.md §8.4), not a refactor. The reconciliation
+     * against the production board is unaffected, because that board is always
+     * showing one current shift and so always takes the first branch.
+     */
     const oaSplit = splitByOrderShift(observedOa, shift);
-    const oaMachines = oaSplit.current;
+    const oaMachines = multiShiftWindow ? observedOa : oaSplit.current;
 
     const node = `${company.code}/${b.master.code}`;
-    for (const w of orderShiftWarnings(node, oaSplit)) warnings.push(w);
+    // Only when layer 2 actually ran - otherwise these would report machines
+    // being excluded from an average they are in.
+    if (!multiShiftWindow) for (const w of orderShiftWarnings(node, oaSplit)) warnings.push(w);
     for (const w of oaWarnings(node, oaMachines)) warnings.push(w);
     for (const w of achievementWarnings(node, oaMachines)) warnings.push(w);
 
@@ -363,6 +468,21 @@ function buildCompany(
   const oaPlants = built.filter((b) => b.publishes).map((b) => b.master);
 
   /*
+   * The plants the CENSUS was taken over: `scopedPlants`, so the Lamp filter is
+   * in and the liveness gate is not.
+   *
+   * Distinct from `oaPlants` above, and the difference is why both are returned.
+   * `oaPlants` is gated on `publishes`, which is a statement about the trend - a
+   * site that has aged into `no_data` stops drawing a chart. The census has no
+   * freshness concept at all (see the long note at its `buildPlantCensus` call),
+   * so a plant that has gone quiet still contributes the machines sitting in the
+   * query window. Q-06 is cut from census rows, so it has to follow the census
+   * set; cutting it with `oaPlants` would drop a real open stop at a plant whose
+   * freshest row is sixteen minutes old.
+   */
+  const censusPlants = built.map((b) => b.master);
+
+  /*
    * A company row links to a PLANT board, because there is no company one -
    * see @dashboard/domain-shared. Chosen from the scoped plants, so the link follows
    * the Lamp filter, and preferring one that is actually on the air: at THS
@@ -394,6 +514,7 @@ function buildCompany(
     },
     oaMachines,
     oaPlants,
+    censusPlants,
   };
 }
 
@@ -433,13 +554,84 @@ function cacheAgeSec(snapshot: LiveSnapshot, nowMs: number): number | undefined 
 export function buildGlobalOverview(opts: {
   snapshot: LiveSnapshot;
   filters: FiltersApplied;
+  /**
+   * The window `snapshot` was measured over - resolved by the route, not
+   * inferred here.
+   *
+   * Required rather than defaulted, because a default would be a claim about
+   * data this function did not fetch. The route knows whether it served the
+   * poller's 24 h or assembled a window of its own; this only reports it.
+   */
+  window: ServedWindow;
   env: Env;
   now?: Date;
 }): GlobalOverview {
   const now = opts.now ?? new Date();
-  const { snapshot, filters, env } = opts;
+  const { snapshot, filters, window, env } = opts;
 
+  /*
+   * The instant everything about the DATA is measured against - the end of the
+   * served window, not the wall clock.
+   *
+   * The two are the same for every `now`-anchored window, which is nearly every
+   * request, so this changes nothing on the default path. It matters the moment
+   * a reader picks a window that ended days ago, and it is not a nicety: site
+   * liveness, stop durations and the trend's hour slots are all ages measured
+   * from something, and measuring them from `now` while the rows come from last
+   * week makes every site read "not reporting", empties the chart, and inflates
+   * every stop by however long ago the window was.
+   *
+   * The project's own integrity checks are what surfaced this - a historical
+   * window produced alerts attributed to companies the same payload described
+   * as not reporting, which is incoherent rather than merely odd. "Was this
+   * site reporting?" only has a meaningful answer as at the end of the window
+   * being asked about.
+   *
+   * `now` stays in use for the things that really are about the present: the
+   * envelope's `generated_at`, the per-company header clock, the cache age, and
+   * the health of the sources themselves.
+   */
+  const asOf = new Date(Date.parse(window.to) || now.getTime());
   const warnings = [KPI_WARNING, ACHIEVEMENT_SCOPE_WARNING, RECONCILIATION_WARNING];
+
+  /*
+   * Is this window wider than the one `Order End` layer 2 was reconciled in?
+   *
+   * The threshold is `OA_WINDOW_HOURS` and not a shift length, and the
+   * difference matters. The obvious reading - "layer 2 is a single-shift rule,
+   * so switch it off past the longest shift (12 h)" - is wrong, and switching
+   * it off at 12 h would take the DEFAULT board with it: the default window is
+   * 24 h, and the figure reconciled against the production board on 2026-08-27
+   * (THS 81.0%, plant 6332 69.8%) is precisely "a rolling 24 h of orders, then
+   * layer 2". The rule and that window are one configuration, not two.
+   *
+   * So the pairing is what is preserved: any window at or inside the %OA window
+   * asks the same question at a narrower scope and keeps the rule, which is
+   * every quick range and the live board. Past it - a week, or the reader's own
+   * dates - the window is no longer "now-ish" and "the current shift" has no
+   * referent for the orders in it.
+   *
+   * Measured on the SERVED window rather than on `range`, so a clamped or
+   * absolute window is judged on what was actually read.
+   */
+  const multiShiftWindow = window.hours > OA_WINDOW_HOURS;
+  if (multiShiftWindow) {
+    warnings.push(
+      `this window spans ${Math.round(window.hours)} h, wider than the ${OA_WINDOW_HOURS} h the ` +
+        '%OA rule was reconciled in, so %OA and %Achievement count every order worked inside it. ' +
+        '`Order End` layer 2 (DESIGN.md §8.4), which drops a machine whose loaded order predates ' +
+        'the CURRENT shift, has no single shift to judge against here and is not applied; on the ' +
+        'default board and on every quick range it is',
+    );
+  }
+
+  const historical = asOf.getTime() < now.getTime() - 60_000;
+  if (historical) {
+    warnings.push(
+      `this board is a historical window ending ${window.to}: liveness, stop durations and the ` +
+        'chart are measured as at that instant, not as at now',
+    );
+  }
 
   /*
    * The Process filter - the plant board's `${process_var}`, and now really
@@ -452,6 +644,38 @@ export function buildGlobalOverview(opts: {
   const wantProcess = filters.process;
   const processInScope = (m: { process: string | null }) =>
     wantProcess === 'all' || m.process === wantProcess;
+
+  /*
+   * The Zone filter - the plant board's `${Zone_var}`, one level below the Lamp
+   * picker and matched on the machine, because `zone` is a tag on the machine
+   * and no site row above it carries one.
+   *
+   * Parsed once here rather than per plant: the predicate runs over every
+   * machine of every company on every request.
+   */
+  const zoneInScope = zoneMatcher(filters.zone);
+
+  /*
+   * machine -> its tags, from the census rows, for the two tables that carry
+   * neither: the %OA rows (`production_machine_io`) and the hourly trend rows.
+   * Built once and shared by every company; the key is `plant|machine` because
+   * machine names repeat across plants (`I1` exists at more than one) and a map
+   * keyed on the name alone would put one plant's zone on another plant's
+   * machine.
+   */
+  const tagsOfMachine = new Map<string, { process: string | null; zone: string | null }>();
+  for (const [plant, machines] of Object.entries(snapshot.machines)) {
+    for (const m of machines) {
+      tagsOfMachine.set(`${plant}|${m.machine}`, { process: m.process, zone: m.zone });
+    }
+  }
+  const tagsOf = (plant: string, machine: string) =>
+    tagsOfMachine.get(`${plant}|${machine}`) ?? { process: null, zone: null };
+  const machineScope: MachineScope = {
+    process: processInScope,
+    zone: zoneInScope,
+    zoneOf: (plant, machine) => tagsOf(plant, machine).zone,
+  };
   if (snapshot.unknownStatuses.length > 0) {
     warnings.push(
       `unrecognised machine status from InfluxDB, excluded from the census: ${snapshot.unknownStatuses.slice(0, 5).join('; ')}`,
@@ -496,10 +720,13 @@ export function buildGlobalOverview(opts: {
       c,
       snapshot,
       oaByPlant,
+      // As at the end of the window, not as at now - see `asOf` above.
+      asOf,
       now,
+      multiShiftWindow,
       warnings,
       inPlantScope,
-      processInScope,
+      machineScope,
       // `all` is this board's scope, never a link's: the drill-down has to name
       // one process, and Injection is the one it opens on.
       wantProcess === 'all' ? DEFAULT_LINK_PROCESS : wantProcess,
@@ -529,21 +756,80 @@ export function buildGlobalOverview(opts: {
   const reportingMachines = reporting.flatMap((b) => b.oaMachines);
 
   /*
-   * Q-05. Filtered through exactly the gates the KPI strip is filtered through -
-   * the region filter, the company liveness roll-up, the per-plant liveness
-   * check and `machineExclusions` - so the chart is a history of the same set of
-   * machines the cards above it are measuring, not of everything in the table.
+   * Q-05. Filtered through the SITE-level gates the KPI strip is filtered
+   * through - the region filter, the company liveness roll-up, the per-plant
+   * liveness check and `machineExclusions` - so the chart is a history of the
+   * same plants the cards above it are measuring.
+   *
+   * **Not** through the two machine-level ones, and that is an open gap rather
+   * than a decision: narrow the board to one process or one zone and the cards
+   * move while this chart still draws the whole plant. The hourly rows carry
+   * neither tag (`MachineHourOaRow` is bucket/plant/machine/order only), so the
+   * only way to gate them is through `tagsOf` above - and a machine the census
+   * has no row for would then be dropped from the chart entirely rather than
+   * merely uncounted. The two tables are explicitly allowed to disagree about
+   * which machines exist (see the %OA note in buildCompany), so that trade -
+   * a possibly-blank chart against a chart that is too wide - is the design
+   * owner's to make, not one to settle silently while wiring a filter.
+   * Applying it is a two-line change here once it is settled.
    */
   const trendPlants = new Map(
     reporting.flatMap((b) => b.oaPlants.map((p) => [p.code, p.machineExclusions] as const)),
   );
+
+  /*
+   * Q-06's scope, as a predicate over census rows.
+   *
+   * Every other figure in this payload is built from `shown` and `reporting`,
+   * which carry the region and Lamp filters, and through `machineScope`, which
+   * carries Process and Zone. The alerts were built from the raw snapshot
+   * instead, and that was a defect rather than an approximation: scope the board
+   * to one base and the panel still listed stops at the bases the reader had
+   * filtered out. `alert-provenance` in @dashboard/domain-shared is the rule that
+   * says so - a company absent from `companies` cannot be reporting a fault in
+   * the same payload - and with violations fatal outside production the response
+   * was a 500, so `?region=THS` returned no board at all.
+   *
+   * Assembled from the same four gates the STOP figure passes, in the same
+   * order, so the list and the number above it count one machine set:
+   *
+   *   plant of a company on screen AND reporting  ->  `censusPlants`
+   *   machine not excluded by master data         ->  `machineExclusions`
+   *   machine kept by the Process filter          ->  `machineScope.process`
+   *   machine kept by the Zone filter             ->  `machineScope.zone`
+   */
+  const censusPlants = new Map(
+    reporting.flatMap((b) => b.censusPlants.map((p) => [p.code, p.machineExclusions] as const)),
+  );
+  const alertInScope = (m: {
+    plant: string;
+    machine: string;
+    process: string | null;
+    zone: string | null;
+  }): boolean => {
+    const exclusions = censusPlants.get(m.plant);
+    if (exclusions === undefined || exclusions.includes(m.machine)) return false;
+    return machineScope.process(m) && machineScope.zone(m);
+  };
   const trendBuild = buildTrend({
     hours: snapshot.trend.filter((h) => {
       const exclusions = trendPlants.get(h.plant);
       return exclusions !== undefined && !exclusions.includes(h.machine);
     }),
-    now,
-    points: TREND_POINTS,
+    /* The newest bucket is the window's last hour, not the current one: a
+       historical window binned against `now` would slot last week's rows into
+       hours that have not happened and draw an empty chart. */
+    now: asOf,
+    /*
+     * As many hourly buckets as the served window holds, not a constant 24.
+     *
+     * TREND_POINTS was right while every response covered the poller's fixed
+     * day; now that the window is the reader's, a 24-bucket chart under a
+     * seven-day board would draw the last day and caption it as a week. Bounded
+     * below at 2 because buildTrend needs a span to bin into, and rounded
+     * because a clamped window is not a whole number of hours.
+     */
+    points: Math.max(2, Math.round(window.hours)),
     siteOf: (plant) => companyOfPlant.get(plant) ?? null,
   });
   for (const w of trendWarnings(trendBuild)) warnings.push(w);
@@ -556,6 +842,7 @@ export function buildGlobalOverview(opts: {
       cacheAgeSec: cacheAgeSec(snapshot, now.getTime()),
     }),
     filters_applied: filters,
+    window,
     totals: {
       counts: addCounts(reportingCompanies.map((c) => c.counts)),
       ...buildKpi(reportingMachines),
@@ -575,8 +862,18 @@ export function buildGlobalOverview(opts: {
     },
     companies,
     trend: trendBuild.points,
-    // Q-06 is an open decision (BACKEND-HANDOVER §7): production_alarm_logs
-    // has severity and class but nothing to satisfy `zAlert.owner`.
-    alerts: [],
+    // Q-06 - see domain/alerts.ts for what this reads and what it still
+    // cannot know (severity/category/owner are placeholders, not real
+    // classifications, pending a decision on production_alarm_logs).
+    // `asOf`, so a stop still open at the end of a historical window is
+    // reported at the length it had reached THEN - measuring to `now` would add
+    // however long ago the window was to every row.
+    alerts: buildLongestActiveStops(
+      snapshot,
+      companyOfPlant,
+      asOf,
+      filters.alertsLimit ?? 10,
+      alertInScope,
+    ),
   };
 }

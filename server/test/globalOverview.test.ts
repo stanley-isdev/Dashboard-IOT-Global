@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { zGlobalOverview, type MachineStatus } from '@dashboard/contract';
+import { zGlobalOverview, zMeta, type MachineStatus, type ServedWindow } from '@dashboard/contract';
 import { checkGlobalOverview } from '@dashboard/domain-shared';
 import { buildApp } from '../src/app.ts';
 import { loadEnv } from '../src/config/env.ts';
@@ -23,7 +23,13 @@ const ENV_WITH_INFLUX = loadEnv({
 });
 
 const NOW = new Date('2026-08-25T02:00:00.000Z');
-const FILTERS = { range: '24h', process: 'Injection', region: 'all', plant: 'all' } as const;
+const FILTERS = {
+  range: '24h',
+  process: 'Injection',
+  region: 'all',
+  plant: 'all',
+  zone: 'all',
+} as const;
 
 /**
  * A successful snapshot: each named plant was last seen `ageSec` ago, and
@@ -31,7 +37,11 @@ const FILTERS = { range: '24h', process: 'Injection', region: 'all', plant: 'all
  */
 function snapshot(
   ages: Record<string, number>,
-  machinesByPlant: Record<string, [string, MachineStatus][]> = {},
+  // Fourth tuple slot is optional: seconds the machine's CURRENT status has
+  // held, for Q-06 (`statusStartTime`). Omitted -> `null`, same as a real row
+  // with no `StatusStartTime` - excluded from `buildLongestActiveStops` rather
+  // than guessed into a duration.
+  machinesByPlant: Record<string, [string, MachineStatus, number?][]> = {},
   oa: MachineOa[] = [],
   trend: MachineHourOa[] = [],
 ): LiveSnapshot {
@@ -51,13 +61,15 @@ function snapshot(
   const machines = Object.fromEntries(
     Object.entries(machinesByPlant).map(([plant, list]) => [
       plant,
-      list.map(([machine, status]) => ({
+      list.map(([machine, status, statusStartAgeSec]) => ({
         plant,
         machine,
         process: 'Injection',
         zone: null,
         status,
         lastSeen: seenAt(ages[plant] ?? 0),
+        statusStartTime:
+          statusStartAgeSec === undefined ? null : NOW.getTime() - statusStartAgeSec * 1000,
       })),
     ]),
   );
@@ -132,11 +144,33 @@ function idle(plant: string, machine: string): MachineOa {
   };
 }
 
+/**
+ * The window every test below is measured over: the poller's own 24 h, ending
+ * at NOW.
+ *
+ * A fixture rather than a default on `buildGlobalOverview` itself, because the
+ * service is right to demand one - the window is a claim about where the
+ * numbers came from, and only the caller that fetched them knows it. Tests
+ * about windowing build their own; see windowedSnapshot.test.ts.
+ */
+const WINDOW: ServedWindow = {
+  from: new Date(NOW.getTime() - 24 * 3_600_000).toISOString(),
+  to: NOW.toISOString(),
+  hours: 24,
+  source: 'range',
+  chunks: 1,
+  clamped: false,
+};
+
+/** `buildGlobalOverview` with the default window filled in. */
+const overview = (opts: Omit<Parameters<typeof buildGlobalOverview>[0], 'window'>) =>
+  buildGlobalOverview({ window: WINDOW, ...opts });
+
 const build = (snap: LiveSnapshot) =>
-  buildGlobalOverview({ snapshot: snap, filters: FILTERS, env: ENV, now: NOW });
+  overview({ snapshot: snap, filters: FILTERS, env: ENV, now: NOW });
 
 const buildConnected = (snap: LiveSnapshot) =>
-  buildGlobalOverview({ snapshot: snap, filters: FILTERS, env: ENV_WITH_INFLUX, now: NOW });
+  overview({ snapshot: snap, filters: FILTERS, env: ENV_WITH_INFLUX, now: NOW });
 
 describe('buildGlobalOverview - phase 1 liveness', () => {
   it('satisfies the contract and every data-integrity invariant', () => {
@@ -450,7 +484,7 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
   });
 
   it('filters by region without breaking the coverage arithmetic', () => {
-    const payload = buildGlobalOverview({
+    const payload = overview({
       snapshot: snapshot({ '6332': 10, '6051': 5 }),
       filters: { ...FILTERS, region: 'TH' },
       env: ENV,
@@ -468,7 +502,7 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
    * same matcher - this asserts the endpoint honours what the URL says.
    */
   it('filters by a list of countries and companies, and counts only those', () => {
-    const payload = buildGlobalOverview({
+    const payload = overview({
       snapshot: snapshot({ '6332': 10, '6051': 5 }),
       filters: { ...FILTERS, region: 'TH,STJ' },
       env: ENV,
@@ -481,7 +515,7 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
   });
 
   it('serves none as an empty board - the scope the picker writes when All is tapped off', () => {
-    const payload = buildGlobalOverview({
+    const payload = overview({
       snapshot: snapshot({ '6332': 10, '6051': 5 }),
       filters: { ...FILTERS, region: 'none' },
       env: ENV,
@@ -495,7 +529,7 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
   });
 
   it('gives an unknown region an empty board rather than the whole fleet', () => {
-    const payload = buildGlobalOverview({
+    const payload = overview({
       snapshot: snapshot({ '6332': 10 }),
       filters: { ...FILTERS, region: 'ZZ' },
       env: ENV,
@@ -504,6 +538,225 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
     expect(payload.companies).toEqual([]);
     expect(payload.totals.companies_total).toBe(0);
     expect(checkGlobalOverview(payload)).toEqual([]);
+  });
+});
+
+describe('buildGlobalOverview - alerts (Q-06, longest active stops)', () => {
+  it('lists a stopped machine with its duration since StatusStartTime, and none for a running one', () => {
+    const payload = build(
+      snapshot({ '6332': 10 }, { '6332': [['I1', 'Stop', 3600], ['I2', 'Mass Pro', 3600]] }),
+    );
+    expect(payload.alerts).toHaveLength(1);
+    const a = payload.alerts[0]!;
+    expect(a.machine).toBe('I1');
+    expect(a.company).toBe('THS');
+    expect(a.plant).toBe('6332');
+    expect(a.duration_sec).toBe(3600);
+    expect(a.started_at).toBe(new Date(NOW.getTime() - 3600 * 1000).toISOString());
+    expect(a.category).toBe('other');
+    expect(a.owner).toBeNull();
+  });
+
+  it('orders by duration, longest first, across every site', () => {
+    const payload = build(
+      snapshot(
+        { '6332': 10, '6051': 10 },
+        {
+          '6332': [['I1', 'Stop', 60]],
+          '6051': [['M1', 'Stop', 7200]],
+        },
+      ),
+    );
+    expect(payload.alerts.map((a) => a.machine)).toEqual(['M1', 'I1']);
+  });
+
+  it('caps the list at 10 even when more machines are down', () => {
+    const machines: [string, MachineStatus, number][] = Array.from({ length: 13 }, (_, i) => [
+      `I${i}`,
+      'Stop',
+      (i + 1) * 60,
+    ]);
+    const payload = build(snapshot({ '6332': 10 }, { '6332': machines }));
+    expect(payload.alerts).toHaveLength(10);
+    // Highest index (i=12) has the longest duration (780 s), so it leads.
+    expect(payload.alerts[0]!.machine).toBe('I12');
+  });
+
+  it('honours a narrower alertsLimit from the Top-N picker', () => {
+    const machines: [string, MachineStatus, number][] = Array.from({ length: 13 }, (_, i) => [
+      `I${i}`,
+      'Stop',
+      (i + 1) * 60,
+    ]);
+    const payload = overview({
+      snapshot: snapshot({ '6332': 10 }, { '6332': machines }),
+      filters: { ...FILTERS, alertsLimit: 5 },
+      env: ENV,
+      now: NOW,
+    });
+    expect(payload.alerts).toHaveLength(5);
+    expect(payload.alerts[0]!.machine).toBe('I12');
+  });
+
+  it('excludes a stop with no StatusStartTime rather than inventing a duration', () => {
+    const payload = build(snapshot({ '6332': 10 }, { '6332': [['I1', 'Stop']] }));
+    expect(payload.alerts).toEqual([]);
+  });
+
+/*
+   * The scope, which this list did not have.
+   *
+   * Q-06 was built from the raw snapshot while every other figure went through
+   * the region, Lamp, Process and Zone filters. So narrowing the board left the
+   * panel listing stops at sites that were no longer on it - and because
+   * `alert-provenance` says a company absent from `companies` cannot be
+   * reporting a fault, and a violation is fatal outside production, the response
+   * to `?region=THS` was a 500 rather than a narrower board.
+   *
+   * Each of these asserts the invariants as well as the rows: the rule is what
+   * caught the bug, and it is what has to keep holding.
+   */
+  it('narrows to the region on the board, and stays coherent doing it', () => {
+    const snap = snapshot(
+      { '6332': 10, '6051': 10 },
+      { '6332': [['I1', 'Stop', 600]], '6051': [['M1', 'Stop', 900]] },
+    );
+
+    const both = overview({ snapshot: snap, filters: FILTERS, env: ENV, now: NOW });
+    expect(both.alerts.map((a) => a.company)).toEqual(['ASI', 'THS']);
+
+    const thsOnly = overview({
+      snapshot: snap,
+      filters: { ...FILTERS, region: 'THS' },
+      env: ENV,
+      now: NOW,
+    });
+    expect(thsOnly.companies.map((c) => c.code)).toEqual(['THS']);
+    expect(thsOnly.alerts.map((a) => a.machine)).toEqual(['I1']);
+    expect(checkGlobalOverview(thsOnly)).toEqual([]);
+  });
+
+  /*
+   * The base is on the board but sends nothing, which is the sharpest form of
+   * the rule: being in `companies` is not enough to be allowed a fault.
+   */
+  it('gives a base on the board but not reporting no alerts at all', () => {
+    const payload = overview({
+      snapshot: snapshot({ '6332': 10 }, { '6332': [['I1', 'Stop', 600]] }),
+      filters: { ...FILTERS, region: 'JP' },
+      env: ENV,
+      now: NOW,
+    });
+    expect(payload.companies.map((c) => c.code)).toEqual(['STJ']);
+    expect(payload.companies[0]!.status).toBe('no_data');
+    expect(payload.alerts).toEqual([]);
+    expect(checkGlobalOverview(payload)).toEqual([]);
+  });
+
+  it('empties the list when the region picker has nothing ticked', () => {
+    const payload = overview({
+      snapshot: snapshot({ '6332': 10 }, { '6332': [['I1', 'Stop', 600]] }),
+      filters: { ...FILTERS, region: 'none' },
+      env: ENV,
+      now: NOW,
+    });
+    expect(payload.companies).toEqual([]);
+    expect(payload.alerts).toEqual([]);
+    expect(checkGlobalOverview(payload)).toEqual([]);
+  });
+
+  it('follows the Lamp filter, so the panel is about the plants on screen', () => {
+    const payload = overview({
+      snapshot: snapshot(
+        { '6332': 10, '6338': 10 },
+        { '6332': [['I1', 'Stop', 600]], '6338': [['J1', 'Stop', 900]] },
+      ),
+      filters: { ...FILTERS, plant: '6332' },
+      env: ENV,
+      now: NOW,
+    });
+    expect(payload.alerts.map((a) => a.plant)).toEqual(['6332']);
+    expect(checkGlobalOverview(payload)).toEqual([]);
+  });
+
+  it('follows the Process filter', () => {
+    const payload = overview({
+      // The fixture tags every machine `Injection`, so a Surface board has none.
+      snapshot: snapshot({ '6332': 10 }, { '6332': [['I1', 'Stop', 600]] }),
+      filters: { ...FILTERS, process: 'Surface' },
+      env: ENV,
+      now: NOW,
+    });
+    expect(payload.alerts).toEqual([]);
+    expect(checkGlobalOverview(payload)).toEqual([]);
+  });
+
+  it('follows the Zone filter, matched on the machine row', () => {
+    const snap = snapshot(
+      { '6332': 10 },
+      { '6332': [['I1', 'Stop', 600], ['I2', 'Stop', 900]] },
+    );
+    snap.machines['6332']![0]!.zone = 'A';
+    snap.machines['6332']![1]!.zone = 'B';
+
+    const payload = overview({
+      snapshot: snap,
+      filters: { ...FILTERS, zone: 'A' },
+      env: ENV,
+      now: NOW,
+    });
+    expect(payload.alerts.map((a) => a.machine)).toEqual(['I1']);
+    expect(checkGlobalOverview(payload)).toEqual([]);
+  });
+
+  /*
+   * The claim this module's own comment makes - that reading the census rows
+   * means it "can never disagree with the STOP count on the KPI strip" - only
+   * held while nothing was filtered. Asserted at every scope, which is where it
+   * stopped holding.
+   *
+   * Equality is not a general invariant and must not be turned into one: the
+   * list is capped at `alertsLimit` and drops a stop with no `StatusStartTime`,
+   * either of which legitimately makes it SHORTER than the figure. What has to
+   * hold is that it is never about a different machine set - so the fixture
+   * gives every stop a start time and keeps the counts well under the cap,
+   * leaving the scope as the only thing the two could disagree about.
+   */
+  it('is cut from the same stops the KPI strip counts, at every scope', () => {
+    const snap = snapshot(
+      { '6332': 10, '6051': 10 },
+      {
+        '6332': [['I1', 'Stop', 600], ['I2', 'Mass Pro', 600]],
+        '6051': [['M1', 'Stop', 900], ['M2', 'Stop', 30]],
+      },
+    );
+    for (const region of ['all', 'TH', 'THS', 'ASI', 'JP', 'none']) {
+      const payload = overview({
+        snapshot: snap,
+        filters: { ...FILTERS, region },
+        env: ENV,
+        now: NOW,
+      });
+      expect(payload.alerts, `region=${region}`).toHaveLength(payload.totals.counts.stopped);
+      expect(checkGlobalOverview(payload), `region=${region}`).toEqual([]);
+    }
+  });
+
+  it('excludes a stopped machine on a plant master data has never heard of', () => {
+    const snap = snapshot({ '6332': 10 }, { '6332': [['I1', 'Stop', 60]] });
+    snap.machines['ORPHAN-PLANT'] = [
+      {
+        plant: 'ORPHAN-PLANT',
+        machine: 'X1',
+        process: 'Injection',
+        zone: null,
+        status: 'Stop',
+        lastSeen: null,
+        statusStartTime: NOW.getTime() - 999_000,
+      },
+    ];
+    const payload = build(snap);
+    expect(payload.alerts.map((a) => a.plant)).not.toContain('ORPHAN-PLANT');
   });
 });
 
@@ -578,6 +831,82 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
     );
   });
 
+  /**
+   * The other half of layer 2: it is a single-shift rule, and a window the
+   * reader picked is usually not a single shift.
+   *
+   * Measured on the live instance on 2026-09-03 before this was gated: the
+   * window 14-16 August holds 11,082 rows carrying a real order and 16,071
+   * pieces, and the board answered %OA, %Achievement and plants-needing-
+   * attention with null, null and 0 - half the KPI strip blank over two days of
+   * genuine production, because not one of those orders was created in the one
+   * shift running at the window's end.
+   */
+  it('keeps every order worked inside a window wider than the %OA window', () => {
+    const stale = { ...onOrder('6332', 'I5', 47.5, 295, 400), createdRaw: ['2026-08-24 13:06:23'] };
+    const snap = snapshot({ '6332': 10 }, { '6332': boardMachines }, [
+      onOrder('6332', 'IC4', 48.9, 137, 220),
+      stale,
+      onOrder('6332', 'IA1', 89.9, 71, 309),
+      onOrder('6332', 'P1I1', 93, 41, 816),
+    ]);
+
+    const week = buildGlobalOverview({
+      snapshot: snap,
+      filters: FILTERS,
+      window: { ...WINDOW, hours: 168, source: 'absolute', chunks: 3 },
+      env: ENV,
+      now: NOW,
+    });
+    const p6332 = week.companies
+      .find((c) => c.code === 'THS')!
+      .plants.find((p) => p.code === '6332')!;
+
+    // All four, including the one the single-shift rule would have dropped:
+    // (48.9 + 47.5 + 89.9 + 93) / 4 = 69.8.
+    expect(p6332.kpi.oa_machine_count).toBe(4);
+    expect(p6332.kpi.oa_pct).toBe(69.8);
+    expect(p6332.kpi.plan_qty).toBe(220 + 400 + 309 + 816);
+
+    // Said on the envelope, never inferred from the number moving.
+    expect(week.meta.warnings.join(' ')).toMatch(/Order End` layer 2 .* is not applied/);
+    /* And the PER-PLANT exclusion notice does not fire, because nothing was
+       excluded - reporting a machine as dropped from an average it is in would
+       be worse than saying nothing. Matched on the `THS/6332: n machine(s)`
+       form rather than on the phrase alone: RECONCILIATION_WARNING is a static
+       string that also describes the rule, and it is on every payload. */
+    expect(week.meta.warnings.join(' ')).not.toMatch(
+      /THS\/6332: \d+ machine\(s\) are running an order created in an earlier shift/,
+    );
+  });
+
+  it('still applies layer 2 on every window the rule was reconciled in', () => {
+    const stale = { ...onOrder('6332', 'I5', 47.5, 295, 400), createdRaw: ['2026-08-24 13:06:23'] };
+    const snap = snapshot({ '6332': 10 }, { '6332': boardMachines }, [
+      onOrder('6332', 'IC4', 48.9, 137, 220),
+      stale,
+      onOrder('6332', 'IA1', 89.9, 71, 309),
+      onOrder('6332', 'P1I1', 93, 41, 816),
+    ]);
+
+    // 8 h and the default 24 h both sit inside OA_WINDOW_HOURS, so both keep
+    // the rule and both must still produce the board's reconciled figure.
+    for (const hours of [8, 24]) {
+      const payload = buildGlobalOverview({
+        snapshot: snap,
+        filters: FILTERS,
+        window: { ...WINDOW, hours },
+        env: ENV,
+        now: NOW,
+      });
+      const plant = payload.companies
+        .find((c) => c.code === 'THS')!
+        .plants.find((p) => p.code === '6332')!;
+      expect(plant.kpi.oa_machine_count).toBe(3);
+      expect(plant.kpi.oa_pct).toBe(77.3);
+    }
+  });
+
   it("puts the board's 69.8% on the card, at plant, company and group level", () => {
     const payload = build(boardSnapshot());
     const ths = payload.companies.find((c) => c.code === 'THS')!;
@@ -640,7 +969,7 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
     // infer that, so the payload states it (the D-19 lesson applied to Q-04).
     const warnings = build(boardSnapshot()).meta.warnings.join(' ');
     expect(warnings).toMatch(/LOT SIZE of the order each machine has loaded now/);
-    expect(warnings).toMatch(/%Achievement \(Q-04\) and the hourly trend \(Q-05\) are real/);
+    expect(warnings).toMatch(/%Achievement \(Q-04\), the hourly trend \(Q-05\) and alerts \(Q-06\) are real/);
   });
 
   it('reports no plan rather than 0% when the orders carry none', () => {
@@ -713,7 +1042,7 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
     snap.oaOk = false;
     snap.oaError = 'InfluxDB returned HTTP 500 with an empty body';
 
-    const payload = buildGlobalOverview({
+    const payload = overview({
       snapshot: snap,
       filters: FILTERS,
       env: ENV_WITH_INFLUX,
@@ -752,6 +1081,9 @@ describe('buildGlobalOverview - phase 4 hourly trend (Q-05)', () => {
       machine,
       oaPct,
       poSlots: 1,
+      qtyPcs: null,
+      shotCount: null,
+      plans: {},
     };
   }
 
@@ -832,7 +1164,7 @@ describe('buildGlobalOverview - phase 4 hourly trend (Q-05)', () => {
   });
 
   it('leaves the chart out of the region the filter excluded', () => {
-    const payload = buildGlobalOverview({
+    const payload = overview({
       snapshot: snapshot({ '6332': 10 }, {}, [], [machineHour('6332', 'I5', 0, 80)]),
       filters: { ...FILTERS, region: 'JP' },
       env: ENV_WITH_INFLUX,
@@ -845,7 +1177,7 @@ describe('buildGlobalOverview - phase 4 hourly trend (Q-05)', () => {
 
   it('keeps the last known chart when the hourly query starts failing, and says so', () => {
     const base = snapshot({ '6332': 10 }, {}, [], [machineHour('6332', 'I5', 0, 80)]);
-    const payload = buildGlobalOverview({
+    const payload = overview({
       snapshot: {
         ...base,
         trendOk: false,
@@ -891,7 +1223,14 @@ describe('GET /api/v1/global-overview', () => {
     expect(payload.companies).toHaveLength(9);
     // `process: 'all'`, not `'Injection'`. No query filters by process, so
     // anything narrower here would name a scope the numbers do not have.
-    expect(payload.filters_applied).toEqual({ range: '24h', process: 'all', region: 'all', plant: 'all' });
+    expect(payload.filters_applied).toEqual({
+      range: '24h',
+      process: 'all',
+      region: 'all',
+      plant: 'all',
+      zone: 'all',
+      alertsLimit: 10,
+    });
 
     await app.close();
   });
@@ -920,13 +1259,13 @@ describe('GET /api/v1/global-overview', () => {
     // a filter that reported itself applied while nothing was filtered.
     const snap = snapshot({ '6332': 10 }, { '6332': [] });
     snap.machines['6332'] = [
-      { plant: '6332', machine: 'I1', process: 'Injection', zone: '2A-A', status: 'Mass Pro', lastSeen: null },
-      { plant: '6332', machine: 'I2', process: 'Injection', zone: '2A-B', status: 'Stop', lastSeen: null },
-      { plant: '6332', machine: 'HC2', process: 'Surface', zone: '2A-B', status: 'Mass Pro', lastSeen: null },
+      { plant: '6332', machine: 'I1', process: 'Injection', zone: '2A-A', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+      { plant: '6332', machine: 'I2', process: 'Injection', zone: '2A-B', status: 'Stop', lastSeen: null, statusStartTime: null },
+      { plant: '6332', machine: 'HC2', process: 'Surface', zone: '2A-B', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
     ];
 
-    const all = buildGlobalOverview({ snapshot: snap, filters: { ...FILTERS, process: 'all' }, env: ENV, now: NOW });
-    const inj = buildGlobalOverview({ snapshot: snap, filters: { ...FILTERS, process: 'Injection' }, env: ENV, now: NOW });
+    const all = overview({ snapshot: snap, filters: { ...FILTERS, process: 'all' }, env: ENV, now: NOW });
+    const inj = overview({ snapshot: snap, filters: { ...FILTERS, process: 'Injection' }, env: ENV, now: NOW });
 
     const p = (payload: typeof all) =>
       payload.companies.find((c) => c.code === 'THS')!.plants.find((x) => x.code === '6332')!.counts;
@@ -936,6 +1275,112 @@ describe('GET /api/v1/global-overview', () => {
     expect(p(inj).total).toBe(2);
     expect(p(inj).running).toBe(1);
     expect(checkGlobalOverview(inj)).toEqual([]);
+  });
+
+  it('narrows the census to one zone, dropping the machines outside it', async () => {
+    // The Zone filter, one level below Lamp and matched on the machine. Same
+    // shape of proof as the process test above it: TOTAL has to move, not just
+    // the label.
+    const snap = snapshot({ '6332': 10 }, { '6332': [] });
+    snap.machines['6332'] = [
+      { plant: '6332', machine: 'I1', process: 'Injection', zone: '2A-A', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+      { plant: '6332', machine: 'I2', process: 'Injection', zone: '2A-B', status: 'Stop', lastSeen: null, statusStartTime: null },
+      { plant: '6332', machine: 'I3', process: 'Injection', zone: '2A-B', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+    ];
+
+    const all = overview({ snapshot: snap, filters: { ...FILTERS, zone: 'all' }, env: ENV, now: NOW });
+    const one = overview({ snapshot: snap, filters: { ...FILTERS, zone: '2A-B' }, env: ENV, now: NOW });
+
+    const p = (payload: typeof all) =>
+      payload.companies.find((c) => c.code === 'THS')!.plants.find((x) => x.code === '6332')!.counts;
+
+    expect(p(all).total).toBe(3);
+    expect(p(one).total).toBe(2);
+    expect(p(one).running).toBe(1);
+    expect(p(one).stopped).toBe(1);
+    expect(checkGlobalOverview(one)).toEqual([]);
+  });
+
+  it('drops an untagged machine from a narrowed zone but keeps it under all', async () => {
+    // The same rule the Process filter uses: "we do not know which zone this
+    // is" cannot satisfy "zone 2A-A only" without inventing the answer.
+    const snap = snapshot({ '6332': 10 }, { '6332': [] });
+    snap.machines['6332'] = [
+      { plant: '6332', machine: 'I1', process: 'Injection', zone: '2A-A', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+      { plant: '6332', machine: 'I2', process: 'Injection', zone: null, status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+    ];
+
+    const all = overview({ snapshot: snap, filters: { ...FILTERS, zone: 'all' }, env: ENV, now: NOW });
+    const one = overview({ snapshot: snap, filters: { ...FILTERS, zone: '2A-A' }, env: ENV, now: NOW });
+
+    const total = (payload: typeof all) =>
+      payload.companies.find((c) => c.code === 'THS')!.plants.find((x) => x.code === '6332')!.counts.total;
+
+    expect(total(all)).toBe(2);
+    expect(total(one)).toBe(1);
+  });
+
+  it('narrows %OA by zone too, through the census the production rows have no zone of their own', async () => {
+    // production_machine_io carries no `zone` column, so the tag is resolved on
+    // the machine. A %OA averaged over a different machine set than the one
+    // TOTAL counts is the defect the whole filter row exists to prevent - this
+    // is the assertion that keeps the two gates in step.
+    const snap = snapshot(
+      { '6332': 10 },
+      { '6332': [] },
+      [onOrder('6332', 'I1', 90), onOrder('6332', 'I2', 50)],
+    );
+    snap.machines['6332'] = [
+      { plant: '6332', machine: 'I1', process: 'Injection', zone: '2A-A', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+      { plant: '6332', machine: 'I2', process: 'Injection', zone: '2A-B', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+    ];
+
+    const all = overview({ snapshot: snap, filters: { ...FILTERS, zone: 'all' }, env: ENV, now: NOW });
+    const one = overview({ snapshot: snap, filters: { ...FILTERS, zone: '2A-A' }, env: ENV, now: NOW });
+
+    const oa = (payload: typeof all) =>
+      payload.companies.find((c) => c.code === 'THS')!.plants.find((x) => x.code === '6332')!.kpi.oa_pct;
+
+    expect(oa(all)).toBe(70);
+    expect(oa(one)).toBe(90);
+  });
+
+  it('points the drill-down at the zones in scope rather than the whole plant', async () => {
+    // A link that widened the scope the click came from is the one thing a
+    // drill-down must never do.
+    const snap = snapshot({ '6332': 10 }, { '6332': [] });
+    snap.machines['6332'] = [
+      { plant: '6332', machine: 'I1', process: 'Injection', zone: '2A-A', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+      { plant: '6332', machine: 'I2', process: 'Injection', zone: '2A-B', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
+    ];
+
+    const url = (zone: string) =>
+      overview({ snapshot: snap, filters: { ...FILTERS, zone }, env: ENV, now: NOW })
+        .companies.find((c) => c.code === 'THS')!
+        .plants.find((x) => x.code === '6332')!.grafana_url!;
+
+    expect(url('all')).toContain('var-Zone_var=2A-A');
+    expect(url('all')).toContain('var-Zone_var=2A-B');
+    expect(url('2A-A')).toContain('var-Zone_var=2A-A');
+    expect(url('2A-A')).not.toContain('var-Zone_var=2A-B');
+  });
+
+  it('lists the zones a plant reports on /meta, so the Zone picker has choices', async () => {
+    // Not master data: nobody keeps a zone list, so the menu is built from the
+    // same snapshot the census reads. A silent plant lists none, which is what
+    // leaves the control disabled instead of offering an empty scope.
+    const app = await buildApp(ENV);
+    const res = await app.inject({ method: 'GET', url: '/api/v1/meta' });
+    expect(res.statusCode).toBe(200);
+
+    const payload = zMeta.parse(res.json());
+    const plants = payload.companies.flatMap((c) => c.plants);
+    expect(plants.length).toBeGreaterThan(0);
+    // Influx is not configured here, so the poller is idle and no plant reports
+    // a zone. The field is present and empty rather than absent.
+    expect(plants.every((p) => Array.isArray(p.zones) && p.zones.length === 0)).toBe(true);
+
+    await app.close();
   });
 
   it('scopes to one Lamp, which is what makes it comparable with the plant board', async () => {

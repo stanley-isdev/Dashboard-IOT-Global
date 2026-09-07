@@ -105,3 +105,35 @@ export function plantMatcher(plant: string): (p: { code: string }) => boolean {
 export function plantFilterActive(plant: string): boolean {
   return parseRegions(plant) !== null;
 }
+
+/**
+ * The `zone` parameter - the Zone picker - one level below `plant` and in the
+ * same encoding again: `all`, `none`, or a comma-separated list of zone tags
+ * (`zone=2A-A`, `zone=2A-A,2B-B`).
+ *
+ * Unlike a plant code, a zone tag is NOT globally unique. Measured 2026-08-28,
+ * plant `6051` reports `A`-`F` and `6338` reports `A`, so `zone=A` selects
+ * rows in two plants. That is deliberate and it is what the operator board's
+ * `${Zone_var}` already means: a zone name, read inside the plant scope in
+ * force. Pairing plant and zone into one token (`6051:A`) was the alternative
+ * and it buys precision the Lamp filter already provides - `plant=6051&zone=A`
+ * says the same thing in a URL somebody can still read out loud.
+ *
+ * Matched on the machine, not on a site row, because zone is a tag on the
+ * machine and no level above it has one.
+ *
+ * A machine with no zone tag is kept by `all` and dropped by any narrower
+ * scope, exactly as an untagged process is: "we do not know which zone this is"
+ * cannot satisfy "zone 2A-A only" without inventing the answer.
+ */
+export function zoneMatcher(zone: string): (m: { zone: string | null }) => boolean {
+  const tokens = parseRegions(zone);
+  if (tokens === null) return () => true;
+  const set = new Set(tokens);
+  return (m) => m.zone !== null && set.has(m.zone);
+}
+
+/** True when the parameter narrows anything at all - `all` and absent do not. */
+export function zoneFilterActive(zone: string): boolean {
+  return parseRegions(zone) !== null;
+}

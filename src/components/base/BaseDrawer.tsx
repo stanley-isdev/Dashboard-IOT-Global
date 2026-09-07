@@ -7,6 +7,8 @@ import { en, type TKey } from '../../i18n/en';
 import { formatDowntime, formatInt, formatPct, formatSigned } from '../../i18n/format';
 import { useSelection } from '../../state/selectionStore';
 import { GrafanaLink } from '../common/GrafanaLink';
+import { KpiMark, type KpiMarkName } from '../kpi/KpiMark';
+import { CloseMark } from '../primitives/CloseMark';
 import { Flag } from '../primitives/Flag';
 import { MeasureValue } from '../primitives/MeasureValue';
 import { ShiftChip } from '../primitives/ShiftChip';
@@ -174,12 +176,21 @@ export function BaseDrawer({
 
   return (
     /*
-     * The scrim is the click target for "somewhere else", and it is a plain div
-     * rather than a button: a full-screen button is announced as one, and a
-     * screen-reader user closes this with Escape or the ✕, both of which are
-     * real controls. `aria-hidden` keeps it out of the tree entirely.
+     * The scrim dims the board and swallows clicks on it, and that is all it
+     * does - it is deliberately not a "click anywhere to dismiss" target.
+     *
+     * It was one, and on the board it sits over that is a trap rather than a
+     * convenience. The reader opens this from a pin or a ranking row, reads four
+     * figures against the six on the strip behind it, and then goes to point at
+     * one of them - and the panel they were comparing against vanishes under
+     * their finger. On the iPad it is worse: the scrim covers the whole board,
+     * so a palm resting on the glass while reading closes it.
+     *
+     * So dismissal is the ✕ and Escape, both of which are deliberate. It is a
+     * plain div and `aria-hidden` because it is now purely decorative; nothing
+     * here is reachable or announced.
      */
-    <div className="drawer-scrim" onClick={close} aria-hidden="true">
+    <div className="drawer-scrim" aria-hidden="true">
       <div
         className="drawer"
         role="dialog"
@@ -188,9 +199,6 @@ export function BaseDrawer({
         tabIndex={-1}
         ref={panel}
         onKeyDown={onKeyDown}
-        /* The scrim's handler would otherwise fire for every click inside the
-           panel, closing the drawer on the way to its own buttons. */
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="drawer__head">
           {/*
@@ -206,8 +214,13 @@ export function BaseDrawer({
             <StatusGlyph token={head} showLabel />
           </span>
 
-          <button type="button" className="drawer__close tap" onClick={close}>
-            <span aria-hidden="true">✕</span>
+          <button
+            type="button"
+            className="drawer__close tap"
+            onClick={close}
+            title={t('drawer.close')}
+          >
+            <CloseMark />
             <span className="visually-hidden">{t('drawer.close')}</span>
           </button>
 
@@ -243,6 +256,7 @@ export function BaseDrawer({
             <>
               <div className="drawer__tiles">
                 <Tile
+                  mark="gauge"
                   label={t('drawer.oa')}
                   caption={t('kpi.target', { target: targetOa })}
                   value={
@@ -257,7 +271,10 @@ export function BaseDrawer({
                   }
                 />
 
+                {/* `stop`, which is the mark the strip's Stop card carries -
+                    accumulated downtime is the time this base spent in it. */}
                 <Tile
+                  mark="stop"
                   label={t('drawer.downtime')}
                   caption={t('drawer.downtime.note')}
                   value={
@@ -277,6 +294,7 @@ export function BaseDrawer({
                     `machines = run + stop` drops No Plan, Order End and 4M
                     Change, which is the Q-08 trap `counts` exists to close. */}
                 <Tile
+                  mark="play"
                   label={t('drawer.machines')}
                   caption={t('drawer.machines.note', {
                     stopped: formatInt(company.counts.stopped, lang),
@@ -291,6 +309,7 @@ export function BaseDrawer({
                 />
 
                 <Tile
+                  mark="target"
                   label={t('drawer.achv')}
                   caption={
                     company.kpi.actual_qty === null || company.kpi.plan_qty === null
@@ -394,21 +413,54 @@ function PlantRow({ plant }: { plant: PlantSummary }) {
   );
 }
 
-/** One figure, its label, and the thing it should be read against. */
+/**
+ * One figure, its label, and the thing it should be read against.
+ *
+ * It renders the strip's own card - `.kpi.kpi--feature`, the classes KpiCard
+ * puts on the six cards on the board behind this panel - rather than a
+ * drawer-local card built to resemble one. A base's %OA and the group's %OA are
+ * the same quantity at two scopes, and the whole use of this drawer is reading
+ * one against the other across the scrim; two cards drawn to two specifications
+ * is the thing that makes that comparison harder than it is.
+ *
+ * Not `<KpiCard>` itself, which is a different question. That component takes a
+ * `Measure` and a `coverage` and owns a tooltip, a provenance popover and a
+ * coverage note - machinery for a card that is the board's primary reading. What
+ * a tile needs is the shape and the type, and those live in the CSS.
+ *
+ * The mark is required rather than optional. KpiCard's note on `mark` records
+ * that the mark, the sentence-case label and the larger figure are one decision
+ * and that a card in this style without one has a hole where it goes; making it
+ * optional here would be an invitation to open that hole.
+ */
 function Tile({
+  mark,
   label,
   value,
   caption,
 }: {
+  /** The subject mark, top left. See the note above on why there is no default. */
+  mark: KpiMarkName;
   label: string;
   value: React.ReactNode;
   caption?: string;
 }) {
   return (
-    <div className="drawer__tile">
-      <span className="drawer__tile-label">{label}</span>
-      <span className="drawer__tile-value">{value}</span>
-      {caption ? <span className="drawer__tile-caption">{caption}</span> : null}
+    <div className="kpi kpi--feature drawer__tile">
+      <div className="kpi__head">
+        {/* The title group the strip uses, minus the ⓘ: what a figure means is
+            answered once, on the card of the same name on the board behind
+            this panel, and a second copy of that popover inside a modal is a
+            dialog opening over a dialog. */}
+        <div className="kpi__title">
+          <KpiMark name={mark} />
+          <div className="kpi__label">{label}</div>
+        </div>
+      </div>
+
+      <div className="kpi__value">{value}</div>
+
+      {caption ? <div className="kpi__foot">{caption}</div> : null}
     </div>
   );
 }

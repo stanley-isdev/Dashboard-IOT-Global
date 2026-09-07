@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { GlobalOverview, MachineStatus } from '../../api/contract';
 import { toMeasure } from '../../domain/measure';
 import { isRankable } from '../../domain/status';
@@ -26,10 +27,15 @@ const RUNNING_STATUSES = new Set<MachineStatus>(['Mass Pro', 'Dandori']);
  *   Total machine · Running · Stop · Avg %OA · %Achievement · Needing attention
  *
  * Every card is the same three facts in the same three places: what it counts
- * (the label), what qualifies it (the meta, top right - a share, a target, a
- * plan, an alert), and what it excludes (the foot). Reading across the strip
- * therefore compares like with like, which is the reason the qualifier was
- * lifted off the caption line in the first place.
+ * (the label, with a subject mark against it), what qualifies it (the meta, top
+ * right - a share, a target, a plan, an alert), and what it excludes (the foot).
+ * Reading across the strip therefore compares like with like, which is the
+ * reason the qualifier was lifted off the caption line in the first place.
+ *
+ * All six take `mark`, and therefore all six take `.kpi--feature`. That style
+ * was drawn for the lead pair alone and was widened to the row by the design
+ * owner; what it costs the strip is recorded against the class itself in
+ * components.css, and `mark` is the single line per card that turns it on.
  *
  * Every card also divides by the reporting set, and the first card's caption -
  * "6 of 9 connected" - says so for the whole strip. It is the line that stops a
@@ -37,7 +43,14 @@ const RUNNING_STATUSES = new Set<MachineStatus>(['Mass Pro', 'Dandori']);
  * *measurable* machine count, with three of nine bases still un-commissioned.
  * That card is the one with no meta, which is what leaves room for it.
  */
-export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
+/*
+ * Memoised on the payload. The page above ticks once a second so its clock
+ * columns stay honest, and without this the whole strip - six cards, each with
+ * its own arithmetic over the machine census - was rebuilt on every one of them
+ * to print figures that only change when a poll lands. `data` is the query's own
+ * reference, so that is exactly when this re-renders.
+ */
+export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
   const { t, lang } = useI18n();
 
   if (!data) {
@@ -136,11 +149,25 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
            so there is nothing left over to name. See `notRunning` above. */
         footKey="kpi.machines.connected"
         footParams={{ reporting: coverage.reporting, total: coverage.total }}
-        footTone={coverage.reporting < coverage.total ? 'warn' : 'good'}
+        /*
+         * Neutral, and that is a deliberate loss. The caption used to turn amber
+         * the moment coverage went partial, which is a real signal - "2 of 9
+         * connected" in grey is a fact a reader can slide past. The redraw sets
+         * both lead cards' captions in the same grey so the pair reads as one
+         * object, and the coverage warning is carried instead by the amber
+         * `.kpi__coverage` line every other card on the board still prints, by
+         * the ⓘ panel here, and by the map's own uncommissioned marks.
+         *
+         * To put it back, restore:
+         *   footTone={coverage.reporting < coverage.total ? 'warn' : 'good'}
+         * `.kpi--feature .kpi__foot` does not override the tone classes, so the
+         * prop is the only thing deciding this.
+         */
         // Provenance, behind the ⓘ. This is the card the question gets asked of
         // first, because TOTAL is the one figure on the strip that is not simply
         // read off a machine - it is a rule about which machines count.
         infoKey="kpi.machines.source"
+        mark="gear"
       />
 
       {/*
@@ -168,6 +195,7 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
           massPro: int(totals.counts.by_status['Mass Pro']),
           dandori: int(totals.counts.by_status.Dandori),
         }}
+        mark="play"
       />
 
       <KpiCard
@@ -186,25 +214,39 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
            eleven stops and a machine with no plan has to be able to find out. */
         infoKey="kpi.stopped.source"
         infoParams={{ breakdown: notRunningBreakdown || '-' }}
+        mark="stop"
       />
 
       {/*
-       * Black figure, tiered rail, tiered target. The number is not a status
-       * until it is compared to that target, and the ranking below does that
-       * per base with a glyph and a word - so the figure stays neutral while
-       * the card around it carries the comparison. That is why the rail is the
-       * one thing on this card set apart from the figure's own tone.
+       * Tiered figure, tiered target - the whole card in one colour.
        *
-       * What the rail follows is `totals.oa_tier`, resolved by the backend
-       * against the same policy the map and the ranking are tiered by. It used
-       * to be a hardcoded amber, which meant the card looked identical at 96%
-       * and at 62% - a rail that never moves is not a signal, and a reader
-       * learns to stop seeing it. Reading the served tier is also the only way
-       * to colour this figure without reopening D-16: see src/domain/tier.ts.
+       * The figure was deliberately black until 2026-09-03, on the argument that
+       * a percentage is not a status until it is compared to its target, and
+       * that the card around it should carry the comparison instead. The design
+       * owner has reversed that: green at or above 90, amber from 75 to 89, red
+       * below 75, on the figure itself.
        *
-       * The target text takes the same tone. The two were one decision - amber
-       * rail, amber target - and leaving the qualifier amber under a green rail
-       * would put the contradiction inside a single card.
+       * The argument it loses to is that this card sat in a row where RUNNING is
+       * green and STOP is red at every value, so a black %OA did not read as
+       * "deliberately neutral" - it read as the one card whose number nobody had
+       * got round to colouring. A rule that holds for four cards and not the
+       * fifth is not a rule a reader can learn.
+       *
+       * What it costs is worth recording: on a fleet in the 80s the strip now
+       * shows amber next to green next to red, and the figure a director escalates
+       * on - NEEDING ATTENTION - is no longer the only red number on the board.
+       *
+       * `tone` and not `tier`: the tone is already resolved above from
+       * `oa.oaTier`, which is the *served* tier, so the three bands here are the
+       * policy the backend sent rather than three numbers written into this file.
+       * That is the whole of D-16 - the same %OA must not be amber here and green
+       * on the operator's screen - and it is why the thresholds above appear in
+       * this comment and nowhere in the code. See src/domain/tier.ts.
+       *
+       * `railTone` is gone with it, not lost: `rail` defaults to the figure's
+       * tone, so the rail follows without being told. The target pill and the
+       * delta take the same tone for the reason they always did - a green pill
+       * under an amber figure would put the contradiction inside one card.
        *
        * The foot is D-19's caveat, which fits now that the target has moved up
        * off the caption line. It previously had nowhere to live but the
@@ -215,9 +257,28 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
         measure={toMeasure(totals.oa_pct, online)}
         coverage={coverage}
         coverageNote="off"
-        railTone={oaTone}
+        tone={oaTone}
+        /*
+         * The target, beside the figure rather than in the corner.
+         *
+         * It was in the corner and came off entirely for one release, because at
+         * 1180px a 73px pill on the head left this card's label rendering as
+         * "Av…". Losing it was worse than it looked: the delta says how far under
+         * target the figure is, but with the pill gone nothing on the card said
+         * what the target *was*, and "-8.6 pts" against an unstated number is
+         * half a sentence.
+         *
+         * `metaAt="figure"` is the fix - the figure row has the width the head
+         * does not, and the foot stays put, so the bottom line of all six cards
+         * still reads across as one line.
+         *
+         * Tone follows the tier, the same as the rail and the delta. The three
+         * were one decision: an amber rail under a neutral target would put the
+         * contradiction inside a single card.
+         */
         meta={t('kpi.target', { target: data.target_oa })}
         metaTone={oaTone}
+        metaAt="figure"
         delta={oaGap === null ? undefined : t('kpi.oa.gap', { delta: formatSigned(oaGap, lang) })}
         deltaTone={oaTone}
         footKey="kpi.oa.definition"
@@ -251,6 +312,7 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
           machines: totals.oa_machine_count === undefined ? '-' : int(totals.oa_machine_count),
           total: int(machines),
         }}
+        mark="gauge"
       />
 
       {/*
@@ -264,16 +326,23 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
         measure={toMeasure(totals.achievement_pct, online, { naReasonKey: 'measure.noPlan' })}
         coverage={coverage}
         coverageNote="off"
+        /*
+         * The plan, beside the figure - same move as %OA above, and this is the
+         * card that forced it: "%Achievement" is the strip's longest label and a
+         * "Plan 23,200" pill on the head left it 27px to render in.
+         *
+         * Neutral rather than toned. The plan is the denominator this figure is
+         * computed against, not a judgement on it - the tone belongs to the
+         * delta, which is the half that says whether the gap is good or bad.
+         */
         meta={t('kpi.achievement.planShort', {
           qty: totals.plan_qty === null ? '-' : int(totals.plan_qty),
         })}
+        metaAt="figure"
         delta={
           qtyGap === null
             ? undefined
-            : t('kpi.achievement.gap', {
-                delta: formatSigned(qtyGap, lang, 0),
-                unit: t(`unit.${data.qty_unit}` as TKey),
-              })
+            : t('kpi.achievement.gap', { delta: formatSigned(qtyGap, lang, 0) })
         }
         foot={t('kpi.achievement.actualUnit', {
           qty: totals.actual_qty === null ? '-' : int(totals.actual_qty),
@@ -296,6 +365,7 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
           actual: totals.actual_qty === null ? '-' : int(totals.actual_qty),
           plan: totals.plan_qty === null ? '-' : int(totals.plan_qty),
         }}
+        mark="target"
       />
 
       {/*
@@ -344,10 +414,30 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
         footTone={attention > 0 ? 'critical' : 'good'}
         coverage={coverage}
         coverageNote="off"
-        meta={
+        /*
+         * The badge sits beside the figure, not in the corner - the one card on
+         * the strip whose qualifier is not in the head.
+         *
+         * It was in the corner, and at 1180px it cost this card its label: the
+         * badge is 48px of a 110px head and "Needing attention" rendered as
+         * "Needing a…". The two cards that hit the same wall gave up their
+         * qualifier for it (see %OA and %Achievement above), and this one does
+         * not have to, because its figure is a single digit - 12px of a 152px
+         * row, with 140px of nothing after it. The badge is the only qualifier
+         * on the strip with somewhere else to go.
+         *
+         * Beside the number is arguably where it belonged anyway. The badge is
+         * the across-the-room half of this card's message and the figure is the
+         * other half; in the corner they were at opposite ends of the card.
+         *
+         * `delta` rather than `meta` is what puts it there - that slot is empty
+         * on this card, it is already tone-classed, and it ranges left against
+         * the figure. See `.kpi__delta` in components.css.
+         */
+        delta={
           attention > 0 ? <span className="kpi__badge">{t('kpi.attention.badge')}</span> : undefined
         }
-        metaTone="critical"
+        deltaTone="critical"
         /*
          * The site, where it is, and why it is red - "TH ASI 73.8%".
          *
@@ -373,7 +463,8 @@ export function KpiStrip({ data }: { data: GlobalOverview | undefined }) {
                 )
                 .join(' · ')
         }
+        mark="bell"
       />
     </div>
   );
-}
+});

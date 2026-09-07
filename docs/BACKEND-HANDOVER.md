@@ -6,7 +6,39 @@ still the authoritative business spec (hierarchy, formulas, shift model, open
 decisions D-01…D-27) - this file is the *engineering* status on top of it:
 what's built, what's verified, what's next, and what's blocked.
 
-Last updated: 2026-08-26.
+Last updated: 2026-09-07.
+
+> ## Status note - 2026-09-07: the mock is gone, and so is the cutover
+>
+> Everything below that describes flipping `dataSource` between `"mock"` and
+> `"http"` is **history**. Both the switch and the generator it selected have
+> been removed:
+>
+> - `src/mocks/` is deleted. `createApi` builds the HTTP adapter and nothing
+>   else, and `runtime-config.json` no longer carries a `dataSource` field.
+>   `VITE_DATA_SOURCE` and `npm run build:mock` are gone with it.
+> - The two endpoints the generator was standing in for now exist for real:
+>   `GET /api/v1/companies/{code}` and
+>   `GET /api/v1/companies/{code}/plants/{code}`, in
+>   `server/src/routes/scope.ts` over `server/src/services/scopeService.ts`.
+>   They narrow `buildGlobalOverview` rather than re-implementing it, so a
+>   drill-down reconciles with the board above it by construction - the
+>   §16 requirement - and `test/scope.test.ts` asserts that directly.
+>
+> **Section 5 ("the mock IS the spec") is therefore obsolete as an
+> instruction and survives only as a record of how the rules were ported.**
+> `docs/DESIGN.md` is the spec; the contract in `packages/contract` is its
+> executable half.
+>
+> Two limits worth carrying forward, both recorded at the top of
+> `scopeService.ts`:
+>
+> - The hourly query selects %OA per (hour x machine) and no quantities, so
+>   every per-shift and per-bucket `qty_pcs`/`shot_count`/`plan_qty` is
+>   `null` - R2's "unknown, not zero". Filling them in is a column change in
+>   `machineHourOaSql` and needs its own reconciliation.
+> - `mode`, the three §8.3 timing figures, and PO `part_no`/`part_name` are
+>   `null` for the same reason, against `latestMachineStatusSql`.
 
 ---
 
@@ -197,7 +229,7 @@ response body** and no error message anywhere in the response. The Influx
 client written for this project should quote identifiers unconditionally
 rather than rely on anyone remembering.
 
-**(2) Queries spanning more than 3 days fail.** Measured on
+**(2) Queries spanning more than ~3 days fail.** Measured on
 `production_machine_status`:
 
 | Window | Result |
@@ -209,9 +241,44 @@ rather than rely on anyone remembering.
 
 The failures get *faster* as the window widens (14 days fails in 84 ms), so
 this is **not** a timeout and not a volume limit - it fails before it scans.
-Likely retention expiry or a schema conflict in older parquet files. The
-response body is empty, so **the real error is only visible in the InfluxDB
-server log** - someone with host access has to look.
+
+> **DIAGNOSED 2026-09-03.** This entry originally guessed "likely retention
+> expiry or a schema conflict in older parquet files" and said the real error
+> was visible only in the InfluxDB server log. Neither is needed: the instance
+> now returns a message, and it is a **per-query file-scan cap**.
+>
+> ```
+> HTTP 500: External error: Query would scan 432 Parquet files,
+>           exceeding the file limit
+> ```
+>
+> Re-measured with the open-ended form the queries actually use
+> (`WHERE "time" > now() - INTERVAL 'N hours'`):
+>
+> | Window | Result |
+> |---|---|
+> | 24h / 36h / 48h / 60h / 71h | OK - 5,405 → 11,633 rows |
+> | 96h | **HTTP 500**, message above |
+>
+> Three consequences, and the third is the useful one:
+>
+> 1. It is **not retention**. Bounded windows deep in the past answer fine - a
+>    48 h window ending 24 h ago returned 6,305 rows in 200 ms, and single-day
+>    windows answer back to the retention edge.
+> 2. Retention is **separately ~28 days**. Walking single-day windows
+>    backwards: 28 days ago returned 1,127 rows, 29 days ago returned none.
+>    Published on `/meta` as `window_limits.earliest_date` so the date picker's
+>    lower bound moves with it rather than being compiled into the bundle.
+> 3. Because the cap counts **files per query** and not the width of the data,
+>    a wider window is servable as **several narrower queries**. That is what
+>    unblocked the absolute time picker: `/global-overview` now takes
+>    `from`/`to`, splits anything past the cap into ≤71 h chunks and merges
+>    them exactly - MIN of MINs, SUM of SUMs, newest-per-machine for the
+>    census, and whole-hour chunk boundaries so no `date_bin` bucket straddles
+>    two queries. See `server/src/services/windowedSnapshot.ts`.
+>
+> Still worth a host-log look if anyone gets access: whether the 432-file limit
+> is configurable, and whether compaction would raise the effective window.
 
 **Consequence for Q-01:** Phase 2's planned "wide internal scan window
 (e.g. 3 days)" sits exactly on the boundary. Use **71 hours, not 72**, until
@@ -1099,8 +1166,12 @@ two specific ways and only comparing against the screen found them.
 - **`codeCompany` NULL on 98.6% of status rows** (§4.3a) - is this an upstream
   pipeline bug to be fixed at source, or is deriving company from `plant` the
   permanent answer? Affects Q-01/Q-02 directly.
-- **Queries beyond 3 days return HTTP 500 with an empty body** (§4.2) - cause
-  unknown, needs someone with InfluxDB host log access.
+- **~~Queries beyond 3 days return HTTP 500 with an empty body~~ - ANSWERED
+  2026-09-03.** A per-query file-scan cap (`Query would scan 432 Parquet
+  files`), not retention and not a schema conflict; no host log access was
+  needed in the end. Wider windows are served as several ≤71 h queries. See
+  §4.2. What remains open is narrower: whether the 432-file limit is
+  configurable, and whether compaction would raise the effective window.
 - **Database is named `iot_data_global_test`** - confirm whether a separate
   production database exists, and whether these findings transfer to it.
 - **Machine counts disagree with `masterData.ts`** for THS 6332 (10 expected

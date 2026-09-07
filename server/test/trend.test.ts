@@ -3,6 +3,8 @@ import {
   buildTrend,
   foldMachineHours,
   hourSlots,
+  sumHours,
+  sumPlans,
   trendWarnings,
   type MachineHourOa,
 } from '../src/domain/trend.ts';
@@ -31,8 +33,13 @@ function row(over: Partial<MachineHourOaRow> = {}): MachineHourOaRow {
     po1: '-',
     po2: '-',
     po3: '-',
+    plan0: null,
+    plan1: null,
+    plan2: null,
+    plan3: null,
     min_std_time: 65,
     sum_qty: 51,
+    shot_count: 51,
     weighted_time: 3570,
     ...over,
   };
@@ -43,7 +50,17 @@ const NOW = new Date('2026-08-26T08:41:23.000Z');
 const at = (dateHourUtc: string) => `${dateHourUtc}:00:00.000Z`;
 
 function hour(over: Partial<MachineHourOa> = {}): MachineHourOa {
-  return { ts: at('2026-08-26T08'), plant: '6332', machine: 'I5', oaPct: 80, poSlots: 1, ...over };
+  return {
+    ts: at('2026-08-26T08'),
+    plant: '6332',
+    machine: 'I5',
+    oaPct: 80,
+    poSlots: 1,
+    qtyPcs: null,
+    shotCount: null,
+    plans: {},
+    ...over,
+  };
 }
 
 const SITE_OF = (plant: string) => (plant === '6051' ? 'ASI' : plant === 'X' ? null : 'THS');
@@ -75,9 +92,58 @@ describe('foldMachineHours', () => {
   it("reproduces the 18:00 bucket's single machine exactly", () => {
     // 65 * 51 / 3570 = 92.857... The hour had exactly one machine on an order,
     // out of 22 that reported at all.
+    //
+    // 92.9 is the figure this file exists to hold still. It was measured
+    // against the live instance, and it is unchanged by the output columns the
+    // fold gained on 2026-09-07 - which is the point: those are additive, and a
+    // move here would mean the SQL change had touched the ratio.
     expect(foldMachineHours([row()])).toEqual([
-      { ts: '2026-08-25T18:00:00.000Z', plant: '6332', machine: 'P1I1', oaPct: 92.9, poSlots: 1 },
+      {
+        ts: '2026-08-25T18:00:00.000Z',
+        plant: '6332',
+        machine: 'P1I1',
+        oaPct: 92.9,
+        poSlots: 1,
+        qtyPcs: 51,
+        shotCount: 51,
+        // No plan on this row, so nothing to key. Not `{ '110000958487': 0 }`:
+        // an order with no plan and an order planning nothing are different
+        // statements (R2, and planFromSlots).
+        plans: {},
+      },
     ]);
+  });
+
+  it('counts output from a row whose %OA cannot be computed', () => {
+    /*
+     * The ordering rule inside the fold, pinned.
+     *
+     * A gateway that sends no `std_time` makes the ratio impossible, and the
+     * guards drop that row from the %OA sums - correctly. The pieces it reports
+     * were still made, so they must survive into the hourly table. Before the
+     * accumulation was moved above those guards this returned an entry with no
+     * output at all, and lost it silently.
+     */
+    const [folded] = foldMachineHours([row({ min_std_time: null, sum_qty: 40, shot_count: 40 })]);
+
+    expect(folded.oaPct).toBeNull();
+    expect(folded.qtyPcs).toBe(40);
+    expect(folded.shotCount).toBe(40);
+  });
+
+  it('keys a plan by its order so a shift cannot count it twice', () => {
+    // The same order in two hours is one plan. Summing the buckets would report
+    // a 400-piece order as 800 - the error MachineOaRow.plan0 records, one axis
+    // over. See sumPlans.
+    const hours = foldMachineHours([
+      row({ bucket: '2026-08-25T18:00:00', plan0: 400 }),
+      row({ bucket: '2026-08-25T19:00:00', plan0: 400 }),
+    ]);
+
+    expect(hours).toHaveLength(2);
+    expect(sumPlans(hours)).toBe(400);
+    // ...while the pieces, which really are per-hour, do add up.
+    expect(sumHours(hours, (h) => h.qtyPcs)).toBe(102);
   });
 
   it('adds a machine\'s two orders in one hour before dividing, never after', () => {

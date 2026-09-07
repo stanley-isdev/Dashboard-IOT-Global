@@ -257,10 +257,8 @@ function dodgeBox(
 
 export function MapLabelLayer({
   companies,
-  nowMs,
 }: {
   companies: CompanySummary[];
-  nowMs: number;
 }) {
   const map = useMap();
   const cards = useRef(new Map<string, HTMLElement>());
@@ -661,7 +659,7 @@ export function MapLabelLayer({
   return createPortal(
     <div className="pin-layer" ref={attachLayer}>
       {companies.map((c) => (
-        <CompanyPin key={c.code} company={c} nowMs={nowMs} registerCard={registerCard} />
+        <CompanyPin key={c.code} company={c} registerCard={registerCard} />
       ))}
 
       {/*

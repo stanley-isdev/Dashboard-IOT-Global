@@ -1,0 +1,166 @@
+/*
+ * Export layer: what the board looks like in the half-second it is being
+ * photographed, and the header strip stacked above it.
+ *
+ * The Export button sets `data-exporting` on <html>, waits two frames, hands
+ * the frame to html2canvas and clears the attribute again. Everything the
+ * picture needs and the screen does not is in here; nothing about it is in
+ * ExportButton.tsx or exportPdf.ts.
+ *
+ * No hex literals below this line - everything comes from tokens.css, same rule
+ * as base.css. Which is also why the exported board keeps the viewer's theme: a
+ * second palette for the file would be a second thing to keep in step with the
+ * first, and check-contrast.mjs measures the tokens, not a fork of them.
+ */
+
+/* ---- the board, while it is being photographed ---- */
+
+/*
+ * A board that scrolls is captured whole.
+ *
+ * `.view--scroll` is the page-level scroller on a company or a plant - every
+ * machine in a lamp, longer than a screen by nature. Left clipped, a
+ * forty-machine lamp exports as its first eight, silently, which is the worst
+ * way for an export to be wrong. So the frame around one grows and the picture
+ * gets taller.
+ *
+ * `:has()` rather than a class the pages set, because `.view--scroll` already
+ * *is* that class - it is the page saying "I am taller than a screen" - and a
+ * second flag beside it would be one more thing to forget on the next
+ * drill-down.
+ *
+ * Note what is not in this list: `.panel__scroll`, the scroller inside a panel
+ * whose height the frame distributed. Unclipping one of those does not make the
+ * picture taller, it destroys the board - the ranking grows and shoves the map
+ * off the layout. On a board that fits, the file shows what the screen shows,
+ * which is what a picture of the dashboard means; a reader who wants row forty
+ * scrolls to it and exports again.
+ */
+:root[data-exporting] .app:has(.view--scroll) {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+:root[data-exporting] .app:has(.view--scroll) #main,
+:root[data-exporting] .view--scroll {
+  overflow: visible;
+}
+
+/*
+ * Controls that are actions rather than information.
+ *
+ * Everything else in the two bands stays, and deliberately: the filter row is
+ * what says this page is 24 hours of Injection in Thailand, and an exported
+ * board that does not carry its own scope is a set of numbers nobody can check.
+ * These four do not survive the trip into a still picture at all - a skip link
+ * and a zoom button do nothing in a PDF, and an Export button inside an export
+ * reads as an invitation to press it.
+ */
+:root[data-exporting] .skip-link,
+:root[data-exporting] .exportbtn,
+:root[data-exporting] .map-controls,
+:root[data-exporting] .drawer-scrim {
+  display: none !important;
+}
+
+/* An open menu or provenance popover is a thing the reader opened over the
+   board, not part of it. */
+:root[data-exporting] :popover-open,
+:root[data-exporting] .regionmenu {
+  display: none !important;
+}
+
+/* Keyboard affordances. The Export button had focus when it was pressed, and
+   without this its neighbour keeps a ring around it in the file for no reason a
+   reader could work out. */
+:root[data-exporting] :focus,
+:root[data-exporting] :focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/*
+ * Nothing is mid-flight in a still.
+ *
+ * The live badge pulses, the map fades its layers in, a panel that has just
+ * repolled runs a tint off. Caught halfway, each of those is an artefact in the
+ * file that the reader cannot tell apart from a rendering fault - a half-drawn
+ * spinner arc reads as a broken glyph.
+ */
+:root[data-exporting] *,
+:root[data-exporting] *::before,
+:root[data-exporting] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ---- the header strip ---- */
+
+/*
+ * Sits above the picture in the file, and nowhere on the screen: exportPdf.ts
+ * builds it, parks it 20000px to the left, photographs it and throws it away.
+ *
+ * Drawn as the masthead's twin rather than as a document letterhead. It is the
+ * band that says whose board this is, so it takes --band and closes with
+ * --band-line exactly as .topbar__masthead does - which is what makes the strip
+ * and the board underneath read as one sheet in the file rather than as a cover
+ * note stapled to a screenshot.
+ */
+.exporthead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: var(--sp-4) var(--shell-pad-x);
+  background: var(--band);
+  border-bottom: 1px solid var(--band-line);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.exporthead__title {
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Which board, under the name of the system. The accent is doing what it does
+   everywhere else on this board - naming the thing the reader chose - and this
+   is the one line in the file that says which of the three screens it is. */
+.exporthead__board {
+  margin-top: 0.15rem;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+/*
+ * The two instants, as a definition list, right-aligned.
+ *
+ * A grid rather than a flow, so the labels form a column and the values form a
+ * column: the whole reason both rows are here is that they can differ, and two
+ * timestamps a reader has to hunt along a line for do not invite the comparison.
+ */
+.exporthead__when {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.15rem var(--sp-3);
+  align-items: baseline;
+  text-align: right;
+  font-size: var(--fs-nano);
+}
+
+.exporthead__when dt {
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.exporthead__when dd {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+}

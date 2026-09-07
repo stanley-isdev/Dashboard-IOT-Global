@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router';
 import { useMeta } from '../../api/queries';
 import { formatRegions, parseRegions, type CompanyMeta, type Meta } from '../../api/contract';
 import { useI18n, type TFunction } from '../../i18n/I18nProvider';
-import type { TKey } from '../../i18n/en';
 import { useFilters, useFilterSearch } from '../../state/useFilters';
 import { Flag } from '../primitives/Flag';
 
@@ -207,6 +206,17 @@ export function RegionFilter() {
   };
 
   const everything = tree.all.length > 0 && picked.size === tree.all.length;
+  /*
+   * Whether the capsule is holding a scope, which is what draws it in the brand
+   * pastel (see .filter--on). Deliberately not `!everything`: with master data
+   * still in flight the tree is empty, `everything` is false and the control is
+   * disabled, so the bare negation would paint a control nobody can press in
+   * the colour that means "this is narrowing your numbers".
+   *
+   * Nothing ticked is narrowed and stays flagged. An empty board above a filter
+   * row that looks untouched is this control's worst failure.
+   */
+  const narrowed = tree.all.length > 0 && !everything;
   const selected = describe(picked, tree, everything, t);
   const bases = (count: number) =>
     t(count === 1 ? 'filter.baseCount.one' : 'filter.baseCount.other', { count });
@@ -216,7 +226,7 @@ export function RegionFilter() {
       <button
         ref={trigger}
         type="button"
-        className="filter tap"
+        className={narrowed ? 'filter filter--on tap' : 'filter tap'}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -291,10 +301,14 @@ export function RegionFilter() {
                   >
                     <span className="regionmenu__code">{co.code}</span>
                     <span className="regionmenu__label">{co.label}</span>
+                    {/* One label for every base that is not live. Which stage of
+                        commissioning it is at - installing, planned, not recorded -
+                        is a fact about the rollout, not about the board, and a reader
+                        scanning this menu for numbers only needs to know there are
+                        none here yet. The stage itself still shows on the base drawer
+                        and the map pin. */}
                     {co.data_readiness === 'live' ? null : (
-                      <span className="regionmenu__tag">
-                        {t(`readiness.${co.data_readiness}` as TKey)}
-                      </span>
+                      <span className="regionmenu__tag">{t('site.not_connected')}</span>
                     )}
                   </Option>
                 ))}

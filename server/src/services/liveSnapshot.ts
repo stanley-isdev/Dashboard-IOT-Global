@@ -54,6 +54,13 @@ export interface MachineObservation {
   zone: string | null;
   status: MachineStatus;
   lastSeen: string | null;
+  /**
+   * Epoch milliseconds UTC when `status` began - Q-06's input, carried
+   * straight off `LatestMachineStatusRow.status_start_time`. `null` when the
+   * row carried none. See influx/queries.ts for how the epoch was confirmed
+   * and domain/alerts.ts for what reads it.
+   */
+  statusStartTime: number | null;
 }
 
 export interface PlantLiveness {
@@ -105,7 +112,7 @@ export interface LiveSnapshot {
   trendError: string | null;
 }
 
-interface MiniLogger {
+export interface MiniLogger {
   info(obj: object, msg?: string): void;
   warn(obj: object, msg?: string): void;
 }
@@ -376,6 +383,7 @@ export function foldRows(
       zone: row.zone,
       status: row.result as MachineStatus,
       lastSeen,
+      statusStartTime: row.status_start_time,
     });
   }
 

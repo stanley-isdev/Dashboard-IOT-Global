@@ -38,8 +38,9 @@ const DASHBOARD_PATH = '/d/adz5fll/machine-status-v1-0-0';
  *
  * The exec board deliberately counts every process (config/policy.ts); the
  * drill-down has to pick one, because its SQL compares `"process"` to a single
- * value. `Injection` is what it opens on, and the only process in
- * `Meta.processes` today.
+ * value. `Injection` is what it opens on when the click carried no process of
+ * its own - the largest scope by machine count, and the one `/meta` guarantees
+ * is always present even while Influx is down.
  */
 export const DEFAULT_LINK_PROCESS: Process = 'Injection';
 

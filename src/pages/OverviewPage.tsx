@@ -1,20 +1,34 @@
-import { useState, type ReactNode } from 'react';
-import { useOverview } from '../api/queries';
-import { deriveConnection, useFreezeDetector, useNow } from '../domain/connectionState';
+import { useCallback, useMemo, useState } from 'react';
+import { useOverview, useRetryState } from '../api/queries';
+import {
+  deriveConnection,
+  useFreezeDetector,
+  useNow,
+  useRecovery,
+} from '../domain/connectionState';
 import { useConfig } from '../config/AppContext';
 import { useI18n } from '../i18n/I18nProvider';
+import { REGION_NONE, type CompanySummary } from '../api/contract';
 import type { TKey } from '../i18n/en';
 import { useFilters } from '../state/useFilters';
 import { useSelection } from '../state/selectionStore';
+import { usePublishExport } from '../state/exportStore';
+import { overviewExportDoc } from '../domain/exportDoc';
+import { useTrendWindow } from '../domain/trendWindow';
 import { BaseDrawer } from '../components/base/BaseDrawer';
 import { KpiStrip } from '../components/kpi/KpiStrip';
 import { RankingTable } from '../components/table/RankingTable';
 import { StatusSummary } from '../components/table/StatusSummary';
 import { TrendChart } from '../components/charts/TrendChart';
 import { AlertList } from '../components/alerts/AlertList';
+import { AlertsLimitPicker } from '../components/layout/AlertsLimitPicker';
 import { WorldMap } from '../components/map/WorldMap';
 import { ConnectionBanner } from '../components/feedback/ConnectionBanner';
-import { HardErrorState } from '../components/feedback/HardErrorState';
+import {
+  EmptyState,
+  HardErrorState,
+  LoadingState,
+} from '../components/feedback/HardErrorState';
 import { DataQualityFooter } from '../components/feedback/DataQualityFooter';
 import { useShellConnection } from '../components/layout/AppShell';
 
@@ -59,67 +73,38 @@ import { useShellConnection } from '../components/layout/AppShell';
 
 type Board = 'fleet' | 'analytics';
 
+/*
+ * The map's site list before anything has loaded.
+ *
+ * A module constant rather than a `[]` written at the call site, because the map
+ * is memoised and a fresh literal every render is a prop that never compares
+ * equal - which would hand it back the per-second re-render the memo is there to
+ * stop, for the one state where there is nothing to draw anyway.
+ */
+const NO_COMPANIES: CompanySummary[] = [];
+
 const BOARDS: { id: Board; tabKey: TKey }[] = [
   { id: 'fleet', tabKey: 'board.fleet' },
   { id: 'analytics', tabKey: 'board.analytics' },
 ];
 
-/**
- * The tab glyphs.
+/*
+ * There are no tab glyphs.
  *
- * Two inline SVGs rather than an icon set or a sprite: these are the only two
- * icons on the board, and a dependency - or a second network request - for
- * fourteen path commands is not a trade worth making on a screen that has to
- * paint on a factory connection.
- *
- * Each says what its board *is* rather than which widget it holds: a globe for
- * the nine sites, a trace for what happened over the range. Drawn on a 16 box
- * in currentColor and marked `aria-hidden`, because the label is right beside
- * them and a screen reader announcing "globe Fleet Overview" is noise.
+ * Each tab carried an inline SVG - a globe for the nine sites, a trace for what
+ * happened over the range - on the argument that a reader at arm's length picks
+ * up a shape before a word. That reasoning holds where the shape is the only
+ * mark, and it stopped holding here once the tabs were drawn as real folder
+ * tabs: the tab in front is already the one thing on the board carrying a shape,
+ * a value step and an ink step all at once, and a glyph inside it was a fourth
+ * signal saying nothing the other three did not. Both were `aria-hidden`, so
+ * nothing is lost to a screen reader either.
  */
-const TAB_ICON: Record<Board, ReactNode> = {
-  fleet: (
-    <svg
-      className="boardtabs__icon"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="8" cy="8" r="6.1" />
-      <path d="M8 1.9c-2 2.2-2 8 0 12.2M8 1.9c2 2.2 2 8 0 12.2" />
-      <path d="M2.3 6h11.4M2.3 10h11.4" />
-    </svg>
-  ),
-  analytics: (
-    <svg
-      className="boardtabs__icon"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M1.4 8.4h2.7l1.6-4.6 2.8 8.6 1.7-4h4.4" />
-    </svg>
-  ),
-};
-
-/** Short labels for the range, shared with the segmented control in the top bar. */
-const RANGE_SHORT = {
-  '8h': 'range.8h.short',
-  '24h': 'range.24h.short',
-  '7d': 'range.7d.short',
-} as const satisfies Record<string, TKey>;
 
 export function OverviewPage() {
   const { t } = useI18n();
   const cfg = useConfig();
-  const [filters] = useFilters();
+  const [filters, setFilters] = useFilters();
   const { query, violations } = useOverview(filters);
   const { data, isError, isPending, error, refetch } = query;
   const [board, setBoard] = useState<Board>('fleet');
@@ -130,6 +115,9 @@ export function OverviewPage() {
    * with no ranking beside it is a fault report in the morning.
    */
   const [mapExpanded, setMapExpanded] = useState(false);
+  /* Stable, because the map is memoised and an inline arrow is a changed prop
+     on every one of the clock's ticks below. */
+  const toggleMap = useCallback(() => setMapExpanded((v) => !v), []);
 
   /*
    * The base whose drawer is open, resolved against the payload on every render
@@ -148,21 +136,101 @@ export function OverviewPage() {
   const now = useNow();
   const frozen = useFreezeDetector(data?.meta.generated_at);
   const connection = deriveConnection(
-    { envelope: data?.meta, freshness: data?.freshness, isError, isPending, nowMs: now },
+    { envelope: data?.meta, freshness: data?.freshness, isError, isPending, error, nowMs: now },
     frozen,
   );
 
   // Feeds the badge in the top bar, which lives above the router outlet.
-  useShellConnection(connection, data?.totals.companies_total ?? null);
+  useShellConnection(connection);
 
-  // The only state where no numbers are shown at all: nothing has ever loaded.
-  // Everywhere else the last good payload stays on screen under a banner.
+  /* What the board is doing about a failure, for the error page to say out loud.
+     Read unconditionally because it is a hook; only the error branch uses it. */
+  const retry = useRetryState(query);
+
+  /* The outage that just ended, if one did. Reports the gap it left in the
+     trend; takes itself off after eight seconds. */
+  const recovery = useRecovery(connection.state, now);
+
+  /*
+   * Names the file the Export button prints, in the same row as the filters
+   * above. The board itself is the content - see ExportButton - so the one
+   * thing the top bar cannot work out for itself is what to call it.
+   *
+   * Memoised on the payload rather than rebuilt per render: the value is what
+   * the publish effect keys on, so recomputing it every render would
+   * re-register the name on every clock tick. The payload reference is stable
+   * between polls, which makes this run once per payload.
+   */
+  const exportDoc = useMemo(() => (data ? overviewExportDoc(data) : null), [data]);
+  usePublishExport(exportDoc);
+
+  /*
+   * The trend, cut to the window the time picker is showing.
+   *
+   * The head above it has named the picked range since the tabs were split, and
+   * until now the line under it was the payload's fixed 24 hourly buckets
+   * whatever was picked - so "Last 8h" retitled the panel and moved nothing.
+   * Narrowing is something this end can do honestly (24 buckets contain the
+   * last 8), widening is not, and `windowTrend` does the first and refuses the
+   * second. See src/domain/trendWindow.ts.
+   *
+   * The average, the peak, the low and the table twin are all derived inside
+   * TrendChart from the array it is handed, so they follow the window with the
+   * line rather than staying on a day's figures under an eight-hour title.
+   */
+  const {
+    points: trend,
+    rangeLabel: trendRange,
+  } = useTrendWindow(
+    data?.trend,
+    filters.range,
+    // The served window wins over the quick range when the calendar set one.
+    filters.from && filters.to ? { from: filters.from, to: filters.to } : null,
+  );
+
+  const alerts = useMemo(
+    () => data?.alerts.slice(0, filters.alertsLimit) ?? [],
+    [data?.alerts, filters.alertsLimit],
+  );
+
+  /*
+   * The three states with no board at all, in the order they have to be tested.
+   *
+   * Failure first: `isError` with no payload is the one case where inventing
+   * anything - a zero, a blank grid, a remembered figure - is the failure
+   * section 14 forbids. Everywhere else the last good payload stays on screen
+   * under a banner, which is what ConnectionBanner below is for.
+   *
+   * Then the first load, which used to fall through to the board and render six
+   * skeleton cards above three empty panels. The strip still renders skeletons
+   * on a *refetch* - see SkeletonKpi, which is what holds the row's height - but
+   * a cold board with nothing in it at all should say so rather than looking
+   * like a board that has finished loading nothing.
+   *
+   * Then the empty result, which is not a failure and must not be drawn as one:
+   * the server answered 200 with an empty list because the filters asked for
+   * nothing. `region=none` is the common way in - untick every base in the
+   * Region menu - and until now it produced a screen indistinguishable from a
+   * dead backend.
+   */
   if (!data && isError) {
-    return <HardErrorState error={error} onRetry={() => void refetch()} />;
+    return <HardErrorState error={error} onRetry={() => void refetch()} retry={retry} />;
   }
 
-  const alertCount = data?.alerts.length ?? 0;
-  const baseCount = data?.totals.companies_total ?? null;
+  if (!data) return <LoadingState />;
+
+  if (data.companies.length === 0) {
+    return (
+      <EmptyState
+        noRegion={filters.region === REGION_NONE}
+        onSelectAll={() => setFilters({ region: 'all' })}
+        /* Everything that can narrow the board to nothing, back to its default.
+           `process` is in here because Assembly against a base that runs none
+           is the other way to reach an empty board. */
+        onClear={() => setFilters({ region: 'all', plant: 'all', zone: 'all', process: 'all' })}
+      />
+    );
+  }
 
   /* Roving arrow keys, because a tablist that only responds to Tab is not one. */
   const onTabKey = (e: React.KeyboardEvent) => {
@@ -181,6 +249,7 @@ export function OverviewPage() {
         info={connection}
         referenceTimezone={cfg.referenceTimezone}
         onRetry={() => void refetch()}
+        recovery={recovery}
       />
 
       <div
@@ -234,7 +303,6 @@ export function OverviewPage() {
                 tabIndex={b.id === board ? 0 : -1}
                 onClick={() => setBoard(b.id)}
               >
-                {TAB_ICON[b.id]}
                 {t(b.tabKey)}
               </button>
             ))}
@@ -254,41 +322,39 @@ export function OverviewPage() {
            * the table back in one tap.
            */}
           <div
-            className={`board${mapExpanded ? ' board--map' : ''}`}
+            className={`board board--fleet${mapExpanded ? ' board--map' : ''}`}
             id="panel-fleet"
             role="tabpanel"
             aria-labelledby="tab-fleet"
             hidden={board !== 'fleet'}
           >
-            <section className="panel">
+            <section className="panel panel--map">
               <div className="panel-head">
-                <h2>{t('map.title')}</h2>
-                <div className="panel-head__aside">
-                  {baseCount === null ? null : (
-                    <span className="sub">{t('map.bases', { count: baseCount })}</span>
-                  )}
-                  {/*
-                   * The methodology opener. It has to be somewhere always
-                   * visible - %OA excludes downtime (D-19) and the group figure
-                   * is weighted (D-20), and neither fits on a KPI card - and
-                   * this head is the one place on the fleet board with room.
-                   */}
+                {/*
+                 * Title and the methodology opener, grouped. The opener sits
+                 * right after the title rather than out at the right edge - it
+                 * has to be somewhere always visible (%OA excludes downtime,
+                 * D-19, and the group figure is weighted, D-20), and the base
+                 * count that used to share this head has been dropped.
+                 */}
+                <div className="panel-head__titrow">
+                  <h2>{t('map.title')}</h2>
                   {data ? <DataQualityFooter payload={data} violations={violations} /> : null}
                 </div>
               </div>
 
               <div className="panel__body">
                 <WorldMap
-                  companies={data?.companies ?? []}
+                  companies={data?.companies ?? NO_COMPANIES}
                   targetOa={data?.target_oa ?? 95}
                   tierPolicy={data?.tier_policy}
                   expanded={mapExpanded}
-                  onToggleExpand={() => setMapExpanded((v) => !v)}
+                  onToggleExpand={toggleMap}
                 />
               </div>
             </section>
 
-            <section className="panel" hidden={mapExpanded}>
+            <section className="panel panel--rank" hidden={mapExpanded}>
               <div className="panel-head">
                 <h2>{t('table.title')}</h2>
                 {/* The head's right-hand end, which the artboard leaves empty.
@@ -311,14 +377,13 @@ export function OverviewPage() {
           >
             <section className="panel">
               <div className="panel-head">
-                <h2>{t('trend.tab', { range: t(RANGE_SHORT[filters.range]) })}</h2>
-                <span className="sub">{t('trend.sub')}</span>
+                <h2>{t('trend.tab', { range: trendRange })}</h2>
               </div>
 
               <div className="panel__body">
                 {data ? (
                   <TrendChart
-                    points={data.trend}
+                    points={trend}
                     target={data.target_oa}
                     warnAt={data.tier_policy.warn_at}
                     referenceTimezone={cfg.referenceTimezone}
@@ -332,13 +397,23 @@ export function OverviewPage() {
             <section className="panel">
               <div className="panel-head">
                 <h2>{t('alerts.tab')}</h2>
-                {alertCount > 0 ? (
-                  <span className="count-pill count-pill--alert">{alertCount}</span>
-                ) : null}
+                <div className="panel-head__aside toppicker-slot">
+                  <AlertsLimitPicker />
+                </div>
               </div>
 
+              {/*
+                * The Top-N cut, made here rather than asked for.
+                *
+                * The payload always carries the widest cut the picker offers -
+                * see the note in useOverview - so changing Top-N is a slice of
+                * an array already on the machine: instant, no request, and
+                * nothing outside this panel moves. The rows themselves are
+                * still the server's ranking, in the server's order; this end
+                * only stops reading early.
+                */}
               <div className="panel__scroll">
-                <AlertList alerts={data?.alerts ?? []} />
+                <AlertList alerts={alerts} />
               </div>
             </section>
           </div>

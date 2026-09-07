@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { extremesOf, timeTickIndices, trendDomain, yTicks } from './trendScale';
+import {
+  extremesOf,
+  fullCeiling,
+  overflowOf,
+  timeTickIndices,
+  trendDomain,
+  withCeiling,
+  yTicks,
+} from './trendScale';
 
 /**
  * The failures being guarded against all produce a chart that looks fine.
@@ -58,10 +66,47 @@ describe('trend domain', () => {
     expect(d.min).toBeLessThan(95);
   });
 
-  it('stays inside 0..100, which is what a percentage has', () => {
-    const d = trendDomain([99.9, 100, 0.4], 95);
-    expect(d.min).toBe(0);
-    expect(d.max).toBe(100);
+  it('never sinks below zero, which is what a ratio of times has', () => {
+    expect(trendDomain([99.9, 100, 0.4], 95).min).toBe(0);
+  });
+
+  /*
+   * The ceiling used to be hardcoded at 100 on the assumption that a figure
+   * called a percentage cannot exceed it. %OA can and does - a stale std_time
+   * puts a machine at 115%, and several PO slots in one shot multiply it (D-27,
+   * server/src/domain/oa.ts). These four guard both halves of the fix: readings
+   * above 100 are shown, and one runaway hour does not wreck the scale for the
+   * other twenty-three.
+   */
+  it('follows a reading above 100 instead of clipping it flat', () => {
+    const d = trendDomain([98, 104, 110.4], 95);
+    expect(d.max).toBeGreaterThanOrEqual(110.4);
+  });
+
+  it('does not clip a peak that is only a little above the body', () => {
+    // 112 against a body in the 90s is worth four points of scale, not an
+    // annotation - the axis should simply contain it.
+    const d = trendDomain([88, 91, 94, 90, 112], 95);
+    expect(d.max).toBeGreaterThanOrEqual(112);
+  });
+
+  it('leaves the readable band readable when one hour runs away', () => {
+    // The 2026-09-03 chart: a body in the 80-105 range, one multi-order hour at
+    // 392.1%. An axis stretched to 400 puts every hour that matters in the
+    // bottom eighth of the panel.
+    const body = [82, 88, 91, 95, 99, 103, 87, 93, 96, 101, 105, 90];
+    const d = trendDomain([...body, 392.1], 95);
+    expect(d.max).toBeLessThan(200);
+    expect(overflowOf([...body, 392.1], d)).toEqual([body.length]);
+  });
+
+  it('keeps the floor off the true low when a runaway hour is present', () => {
+    // The second half of the same bug: 392.1 stayed in the span even though the
+    // ceiling ignored it, and 18% of a 350-point span dragged the floor to 0,
+    // leaving the bottom half of the panel empty under a low of 38.7.
+    const d = trendDomain([38.7, 88, 91, 95, 99, 392.1], 95);
+    expect(d.min).toBeGreaterThan(20);
+    expect(d.min).toBeLessThan(38.7);
   });
 
   it('answers an empty series with the full scale rather than NaN', () => {
@@ -69,7 +114,57 @@ describe('trend domain', () => {
   });
 });
 
+/*
+ * The reader's own ceiling, behind the legend's slider. The failures guarded
+ * against here are the ones that make a zoom control feel broken rather than
+ * look broken: a floor that slides while the top is dragged, and a control
+ * whose two ends draw the same chart.
+ */
+describe('reader-set ceiling', () => {
+  const body = [82, 88, 91, 95, 99, 103, 87, 93, 96, 101, 105, 90];
+  const series = [...body, 392.1];
+
+  it('holds the floor still while the ceiling is raised', () => {
+    const fitted = trendDomain(series, 95);
+    for (const max of [150, 250, 400]) {
+      expect(withCeiling(fitted, max).min).toBe(fitted.min);
+    }
+  });
+
+  it('reaches a ceiling that puts every reading back on the chart', () => {
+    const fitted = trendDomain(series, 95);
+    const full = fullCeiling(series, fitted);
+    expect(full).toBeGreaterThan(392.1);
+    expect(overflowOf(series, withCeiling(fitted, full))).toEqual([]);
+  });
+
+  it('offers no travel when nothing is off-scale', () => {
+    // What the component tests to decide whether to render the control at all.
+    const fitted = trendDomain(body, 95);
+    expect(fullCeiling(body, fitted)).toBe(fitted.max);
+  });
+
+  it('will not let a ceiling collapse the plot onto itself', () => {
+    const fitted = trendDomain(series, 95);
+    expect(withCeiling(fitted, 0).max).toBeGreaterThan(fitted.min);
+  });
+});
+
 describe('gridlines', () => {
+  it('drops an interior line that would print over a bound', () => {
+    // The live board on 2026-09-03: a 10..410 axis drew 400 one tenth of a
+    // gridline under its own ceiling, and the two labels came out as a smear.
+    const ticks = yTicks({ min: 10, max: 410 });
+    expect(ticks).toContain(410);
+    expect(ticks).not.toContain(400);
+    expect(ticks).toContain(350);
+  });
+
+  it('keeps a tall axis to a grid rather than a grey block', () => {
+    // Ten was the only step while the domain could not exceed 100.
+    expect(yTicks({ min: 25, max: 400 }).length).toBeLessThanOrEqual(9);
+  });
+
   it('draws both bounds and the tens between them', () => {
     expect(yTicks({ min: 70, max: 100 })).toEqual([70, 80, 90, 100]);
     expect(yTicks({ min: 65, max: 100 })).toEqual([65, 70, 80, 90, 100]);
@@ -111,6 +206,39 @@ describe('time ticks', () => {
     expect(timeTickIndices([])).toEqual([]);
     expect(timeTickIndices([9])).toEqual([]);
     expect(timeTickIndices([9, 10])).toEqual([0, 1]);
+  });
+
+  /*
+   * The time picker started serving the window a reader asks for on
+   * 2026-09-03, so this function now sees 168 points for a week and up to 672
+   * for the retention limit. At the old fixed six-hour spacing those are 28 and
+   * 112 interior ticks - an axis that is a smudge, which is the failure the
+   * suite header names and the one no screenshot catches on the day.
+   */
+  it('keeps a week legible instead of printing 28 midnight labels', () => {
+    const week = hours(0, 168);
+    const ticks = timeTickIndices(week);
+    expect(ticks.length).toBeLessThanOrEqual(8);
+    // Still on round hours - a thinned axis must not slide a tick to 07:00.
+    for (const i of ticks.slice(1, -1)) expect(week[i] % 24).toBe(0);
+  });
+
+  it('keeps four weeks legible too, where the modulus alone cannot', () => {
+    // `hours` holds hour-of-day, so no modulus is coarser than daily: 672
+    // points contain 28 midnights however the step is chosen. They get thinned.
+    const ticks = timeTickIndices(hours(0, 672));
+    expect(ticks.length).toBeLessThanOrEqual(8);
+    expect(ticks[0]).toBe(0);
+    expect(ticks[ticks.length - 1]).toBe(671);
+  });
+
+  it('still spaces a short window closely enough to have an axis at all', () => {
+    // 8 hours: six-hourly marks would give at most one interior tick, and on
+    // some starts none - a two-label axis. The step scales down instead.
+    const ticks = timeTickIndices(hours(9, 8));
+    expect(ticks.length).toBeGreaterThanOrEqual(3);
+    expect(ticks[0]).toBe(0);
+    expect(ticks[ticks.length - 1]).toBe(7);
   });
 });
 

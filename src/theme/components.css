@@ -43,134 +43,136 @@
  * lines up with the filter row and the panels underneath.
  */
 .topbar__masthead {
+  /*
+   * The lockup's height, and the band's. The artwork is one drawing - infinity
+   * and wordmark together - so this single length sizes the whole of it and the
+   * TV density below scales it without either half drifting out of proportion
+   * with the other.
+   *
+   * 26px, down from 40 -> 36 -> 32.
+   *
+   * The first three of those were picked against the *old* lockup, where the
+   * only thing running the full height was the orange mark and the wordmark
+   * beside it was live text set well inside the box. Matching that mark to the
+   * 32px status capsules opposite was the rule, and 32 satisfied it exactly.
+   *
+   * The supplied artwork does not behave like that. It is one drawing: the
+   * infinity fills the box top to bottom AND the wordmark runs the best part of
+   * 300px to its right, so the same height that read as a modest mark now reads
+   * as a large logo, and the "level with the capsules" rule sizes it by its
+   * least important dimension. Width is what the eye is answering here, so
+   * height is set to serve it: 26 puts the lockup at 217px, about two thirds of
+   * where it started, and a masthead logo sitting a little under the controls
+   * opposite is the normal way round.
+   *
+   * This is the one number. The width follows it through the aspect ratio on
+   * .brand__mark, the TV density below is pinned to it, and the band height is
+   * this plus the 12px shell padding twice.
+   */
+  --mark-h: 1.625rem;
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
+  /*
+   * 12px. It used to hold the mark and the wordmark together as one lockup -
+   * they are one drawing now, so the only gap left on this row is the one
+   * between the lockup and the crumb cell, which takes the rest of the width.
+   */
+  gap: var(--sp-3);
   min-width: 0;
   /*
    * 12px of vertical padding - the shell's own step, down from the 20px this was
    * first drawn at.
    *
    * The band still carries no readings, but at 20px it was the tallest thing on
-   * the screen that says nothing, and the brand text alone already sets a ~51px
-   * content height, so the band reads as generous at 12px too. The 16px it gives
-   * back goes straight into the KPI cards below, which do carry readings - the
-   * board underneath keeps exactly the height it had.
+   * the screen that says nothing. The 16px it gave back went straight into the
+   * KPI cards below, which do carry readings. The lockup sets the rest: 26px of
+   * content between 12 and 12 puts the band at 51px, which is where it stays -
+   * this padding is the shell step, not a lever for the band height.
    */
   padding: var(--sp-3) var(--shell-pad-x);
   background: var(--band);
   border-bottom: 1px solid var(--band-line);
 }
 
+/*
+ * The lockup is the whole of the left block now, so the <h1> around it is
+ * layout-neutral: no heading margin, no heading size, and it does not stretch.
+ */
+.brand {
+  margin: 0;
+  font-size: inherit;
+  line-height: 0;
+  flex: none;
+  min-width: 0;
+}
 .brand__link {
   display: block;
   line-height: 0;
   flex-shrink: 0;
 }
 /*
- * The mark only - the PNG's wordmark is cropped off.
+ * The artwork itself: 1883x226 of ink with the page unmultiplied out of it, so
+ * the box is the drawing and nothing else.
  *
- * It used to be drawn whole on an off-white plate, because the wordmark inside
- * the file is black and would otherwise not exist on the dark board. The plate
- * was the brightest thing on a near-black masthead, and the wordmark it was
- * protecting is redundant anyway: the title beside it already reads "One
- * Stanley Narong-Pat Global Executive Dashboard" as live text, which is also
- * the copy a screen reader gets.
+ * Everything this rule used to carry is gone with the old file - the off-white
+ * plate, the aspect-ratio crop that cut the wordmark off, and the negative
+ * margins that pulled back the white borders squared around it. The supplied
+ * lockup is cropped to its ink and transparent, so the gap on
+ * .topbar__masthead is the whole of the spacing on either side of it.
  *
- * The crop is done with the box's aspect ratio rather than by editing the file,
- * so the asset stays byte-identical to what `npm run extract:logo` pulls out of
- * the approved mockup. Measured from the pixels: the orange mark ends at y=194
- * of 300 (64.7%) and the black wordmark starts at y=220 (73.3%), so the cut sits
- * at 69% - 207 of 300 rows - clear of both. `cover` + `object-position: top`
- * scales the full width in and lets the bottom third fall outside the box.
+ * Given a height, the aspect ratio gives the width, and 1883/226 is the
+ * artwork's own: at the 26px band the lockup measures 217px. There is one
+ * length to turn if it wants to be smaller or larger - --mark-h, on
+ * .topbar__masthead - and the width follows it. background-size: contain rather
+ * than a stretch, so a rounding error in that ratio letterboxes by a pixel
+ * instead of skewing the type.
  *
- * Delete all of this when design supplies the SVG (DECISIONS.md D-F16); a
- * vector with a proper light-on-dark variant needs no crop and no plate.
+ * The two custom properties are set on the element by TopBar.tsx - see the
+ * note there - and this is where the choice between them is made, which keeps
+ * the theme a stylesheet concern.
+ *
+ * Still a raster (DECISIONS.md D-F16). 226 rows covers the 80px TV height at
+ * 2x with a little to spare, but the wordmark is type in a PNG: ask the design
+ * owner for the SVG before this goes on anything larger than a TV.
  */
 .brand__mark {
-  --mark-h: 2.5rem;
+  display: block;
   height: var(--mark-h);
-  width: auto;
-  aspect-ratio: 533 / 207;
-  object-fit: cover;
-  object-position: top;
-  display: block;
-  /*
-   * The file's own empty margins, taken back out of the layout.
-   *
-   * Measured from the pixels: inside the cropped 533x207 region the mark itself
-   * only spans x 104..430, so a fifth of the drawn width is transparent on each
-   * side. Left in, that padding read as a gap between the logo and the title
-   * that no CSS gap could explain, because it is not a gap - it is the image.
-   *
-   * Negative margins rather than a tighter crop: the pixels being pulled over
-   * are transparent, so nothing is clipped and nothing overlaps visibly, and it
-   * needs no wrapper element to clip against. Scaled from --mark-h so the TV
-   * density below carries it for free - at height H the image renders at H/207
-   * per source pixel, which is where both fractions come from.
-   */
-  margin-inline: calc(var(--mark-h) * -104 / 207) calc(var(--mark-h) * -102 / 207);
+  aspect-ratio: 1883 / 226;
+  background-image: var(--brand-logo-on-light);
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: contain;
 }
-:root[data-density='tv'] .brand__mark {
-  /* Drives the height and the negative margins together - see .brand__mark. */
-  --mark-h: 5rem;
+:root[data-theme='dark'] .brand__mark {
+  background-image: var(--brand-logo-on-dark);
+}
+:root[data-density='tv'] .topbar__masthead {
+  /*
+   * 60px, a shade over twice the desktop 26 - the same relation 80 held to 36.
+   * One length, one drawing: it puts the lockup at 500px wide, about a quarter
+   * of a 1920 wall panel.
+   */
+  --mark-h: 3.75rem;
 }
 
-.brand__text {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-.brand__title {
-  font-size: var(--fs-h1);
-  /*
-   * 600, not 700. At 24px the bold cut made the masthead the heaviest ink on the
-   * board, competing with the six KPI figures - which are the only things here
-   * anyone reads twice. The semibold still holds the line as a title against the
-   * 11px legal line under it, it just stops shouting over the numbers.
-   *
-   * Both families ship this weight as a real cut (fonts.css imports Poppins 600
-   * and Sarabun 600), so the Thai title does not get a synthesised one.
-   */
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  /*
-   * 1.4, which is Poppins' own content box - not the 1.15 this was set to.
-   *
-   * `text-overflow: ellipsis` requires `overflow: hidden`, and `overflow:
-   * hidden` clips at the line box. Poppins' ascent and descent together come to
-   * 1.375em, so at 1.15 the line box was 5px shorter than the ink it held and
-   * the browser cropped the difference: the y of "Stanley" and the g of
-   * "Narong" were sheared off flat, level with the top of the copyright line
-   * 3px below them. Anything under ~1.375 here re-crops them, so this is a
-   * floor rather than a taste setting.
-   */
-  line-height: 1.4;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 /*
- * Elided rather than wrapped. A second line here would push the board down by
- * the height of one ranking row, and the board is laid out to the pixel.
+ * The band's flexible middle: the trail on a drill-down, empty on the
+ * overview, and the thing that holds the utility cluster against the right
+ * edge either way.
+ *
+ * Centred in the slack rather than in the viewport. The two ends are close
+ * enough in width - 217px of lockup against 307px of capsules - that the
+ * difference does not read. Centring on the viewport instead would put the
+ * trail off the middle of this cell by half of whatever those two differ by,
+ * for no gain: the lockup is a fixed-ratio drawing and never resizes itself.
  */
-.brand__legal {
-  display: block;
-  font-size: var(--fs-brand);
-  color: var(--sub);
-  line-height: 1.4;
-  /*
-   * Two pixels of daylight under the title's descenders. The line-height above
-   * stops them being clipped but lands them roughly on this line's cap height,
-   * which still reads as one crowded block; this separates the legal line
-   * without spending the leading a whole extra text row would cost.
-   */
-  margin-top: 0.125rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.topbar__crumbs {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
 }
-
 .topbar__utility {
   display: flex;
   align-items: center;
@@ -181,12 +183,18 @@
 /* ------------------------------------------------- status bar (masthead) */
 
 /*
- * Two pills, not one: freshness on the left, language on the right, with air
- * between them. They used to share a single bordered box, which read as one
- * control and invited the question of what tapping the left half would do.
- * Nothing does - it is a readout - and separating it says so.
+ * Three capsules on one line: the freshness readout, the language menu, the
+ * theme switch. They were one bordered box holding all of it, which read as a
+ * single control and invited the question of what tapping the left third would
+ * do - the first third is a readout and cannot be tapped at all.
  *
- * Neither pill has a border. Both are seated on the white masthead band by a
+ * Where the line is drawn: the two freshness readings stay inside one capsule,
+ * divided by a hairline (see .livebadge), because they are one answer given
+ * twice. The two controls each get their own, because they do different things.
+ * The row's gaps then mean something - they separate things you can act on from
+ * the thing you can only read.
+ *
+ * None of the three is bordered. Each is seated on the white masthead band by a
  * light fill instead, which is what keeps the corner of the screen quiet.
  */
 .statusbar {
@@ -196,31 +204,52 @@
   flex-shrink: 0;
 }
 
+/* ----------------------------------------------------------- live badge */
+
 /*
- * Its own pill now. `overflow: hidden` is what lets the state bar sit flush in
- * the left edge and take the pill's corner curve, rather than floating inside it
- * as an inset sliver.
+ * One capsule holding both halves, divided by a hairline: the state on the left,
+ * the age on the right.
+ *
+ * Two shapes and one shape have both been drawn here, and one is right. The two
+ * readings are a pair - "is this board live" is answered by "how old is what I
+ * am reading", and neither is worth anything without the other - so they belong
+ * inside one outline, and the hairline is what keeps them separately legible
+ * inside it. Split into two capsules they read as two independent chips, and the
+ * row's remaining gaps then say nothing about which of the four things in this
+ * corner belong together.
+ *
+ * The coloured lozenge that used to sit inset in the left edge is gone. It was a
+ * third channel for the state on top of the glyph and the word, and on a capsule
+ * whose left edge is now the dot's own padding it had nowhere to sit that did
+ * not read as a rendering fault. The state is still carried three ways: the
+ * dot's colour, the dot's *shape*, and the word.
+ *
+ * A capsule, like everything else in the two bands. It is a readout rather than
+ * a control, so it is the one capsule with no hover and no pointer - the shape
+ * is shared because the row has to line up, not because this can be pressed.
  */
 .livebadge {
   display: inline-flex;
-  align-items: center;
-  gap: 0.4375rem;
+  align-items: stretch;
+  height: var(--ctl-h);
+  padding: 0 0.75rem;
+  flex-shrink: 0;
   background: var(--panel-2);
-  /* --r-lg, not --r-md. At 32px tall an 8px corner still reads as a squared-off
-     box; 12px is what makes it a pill. These two are the roundest things on the
-     board, because they are also the smallest. */
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  height: 2rem;
-  /* No left padding: the bar owns that edge. */
-  padding: 0 0.75rem 0 0;
-  font-size: var(--fs-micro);
+  border-radius: var(--r-control);
+  /*
+   * --fs-chip, the size every other capsule on the two bands is set in, not the
+   * 11px caption size this started at. The capsule already borrows --ctl-h from
+   * the filter row so the two bands line up; at 11px inside a 32px shell it was
+   * the same object as a filter chip drawn two steps smaller, which read as the
+   * masthead being a footnote to the row below it rather than the line above.
+   */
+  font-size: var(--fs-chip);
   white-space: nowrap;
   /*
    * A ring, and only when the state is *not* live. Colouring it permanently
-   * trains the reader to stop seeing it, and this pill sits on screen all day -
-   * the one moment it has to catch an eye from across the room is the one moment
-   * it is not green. `inset` so it lands inside the clipped corners.
+   * trains the reader to stop seeing it, and this capsule sits on screen all
+   * day - the one moment it has to catch an eye from across the room is the one
+   * moment it is not green. `inset` so it lands inside the rounded corners.
    */
   box-shadow: none;
 }
@@ -231,16 +260,21 @@
   box-shadow: inset 0 0 0 1px var(--status-crit-mark);
 }
 
-/* The state bar: flush in the left edge, full height, clipped to the corner. */
-.livebadge__bar {
-  width: 0.25rem;
-  align-self: stretch;
-  flex-shrink: 0;
-  /* 5px of air after the bar on top of the row's gap, so the bar reads as part
-     of the pill's edge rather than as the first item in the row. */
-  margin-right: 0.3125rem;
-  background: var(--status-nodata-mark);
+/*
+ * The left half: the dot and the word, in --sub.
+ *
+ * The quiet run of the two. "Live" is the same word for hours at a time and the
+ * reader stops seeing it; the dot beside it and the number to its right are what
+ * a glance actually lands on. AA on --panel-2.
+ */
+.livebadge__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-weight: 500;
+  color: var(--sub);
 }
+
 .livebadge__dot {
   /* 14px for a ~9px dot: `●` inks well under its em box, so the glyph has to be
      set larger than the 11px text it sits beside to read as the same weight. */
@@ -251,124 +285,250 @@
      and the mark is the brighter of the pair. */
   color: var(--status-nodata-mark);
 }
-
-/*
- * The age is the dark run and the state word is the quiet one, which is the
- * reverse of the first draft.
- *
- * It is also the right way round. "Live" is the same word for hours at a time
- * and the reader stops seeing it; the number beside it is the one thing on this
- * pill that changes, and it is what someone glancing up actually checks. Neither
- * run carries the state on its own in any case - the bar and the glyph do - so
- * this is a matter of which is worth reading, not which is legible. Both clear
- * AA on --panel-2.
- */
-.livebadge__state {
-  font-weight: 500;
-  color: var(--sub);
-}
-.livebadge__age {
-  font-weight: 500;
-  color: var(--text);
-  font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
-}
-
-/*
- * The bar is filled, the glyph is inked. Grouping the two selectors and setting
- * both properties on each - which is what this was - painted a green box behind
- * the glyph as well, so the round `●` came out as a square.
- */
-/*
- * The bar is filled and the glyph is inked, and the two are kept in separate
- * rules on purpose. Grouping the selectors and setting both properties on each -
- * which is what this was, twice now - paints a green box behind the glyph, so
- * the round `●` comes out square.
- */
-.livebadge--live .livebadge__bar {
-  background: var(--status-good-mark);
-}
 .livebadge--live .livebadge__dot {
   color: var(--status-good-mark);
 }
-.livebadge--stale .livebadge__bar {
-  background: var(--status-warn-mark);
-}
 .livebadge--stale .livebadge__dot {
   color: var(--status-warn-mark);
-}
-.livebadge--offline .livebadge__bar {
-  background: var(--status-crit-mark);
 }
 .livebadge--offline .livebadge__dot {
   color: var(--status-crit-mark);
 }
 
+/*
+ * The right half, at full ink where the state word is quiet.
+ *
+ * That is the right way round, and it is the reverse of the first draft. The
+ * number is the one thing in this corner that changes, and it is what someone
+ * glancing up actually checks; the state word is a constant. Neither run carries
+ * the state on its own in any case - the dot does, by colour and by shape - so
+ * this is a matter of which is worth reading, not which is legible.
+ *
+ * Equal margin and padding either side of the rule, so the divider sits on the
+ * capsule's own centre rather than being pushed off it by the row's gap - which
+ * is why `.livebadge` has none.
+ */
+.livebadge__age {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+  font-weight: 500;
+  color: var(--text);
+  /* The numeric face over the whole run, not just the digits: "updated 3s ago"
+     is one phrase, and a face change mid-phrase is more visible than the
+     tabular figures are worth. Tabular so the capsule does not twitch as the
+     count climbs through 8s, 9s, 10s. */
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * The divider, drawn as a pseudo-element rather than a border.
+ *
+ * A border would run the full height of the capsule and butt into the corner
+ * radius at both ends; inset to 60% it reads as a division *within* one shape,
+ * which is the whole point of keeping the two halves inside one outline. It is
+ * also the only way to inset it without giving the half a height of its own and
+ * losing the text's vertical centring.
+ *
+ * --line-strong, not --line. This sits on --panel-2 rather than on white, and
+ * --line against that fill is a 1px difference of about 3% - technically drawn
+ * and, on the iPad in the stand, not there. It is decoration either way: the
+ * state and the age are two separate runs of text whether or not a reader can
+ * make out the rule between them.
+ */
+.livebadge__age::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 1px;
+  background: var(--line-strong);
+}
+
 /* ------------------------------------------------------ language switch */
 
 /*
- * Two tiles, with the active one filled. A button labelled with the *other*
- * language is indistinguishable from a label until you press it, which is no
- * use to a Thai reader arriving at an English board.
+ * One capsule saying "Language" and a chevron, dropping a menu of the two
+ * locales.
  *
- * One hairline before the pair, none between them: when a tile is filled the
- * fill is the divider, and when it is not the hairline is the only thing
- * separating "EN" from the age text beside it.
+ * It replaces a two-tile TH/EN track, and the argument for that track was that a
+ * lone button labelled with the *other* language is indistinguishable from a
+ * label until you press it. True, and it does not carry over to a menu: this
+ * trigger names what it opens rather than what it would do, and the choices
+ * behind it are spelled out in full - ไทย and English, each in its own script,
+ * which is the only form a reader who cannot read the board in front of them
+ * recognises. Two-letter codes were never that form.
+ *
+ * What the tiles gave and this does not is the language in force at a glance,
+ * without opening it. That is recovered where it costs the row nothing: the
+ * trigger's accessible name is "Language: English", and the open menu ticks the
+ * row with the same disc the region and interval menus use. See
+ * LanguagePicker.tsx.
+ *
+ * Seated on --panel-2, borderless, at --ctl-h: the same capsule as the two
+ * readouts to its left, because three things on one line have to agree on a
+ * height and a radius before they agree on anything else.
  */
-/*
- * A track with a thumb, not two buttons in a row: the selected language is a
- * white tile riding on a tinted rail. That reads as one control with a position
- * - which is what a two-state switch is - where two adjacent tiles read as two
- * things to press.
- */
-.langseg {
+.langpicker {
+  position: relative;
   display: inline-flex;
-  align-items: stretch;
-  background: var(--panel-2);
-  border-radius: var(--r-lg);
-  padding: 0.1875rem;
-  height: 2rem;
   flex-shrink: 0;
 }
-.langseg__btn {
+.langpicker__btn {
   appearance: none;
-  border: none;
-  background: none;
-  /* The track's radius less its padding, so the thumb's curve is concentric with
-     the rail's rather than a tighter arc inside it. */
-  border-radius: calc(var(--r-lg) - 0.1875rem);
-  font: inherit;
-  font-size: var(--fs-nano);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 0 0.5625rem;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 0.375rem;
+  height: var(--ctl-h);
+  /* A shade less on the chevron's side: the mark is 6px of stroke in a box with
+     its own optical air, and equal padding lands it visibly further out than the
+     label is on the left. */
+  padding: 0 0.6875rem 0 0.75rem;
+  background: var(--panel-2);
+  border: none;
+  border-radius: var(--r-control);
+  font: inherit;
+  /* --fs-chip, matching the badge beside it and the filter chips below - see
+     .livebadge. */
+  font-size: var(--fs-chip);
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
   cursor: pointer;
 }
-/*
- * Selected is a tint and a weight, not a fill - the same treatment the range
- * segment beside it uses, so the two segmented controls on this board finally
- * agree with each other.
- *
- * This also retires the one place on the board where type did not clear AA. The
- * selected tile used to be white on the brand orange, which measures 2.4:1
- * against the 4.5:1 AA asks at this size; it was drawn that way deliberately and
- * documented as the known exception. --text on --panel-3 is 16.1:1.
- */
-.langseg__btn {
-  color: var(--sub);
+@media (hover: hover) {
+  /* The same orange wash every other control in the two bands takes on hover. */
+  .langpicker__btn:hover {
+    background: var(--accent-tint);
+    color: var(--accent-ink);
+  }
 }
-.langseg__btn[aria-pressed='true'] {
-  background: var(--panel);
-  color: var(--text);
-  box-shadow: var(--shadow-pop);
+/*
+ * Open is the brand orange at full strength, with a white label on it - not
+ * the pale wash the hover above uses.
+ *
+ * The two states were the same tint, which meant the capsule looked identical
+ * whether a pointer was resting on it or its menu was covering a third of the
+ * board. Filling it separates them, and it puts the brand colour on the board
+ * as the colour it actually is.
+ *
+ * The white label is a waived contrast pair at 2.51:1, not an accident. It
+ * applies here because this is --accent-fill like every other filled control,
+ * and a capsule that opted out would be the only orange on the board with a
+ * different label colour. See the long note on --accent-on-fill in tokens.css.
+ */
+.langpicker__btn[aria-expanded='true'] {
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
 }
 @media (hover: hover) {
-  .langseg__btn:not([aria-pressed='true']):hover {
-    color: var(--text);
+  /* Deeper under the pointer, not lighter - with a white label that is the
+     direction that raises contrast. Same reasoning as --accent-fill-strong. */
+  .langpicker__btn[aria-expanded='true']:hover {
+    background: var(--accent-fill-strong);
+    color: var(--accent-on-fill);
   }
+}
+/* The chevron takes --sub from the shared rule with .filter__caret, which is
+   right at rest and wrong under the wash - grey on orange reads as a disabled
+   half of a control that is anything but. */
+.langpicker__btn:hover .langpicker__chev,
+.langpicker__btn[aria-expanded='true'] .langpicker__chev {
+  color: inherit;
+}
+
+.langmenu {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  /* Right-aligned. This hangs off the last control but one in the top-right
+     corner of the board; a left-aligned panel would run off the edge. */
+  right: 0;
+  z-index: 1;
+  min-width: 10rem;
+  display: flex;
+  flex-direction: column;
+  /* No padding, and the rows clipped to the panel's corners: the separators
+     below are meant to reach both edges, which they cannot do inside a gutter,
+     and a row's hover fill would otherwise square off the rounded corners it
+     sits in. */
+  padding: 0;
+  overflow: hidden;
+  background: var(--panel);
+  /* --line, not --line-strong, for the reason recorded on .regionmenu: the
+     shadow is already doing the separating a floating box needs, and the heavier
+     hairline on top of it reads as a second, harder edge inside the soft one. */
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-modal);
+}
+/*
+ * The panel's own title, globe and all, and the menu's accessible name with it
+ * via aria-labelledby.
+ *
+ * Worth the row it costs. Three menus drop out of this end of the board, and
+ * this is the one whose trigger a reader is most likely to have hit on the way
+ * to the theme switch beside it; a panel holding two words in two scripts and
+ * nothing else does not say what it is on its own. The globe goes here rather
+ * than on the capsule, where it would be a second thing to read beside a word
+ * that already says the same.
+ */
+.langmenu__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line-row);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+}
+.langmenu__globe {
+  width: 1.0625rem;
+  height: 1.0625rem;
+  flex-shrink: 0;
+  /* Quieter than the word it labels: it marks the panel, it does not restate
+     what the panel is for. */
+  color: var(--ink-2);
+}
+.langmenu__opt {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 2.125rem;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: 0;
+  /* Square. The rows are ruled off from each other rather than spaced apart,
+     and a radius inside a full-width divider reads as a chip that has slipped
+     out of alignment with the line above it. */
+  border-radius: 0;
+  font: inherit;
+  font-size: var(--fs-body);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+/* One hairline per row, the same weight as the one under the panel's title, so
+   the head and the two locales read as a single ruled column. */
+.langmenu__opt + .langmenu__opt {
+  border-top: 1px solid var(--line-row);
+}
+@media (hover: hover) {
+  .langmenu__opt:hover {
+    background: var(--panel-2);
+  }
+}
+/* The locale in force. Weight alone here - the region and interval menus mark
+   their chosen row with a filled disc as well, but this menu is two rows of
+   which one is the board the reader is already looking at, so the bolder of
+   two lines is enough to find, and aria-checked carries it to a screen reader
+   either way. No wash, for the reason recorded on .regionmenu__opt. */
+.langmenu__opt[aria-checked='true'] {
+  font-weight: 600;
 }
 
 /* --------------------------------------------------------- theme switch */
@@ -393,8 +553,8 @@
 .themetoggle {
   appearance: none;
   border: none;
-  width: 2rem;
-  height: 2rem;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--panel-3);
@@ -420,12 +580,13 @@
   height: 1.125em;
 }
 @media (hover: hover) {
-  /* --line read as a fill, which it is not elsewhere. There is no --panel-4, and
-     the disc's resting state has already taken the last surface in the ladder;
-     this is the next step in the same greyscale, in both themes. */
+  /* The same orange wash every other control in the two bands takes on hover.
+     It used to be --line, one step down the greyscale, which was the right
+     answer when nothing in the masthead was orange and is now the only control
+     on the row that would not warm up under the pointer. */
   .themetoggle:hover {
-    background: var(--line);
-    color: var(--text);
+    background: var(--accent-tint);
+    color: var(--accent-ink);
   }
 }
 /* The global :focus-visible rule squares the ring off to --r-sm, which on a disc
@@ -439,7 +600,13 @@
 .topbar__filters {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  /* Tight, because these four read as one group. At --sp-2 the capsules sat far
+     enough apart that Region / Lamp / Process / Zone looked like four unrelated
+     controls that happened to share a line; at --sp-1 the gap is smaller than
+     the capsules own inline padding, which is what makes a run of chips read as
+     a set. The spacer below still holds the range controls off at the far end,
+     so nothing here brings the two ends of the row together. */
+  gap: var(--sp-1);
   min-width: 0;
   /* Below the band, so it takes the data region's inset like #main does. */
   padding-inline: var(--shell-pad-x);
@@ -453,6 +620,9 @@
  * A filter control: label, current value, caret. The caret is rendered even on
  * the two that are not yet interactive, because the artboard draws it and the
  * row would otherwise look like three unrelated kinds of control.
+ *
+ * A capsule at the shared control height, like every other control in both
+ * bands. See --r-control and --ctl-h in tokens.css for why those are tokens.
  */
 .filter {
   display: inline-flex;
@@ -460,24 +630,152 @@
   gap: 0.375rem;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-control);
+  /* A capsule needs more inline padding than a rounded box did: the curve eats
+     into the first and last few pixels, so 11px of it read as about 6. That is
+     also why this came down with the filter row gap rather than staying put:
+     the channel a reader sees between two capsules is this padding twice plus
+     the gap, so trimming the gap alone would have moved 8px of a 36px band. */
   padding: 0 0.6875rem;
-  height: 1.875rem;
+  height: var(--ctl-h);
   font: inherit;
   font-size: var(--fs-chip);
   color: var(--text);
   white-space: nowrap;
   max-width: 100%;
   min-width: 0;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
 }
 button.filter {
   cursor: pointer;
 }
 @media (hover: hover) {
   button.filter:hover {
-    border-color: var(--line-strong);
+    border-color: var(--accent-line);
+    background: var(--accent-tint);
   }
 }
+
+/*
+ * ---- a filter that is doing something ----
+ *
+ * Orange, and this is the board's primary use of the brand colour: three
+ * capsules that all say "Region / Lamp / Process" look identical whether they
+ * are scoping the board or not, and a reader who cannot see which one is on
+ * cannot trust a number on the screen. `.filter--on` is set by the control
+ * itself when its value is not the default - not on hover, not on open.
+ *
+ * The state is never carried by the colour alone. Each capsule also prints the
+ * scope it is holding ("Lamp 2", "Injection") in its value half, which is the
+ * part a colourblind reader and a screen reader both get; the tint is what
+ * makes the row scannable at arm's length on a stand.
+ *
+ * `[aria-expanded='true']` takes the same treatment one step stronger, so the
+ * control the open menu belongs to is obvious while the menu covers the board.
+ */
+/*
+ * On is the brand orange as a pastel ground, with a deep orange label on it.
+ *
+ * Three values have held this state and the middle one is worth knowing about.
+ * It began as a 4% tint under a dark label, which is what made the board's
+ * orange read as brown - at that lightness the ink has to clear 4.5:1 on a
+ * near-white ground, which caps it around L 35% whatever the hue. That was
+ * fixed by filling the capsule solid with --accent-fill and reversing a white
+ * label out of it, and as one control that was right.
+ *
+ * As a row it was not. This row carries up to five capsules side by side, and
+ * with three or four of them scoping the board the top of the screen became a
+ * band of saturated orange that reads as an alarm rather than as state. So the
+ * ground drops to --accent-pastel: still unmistakably the brand hue, still
+ * picked out of a row of white capsules from across a room, but at a lightness
+ * a deep orange ink can sit on - which also retires the waived white label on
+ * this control. See tokens.css for the pair and its measurements.
+ *
+ * What has not changed is that the state is never carried by the colour alone:
+ * the capsule prints the scope it is holding in its value half, which is what a
+ * colourblind reader and a screen reader both get.
+ *
+ * Nor has the fill gone anywhere. Export at the end of this row, the board tab
+ * in front and the alert count are all still solid --accent-fill; each of those
+ * is one filled shape with white space around it, which is the case the fill
+ * was argued for and still wins.
+ */
+.filter--on {
+  background: var(--accent-pastel);
+  /* The hairline is back, where the solid fill had it transparent. A pastel
+     ground does not describe its own edge against the white band the way a
+     saturated one did, and at this lightness --accent-line closes the shape
+     instead of reading as an outline drawn on top of it. */
+  border-color: var(--accent-line);
+}
+.filter--on .filter__key {
+  color: var(--accent-on-pastel);
+  font-weight: 600;
+}
+/*
+ * One ink for both halves, and deliberately not a dimmer one for the value.
+ *
+ * The obvious move on a pale ground is --ink-2 or --sub for the value half, the
+ * way an untinted capsule does it. It is not taken: this is a 13px string
+ * naming the scope in force - the part a colourblind reader and a screen reader
+ * both rely on - and a grey on a warm ground reads as disabled rather than as
+ * secondary. Both halves take --accent-on-pastel and the hierarchy between the
+ * key and its value is carried by weight alone, which is what the filled state
+ * settled on too, for its own reasons.
+ */
+.filter--on .filter__val,
+.filter--on .filter__caret {
+  color: var(--accent-on-pastel);
+}
+/*
+ * The control the open menu belongs to, whether or not it is holding a scope:
+ * the menu covers a third of the board, so which capsule it came out of has to
+ * be unmistakable.
+ *
+ * --accent-pastel-strong under a --accent-mark hairline: the on-state one step
+ * deeper, plus an edge. Open does outrank on here, and it can now, because the
+ * two are a step apart inside one quiet register rather than two saturated
+ * oranges side by side at the right-hand end of the row - which was the
+ * objection that once collapsed this pair back onto a single value.
+ *
+ * The hairline is doing as much of the work as the ground. One step of
+ * lightness between two pastels is a real distinction up close and a weak one
+ * from a stand; the darker edge is visible at both distances. An open capsule
+ * is in any case identified mostly by the panel hanging off it.
+ */
+.filter[aria-expanded='true'] {
+  background: var(--accent-pastel-strong);
+  border-color: var(--accent-mark);
+}
+.filter[aria-expanded='true'] .filter__key {
+  color: var(--accent-on-pastel);
+  font-weight: 600;
+}
+.filter[aria-expanded='true'] .filter__caret {
+  color: var(--accent-on-pastel);
+}
+/*
+ * Hover on a pastel capsule is the open state's ground - one step deeper, with
+ * the same darker hairline. A capsule that is on and under the pointer
+ * therefore previews what clicking it will look like, which is the right thing
+ * for a control whose click opens a menu.
+ *
+ * Both selectors are needed and neither is redundant. The plain
+ * button.filter:hover above paints the 4% --accent-tint, and at (0,2,1) it
+ * outranks the flat [aria-expanded='true'] ground at (0,2,0) - so without the
+ * second selector here, pointing at an open capsule dropped it back to a wash
+ * while its ink stayed set for a pastel ground.
+ */
+@media (hover: hover) {
+  button.filter--on:hover,
+  button.filter[aria-expanded='true']:hover {
+    background: var(--accent-pastel-strong);
+    border-color: var(--accent-mark);
+  }
+}
+
 .filter__key {
   font-weight: 500;
 }
@@ -486,11 +784,60 @@ button.filter {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.filter__caret {
-  font-size: 0.5rem;
-  color: var(--sub);
-  margin-left: 0.125rem;
+
+/*
+ * At rest the capsule is its name and a chevron, and nothing else.
+ *
+ * The value half is drawn only while the control is holding something, which is
+ * exactly when it has something to say. What it printed at rest was "All - 9
+ * bases", "All - 6 lamps" and "All": three restatements of the default, taking
+ * two thirds of the filter row to tell a reader that nothing has been filtered.
+ * The redraw draws these as bare labels for that reason, and the row comes down
+ * from about 640px of chrome to about 330px.
+ *
+ * Nothing that is in force is hidden. The moment a scope is picked the value
+ * comes back beside the name and the whole capsule turns orange, and the
+ * trigger's title attribute carries the long form in every state. The counts
+ * that used to sit here are on the masthead ("9 Global Bases") and in the menu,
+ * beside the rows they count.
+ */
+.filter:not(.filter--on) .filter__val {
+  display: none;
+}
+
+/*
+ * The chevron.
+ *
+ * Drawn, not typed. This was a filled triangle glyph at 8px, taken from
+ * whatever face the platform has for it - Segoe UI Symbol on Windows, Apple
+ * Symbols on the iPad - so it landed at a different weight and a different
+ * optical size on the two devices the board runs on, and neither matched the
+ * light stroked chevron the redraw draws. Two borders on a rotated box is the
+ * same mark at any size, in one place, on every platform.
+ *
+ * The glyph stays in the markup as the element's content and simply has nowhere
+ * to render: the box is 6px square and the type is sized to nothing. It is
+ * aria-hidden in either case, and the state a reader needs is on the button's
+ * aria-expanded.
+ */
+.filter__caret,
+.refreshpicker__chev,
+.langpicker__chev {
+  box-sizing: border-box;
   flex-shrink: 0;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-left: 0.25rem;
+  /* Lifted by a stroke width, so the chevron sits on the label's optical
+     centre rather than on its baseline. */
+  margin-bottom: 0.125rem;
+  border-right: 0.09375rem solid currentColor;
+  border-bottom: 0.09375rem solid currentColor;
+  rotate: 45deg;
+  color: var(--sub);
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
 }
 /* Not yet wired to anything. Stated in the markup with `disabled`, and drawn
    quietly rather than looking like a live control that ignores taps. */
@@ -523,6 +870,87 @@ button.filter {
   gap: 0.3125rem;
 }
 
+/*
+ * The Top-N picker beside the longest-active-stops panel title. `.chip` gives
+ * it the same small pressable capsule the map's methodology opener uses.
+ *
+ * `.toppicker-slot` takes the trigger out of flow rather than trying to shrink
+ * it down to the title's own line height. A pressable capsule - padding, a
+ * border, a tap target - is reliably a few pixels taller than bare text no
+ * matter how thin its padding is cut, and this panel sits beside the trend
+ * panel in the same `.bottom-grid` row: whichever one's title row is taller
+ * pushes its own divider line below the other's. Absolute positioning means
+ * the row's height comes from the `<h2>` alone, same as its neighbour, and the
+ * picker is centred on the result rather than shaping it.
+ */
+.toppicker-slot {
+  position: relative;
+}
+.toppicker {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: inline-flex;
+  min-width: 0;
+  /* The centring transform above makes this a stacking context, which traps the
+     menu's own z-index inside it - and with z-index:auto the box lands in tree
+     order behind .panel__scroll, so the alert rows painted over the open menu.
+     A value here lifts the whole picker, menu included, over the list. */
+  z-index: 2;
+}
+.toppicker__trigger {
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * Open, the capsule fills orange with a white label - the treatment
+ * .filter[aria-expanded='true'] gives the four filters above, and for the same
+ * reason: the panel hanging off it covers a corner of the board, so which
+ * control it came out of has to be unmistakable.
+ *
+ * Specificity, not order: `button.chip:hover` further down this sheet is (0,2,1)
+ * and paints the pale --accent-tint. An open picker under the pointer - which is
+ * every open picker, a beat after the click - would take the tint and keep the
+ * white label on it. The wrapper class buys the step that settles it.
+ */
+.toppicker button.toppicker__trigger[aria-expanded='true'] {
+  background: var(--accent-fill);
+  /* Transparent rather than --accent-line, for .filter--on's reason: a hairline
+     around a shape this saturated reads as an outline drawn on top of it. The
+     border stays declared so the capsule does not resize between states. */
+  border-color: transparent;
+  color: var(--accent-on-fill);
+}
+/*
+ * The chevron takes the same white, in a rule of its own for the same reason
+ * .filter[aria-expanded='true'] needs one: .filter__caret declares
+ * `color: var(--sub)` on itself, so it is drawing its two borders in its own ink
+ * rather than inheriting the button's currentColor. Setting the fill on the
+ * capsule alone left a grey mark on the orange.
+ *
+ * Outside the hover block below, so it holds in both open states - the chevron
+ * has no hover of its own, and neither does the label.
+ */
+.toppicker button.toppicker__trigger[aria-expanded='true'] .filter__caret {
+  color: var(--accent-on-fill);
+}
+@media (hover: hover) {
+  /* The one step the brand orange has that still carries a white label - the
+     hover both the filled filter capsules and Export take. */
+  .toppicker button.toppicker__trigger[aria-expanded='true']:hover {
+    background: var(--accent-fill-strong);
+    border-color: transparent;
+    color: var(--accent-on-fill);
+  }
+}
+/* Anchored to the trigger's right edge, for .langmenu's reason: the picker sits
+   in the panel's top-right corner, and a left-aligned panel ran out past the
+   panel border - which clips, because .panel hides its overflow. */
+.toppicker .regionmenu {
+  left: auto;
+  right: 0;
+}
+
 .regionmenu {
   position: absolute;
   top: calc(100% + 0.375rem);
@@ -538,9 +966,26 @@ button.filter {
   flex-direction: column;
   padding: var(--sp-1);
   background: var(--panel);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
+  /* --line, not --line-strong. The menu is lifted off the board by a shadow
+     that is doing all the separating a floating box needs; on top of it the
+     heavier hairline read as a second, harder edge inside the soft one. */
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-modal);
+}
+
+/*
+ * Process and Zone drop the same panel, but their rows are one word or one
+ * short tag - never the country name, code, count and readiness tag the 17rem
+ * above is sized around. Left on that floor the box stood roughly three times
+ * wider than anything in it. This lets those two shrink to their content, with
+ * a floor that keeps the panel reading as the same control it is under Region
+ * and Lamp, and a ceiling for the "in 2 lamps" note a colliding zone tag adds.
+ */
+.regionmenu--compact {
+  min-width: 8.5rem;
+  width: max-content;
+  max-width: 15rem;
 }
 
 .regionmenu__opt {
@@ -548,11 +993,11 @@ button.filter {
   align-items: center;
   gap: 0.5rem;
   width: 100%;
-  min-height: 2rem;
+  min-height: 2.125rem;
   padding: 0.25rem 0.5rem;
   background: none;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
   font: inherit;
   font-size: var(--fs-body);
   color: var(--text);
@@ -561,20 +1006,25 @@ button.filter {
 }
 @media (hover: hover) {
   .regionmenu__opt:hover {
-    background: var(--panel-3);
+    background: var(--panel-2);
   }
 }
-/* A ticked scope, which is also where focus lands when the menu opens. Weight
-   rather than colour, so it survives the dark theme unchanged. */
-.regionmenu__opt[aria-checked='true'] {
-  background: var(--panel-2);
-  font-weight: 600;
-}
-/* A country with only some of its bases ticked. Same ground, no extra weight:
-   it is the children that are selected, not the country. */
-.regionmenu__opt[aria-checked='mixed'] {
-  background: var(--panel-2);
-}
+/*
+ * A ticked scope takes neither a fill nor a weight: the disc at the end of the
+ * row is the whole state.
+ *
+ * Both of those were tried and both failed for the same reason. The board opens
+ * on the whole fleet, so *every* row is ticked in the default state - a wash
+ * behind each of them turned the menu into a block of orange, and bolding each
+ * of them turned it into a block of bold. A highlight that is on seventeen rows
+ * out of seventeen is not a highlight, and it cost the menu the one thing a
+ * list of scopes needs, which is an even column the eye can run down.
+ *
+ * So the fill and the weight are kept for the thing the reader is *choosing
+ * between* - the capsule in the filter row, the range segment, the language -
+ * and the menu says which rows are in force with a disc per row, which reads
+ * the same whether one is ticked or all of them are.
+ */
 
 /* Each country and the bases under it. A real box rather than `display:
    contents`, because the hairline between scopes belongs to the group. */
@@ -586,8 +1036,24 @@ button.filter {
   border-top: 1px solid var(--line-row);
 }
 
+/*
+ * The same hairline, for the menus that have no groups to hang it off - Zone
+ * and Process are flat lists, and without it their All row reads as the first
+ * entry in the list rather than the switch that fills it. Spaced to match the
+ * group rule above, so the four menus separate their All row identically.
+ */
+.regionmenu__sep {
+  height: 0;
+  margin: var(--sp-1) 0;
+  border: 0;
+  border-top: 1px solid var(--line-row);
+}
+
+/* The parent row of a group, in full ink. That contrast against the children
+   below is what marks it as the parent - the rows are otherwise identical, and
+   deliberately so, because the flat menus have no parents to match. */
 .regionmenu__opt--country {
-  font-weight: 600;
+  color: var(--text);
 }
 /* Indented under its country, and one step quieter: the country row is the
    scope the eye scans for, the bases under it are the detail. */
@@ -604,10 +1070,10 @@ button.filter {
   white-space: nowrap;
 }
 /* Never translated, so it is set at a fixed width and the names beside it line
-   up into a column. */
+   up into a column. Full ink on a row that may be muted, which is all the
+   separation it needs - the fixed column is already doing the work. */
 .regionmenu__code {
   flex: 0 0 2.5rem;
-  font-weight: 600;
   color: var(--text);
 }
 .regionmenu__meta {
@@ -616,11 +1082,14 @@ button.filter {
   color: var(--sub);
   font-weight: 400;
 }
-/* Readiness, on the sites that have no telemetry yet. It is why every figure
+/* "Not connected", on the sites with no telemetry yet. It is why every figure
    comes back a dash when one of them is chosen, and saying so here is cheaper
-   than letting the reader discover it on an empty board. */
+   than letting the reader discover it on an empty board. nowrap because the
+   label beside it ellipsizes and this one must not fold to two lines and take
+   the row with it. */
 .regionmenu__tag {
   flex-shrink: 0;
+  white-space: nowrap;
   padding: 0.0625rem 0.375rem;
   border-radius: var(--r-pill);
   background: var(--chip-fill-muted);
@@ -628,51 +1097,877 @@ button.filter {
   font-weight: 500;
   color: var(--sub);
 }
-.regionmenu__check {
-  flex: 0 0 0.75rem;
-  text-align: right;
-  color: var(--status-good-ink);
+/*
+ * The tick, drawn as the control it belongs to: a circle on every row, filled
+ * brand orange on the row that is in force.
+ *
+ * It used to be a bare tick in the status green, printed only on the chosen
+ * row. Two things were wrong with that and the redraw fixes both. Green is the
+ * colour this board uses for "this machine is running", and a ticked row means
+ * "this scope is in force" - a choice the reader made, not a state of the
+ * fleet, and every other confirmation on the board is orange for that reason.
+ * And a mark that is absent until chosen gives the eye nothing to run down:
+ * with a circle on each row the column reads as a set of choices, which is
+ * what it is.
+ *
+ * The state is carried by shape as much as by colour - filled and ticked,
+ * empty, or dashed for a country whose bases are only partly picked - on top of
+ * the aria-checked a screen reader reads. White on --accent-mark measures
+ * 3.56:1, which is the floor for a non-text mark and is what this is: a 9px
+ * glyph inside a filled disc, hidden from the accessibility tree, saying
+ * nothing the disc and the attribute do not already say.
+ */
+.regionmenu__check,
+.refreshmenu__check,
+.timepanel__check {
+  box-sizing: border-box;
+  flex: 0 0 1.0625rem;
+  height: 1.0625rem;
+  border: 0.09375rem solid var(--line-strong);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.5625rem;
+  line-height: 1;
+  /* The glyph is invisible until the row is checked: an empty circle is the
+     unchecked state, and a grey tick inside one would read as a third. */
+  color: transparent;
+}
+/*
+ * --accent-fill and its own label colour, not --accent-mark with --panel on it.
+ *
+ * The tick is a glyph rather than type, so 3:1 would have been the bar and
+ * --accent-mark cleared it - but the calendar's picked days are discs of the
+ * same size carrying *numbers*, which owe 4.5:1, and two orange discs on one
+ * screen at two different oranges is worse than either. This is the pair the
+ * board already measures for a filled control (tokens.css, and the FILL tables
+ * in scripts/check-contrast.mjs), so both uses land on it.
+ */
+.regionmenu__opt[aria-checked='true'] .regionmenu__check,
+.refreshmenu__opt[aria-checked='true'] .refreshmenu__check,
+.timepanel__opt[aria-checked='true'] .timepanel__check {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-on-fill);
+}
+/* Some of the country's bases and not all of them. The dash is inked rather
+   than reversed out of a fill, because the row itself is not chosen. */
+.regionmenu__opt[aria-checked='mixed'] .regionmenu__check {
+  border-color: var(--accent-line);
+  color: var(--accent-ink);
+}
+
+/* ========================================================== time picker ===
+ *
+ * The window and the timezone in one capsule, drawn as Grafana draws them: a
+ * clock, the window in force, the zone offset, a chevron - and a two-column
+ * panel under it. See TimeRangePicker.tsx for why it is somebody else's control
+ * and what the left column can and cannot do.
+ *
+ * The trigger takes `.filter` for its shape, so the capsule, the height, the
+ * hover and the orange "this is off its default" state are the filter row's and
+ * not a second set of values that can drift from it. Everything below is what
+ * the picker adds to that.
+ */
+.timepicker {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.timepicker__icon {
+  /* `em`, so the glyph follows the capsule's type into kiosk density instead of
+     holding still at 13px beside 24px labels. */
+  inline-size: 1.05em;
+  block-size: 1.05em;
+  flex-shrink: 0;
+  color: var(--sub);
+}
+.timepicker__val {
+  font-weight: 500;
+  white-space: nowrap;
+}
+/*
+ * The offset badge. Quieter and a size down from the window beside it: it
+ * qualifies the reading rather than being one, and it is the half that only
+ * appears in reference mode - see the note at the call site.
+ */
+.timepicker__zone {
+  font-size: var(--fs-micro);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--sub);
+  white-space: nowrap;
+}
+/*
+ * Everything on the capsule comes up with it once the ground is orange, so the
+ * control reads as one state rather than as a dark label with grey furniture
+ * beside it. --accent-on-pastel, the ink the two pastel grounds are measured
+ * against - not --accent-ink, which is measured on the 4% tint and lands under
+ * AA on these.
+ *
+ * The window itself has to be listed here, and that is the whole point of the
+ * rule. The other four capsules put their text in .filter__key/.filter__val,
+ * which the filled and open states already reverse out; this one prints the
+ * window in .timepicker__val, which inherits --text from .filter and so stayed
+ * dark ink on the orange while the caret beside it went white.
+ *
+ * Both states, not just .filter--on. A picker sitting on the default window
+ * still turns orange while its panel is open - that is the filter row's rule
+ * for "the menu covering the board came out of here" - and that was the state
+ * the dark label was most visible in, since it is the one a reader is looking
+ * straight at.
+ */
+.filter--on .timepicker__val,
+.filter--on .timepicker__icon,
+.filter--on .timepicker__zone,
+.filter[aria-expanded='true'] .timepicker__val,
+.filter[aria-expanded='true'] .timepicker__icon,
+.filter[aria-expanded='true'] .timepicker__zone {
+  color: var(--accent-on-pastel);
 }
 
 /*
- * The range segment. One bordered box, hairline dividers between the segments,
- * the active one filled - as drawn.
+ * ---- the capsule holding a pair of DATES ----
+ *
+ * The one place on this row where the brand orange is a hairline and a glyph
+ * rather than a ground, and the exception is about size, not about taste.
+ *
+ * `.filter--on` grounds the whole capsule because the scope capsules say
+ * "Injection" or "Lamp 2" - three-to-nine characters that have to be legible
+ * from across a room, where a 4% tint is not (see the note on `.filter--on`
+ * above; that reasoning stands and this does not reopen it). A date range is
+ * "3 Sep – 30 Sep 2026", two or three times that width, and grounding it puts a
+ * band of brand colour in the toolbar wider than every other control combined.
+ * At that size the eye reads the widest mark on the row as the loudest one,
+ * whatever its saturation, and the capsule stops saying "this control is
+ * scoping the board".
+ *
+ * So the state signal moves rather than disappearing: an orange calendar glyph,
+ * an orange hairline, and the row's own ground and ink between them. The capsule
+ * also prints the dates themselves, which is the part a colourblind reader and
+ * a screen reader get either way - the fill was never carrying the state alone.
+ *
+ * Declared after the two blocks it overrides and at a higher specificity than
+ * both (`.filter.timepicker__trigger--dates`, 0-3-0, over `.filter--on` and
+ * `.filter[aria-expanded]` at 0-2-0), so neither ordering nor a later edit to
+ * those can quietly re-fill it.
  */
-.rangeseg {
-  display: inline-flex;
-  align-items: stretch;
+.filter.timepicker__trigger--dates {
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  height: 1.875rem;
-  flex-shrink: 0;
+  border-color: var(--accent-line);
+  color: var(--text);
 }
-.rangeseg__btn {
-  appearance: none;
-  background: none;
-  border: none;
-  border-left: 1px solid var(--line);
-  font: inherit;
-  font-size: var(--fs-chip);
-  color: var(--sub);
-  padding: 0 0.75rem;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-}
-.rangeseg__btn:first-child {
-  border-left: none;
-}
-.rangeseg__btn[aria-pressed='true'] {
-  background: var(--panel-3);
+.filter.timepicker__trigger--dates .timepicker__val {
   color: var(--text);
   font-weight: 600;
 }
+/* `--accent-ink`, the orange that is allowed to be type: the glyph sits on the
+   panel ground where `--accent-fill` would measure well under 4.5:1. */
+.filter.timepicker__trigger--dates .timepicker__icon {
+  color: var(--accent-ink);
+}
+.filter.timepicker__trigger--dates .timepicker__zone,
+.filter.timepicker__trigger--dates .filter__caret {
+  color: var(--sub);
+}
+/*
+ * Open, and hover, stay inside the same quiet register.
+ *
+ * The filter row's rule is that the control an open panel belongs to must be
+ * unmistakable while that panel covers a third of the board - but taking the
+ * full pastel ground the moment it is clicked would undo the whole point above,
+ * and flash the band this variant exists to avoid every time the panel is
+ * opened. The 4% tint plus the deeper hairline is the same distinction one
+ * register down, and the panel hanging off the capsule is doing most of that
+ * work anyway.
+ */
+.filter.timepicker__trigger--dates[aria-expanded='true'] {
+  background: var(--accent-tint);
+  border-color: var(--accent-ink);
+}
 @media (hover: hover) {
-  .rangeseg__btn:hover {
+  button.filter.timepicker__trigger--dates:hover {
+    background: var(--accent-tint);
+    border-color: var(--accent-ink);
+  }
+}
+
+.timepanel {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  /* Anchored to the right edge, like the refresh menu beside it: this is the
+     last control in the row, and a panel opening leftward from it would run off
+     the board. */
+  right: 0;
+  z-index: 1;
+  width: 30rem;
+  max-width: calc(100vw - var(--shell-pad-x) * 2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-modal);
+  /* Not `hidden`: the calendar hangs off this box's left edge and would be
+     clipped away entirely. The rounded bottom corners it used to buy are on
+     .timepanel__foot instead, which is the element that was squaring them. */
+  overflow: visible;
+}
+
+/*
+ * Two columns: what you can type on the left, what you can pick on the right.
+ *
+ * That is Grafana's arrangement and it survives the fact that our left column
+ * is disabled, because the reading order still makes sense - a reader who tries
+ * the fields finds the line explaining them and then the list beside it. The
+ * right column is slightly the narrower of the two: three rows of "Last 24h"
+ * need less width than a pair of labelled fields.
+ */
+.timepanel__cols {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+}
+.timepanel__abs {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.timepanel__quick {
+  padding: var(--sp-4) var(--sp-2) var(--sp-4) var(--sp-3);
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.timepanel__title {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text);
+  line-height: var(--lh-tight);
+  margin-bottom: var(--sp-1);
+}
+.timepanel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.timepanel__label {
+  font-size: var(--fs-micro);
+  color: var(--sub);
+}
+/*
+ * A rectangle, not a capsule.
+ *
+ * Every *control* on this board is a capsule and a text field is the exception:
+ * capsule ends on an input read as a search box, and the shape a reader is
+ * looking for when they intend to type is a box with corners. --r-md is the
+ * step the menus use, which is where this belongs - inside a floating panel
+ * rather than out on the page.
+ */
+.timepanel__field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--ctl-h);
+  padding: 0 0.625rem;
+  font: inherit;
+  font-family: var(--font-num);
+  font-size: var(--fs-body);
+  /* The wrapper carries the fill, the hairline and the radius - see
+     .timepanel__input - so the input itself is just the text slot inside it. */
+  background: none;
+  border: 0;
+  color: var(--text);
+}
+/* Not typeable, and it should not look it: the caret would be the one thing on
+   the field promising something the grid does the other way. */
+.timepanel__field input:read-only {
+  cursor: pointer;
+}
+/*
+ * Disabled, and deliberately not dimmed any further.
+ *
+ * The fields are carrying a real reading - the window in force, in Grafana's
+ * relative syntax - and that is worth being able to read and copy. What says
+ * they are inert is the cursor, the flat fill, and the line under the button;
+ * greying the text out as well would hide the one useful thing they hold.
+ */
+.timepanel__field input:disabled,
+.timepanel__apply:disabled {
+  cursor: default;
+}
+.timepanel__apply {
+  margin-top: var(--sp-1);
+  align-self: flex-start;
+  height: var(--ctl-h);
+  padding: 0 0.875rem;
+  font: inherit;
+  font-size: var(--fs-chip);
+  font-weight: 600;
+  color: var(--sub);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+}
+/*
+ * Apply became a real action on 2026-09-03, so it needs the two states it never
+ * had. It was drawn permanently muted while the backend could not serve an
+ * absolute window; now the muted form means only "the draft is incomplete or
+ * unchanged", and a button that looked identical either way would leave a
+ * reader clicking a live control that gives no sign it is live.
+ */
+.timepanel__apply:not(:disabled) {
+  /* The Export control's tokens, not `--accent` with white on it: `--on-accent`
+     was removed precisely because white on the brand orange was this board's one
+     documented AA failure. This is the same kind of control - the one filled
+     action in its row - so it takes the same pair. */
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-on-fill);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+@media (hover: hover) {
+  .timepanel__apply:not(:disabled):hover {
+    background: var(--accent-fill-strong);
+    border-color: var(--accent-fill-strong);
+  }
+}
+.timepanel__note {
+  font-size: var(--fs-micro);
+  color: var(--sub);
+  line-height: var(--lh-body);
+}
+/*
+ * "Back to a quick range", inline in that note.
+ *
+ * A button rather than an anchor - it changes filter state, it does not
+ * navigate - drawn as a link because it sits mid-sentence and a second boxed
+ * control under Apply would read as a second commit step.
+ */
+.timepanel__link {
+  padding: 0;
+  font: inherit;
+  /* `--accent-ink`, not `--accent`: this is orange as TYPE, and the plain
+     token is the fill orange, which does not clear 4.5:1 at this size. */
+  color: var(--accent-ink);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/*
+ * The field and its calendar button, as one shape.
+ *
+ * Grafana puts the button inside the field's right edge, and that is worth
+ * copying for a reason beyond familiarity: the two are one control, and a
+ * separate button beside the box invites the reading that the box is typeable
+ * and the button is something else.
+ */
+.timepanel__input {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.timepanel__cal {
+  appearance: none;
+  flex-shrink: 0;
+  width: var(--ctl-h);
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: none;
+  color: var(--sub);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.timepanel__calicon {
+  inline-size: 1.05em;
+  block-size: 1.05em;
+}
+@media (hover: hover) {
+  .timepanel__cal:hover {
+    background: var(--accent-tint);
+    color: var(--accent-ink);
+  }
+}
+/* Filled while its calendar is out, like the filter capsules and the language
+   capsule - the hover above stays a wash, so the two states are told apart. */
+.timepanel__cal[aria-expanded='true'] {
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
+}
+
+.timepanel__list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* A row in the quick list, drawn like a row in the two menus - see
+   .refreshmenu__opt, whose disc these rows share. */
+.timepanel__opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.125rem;
+  padding: 0.25rem 0.5rem;
+  background: none;
+  border: 0;
+  border-radius: var(--r-md);
+  font: inherit;
+  font-size: var(--fs-body);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+@media (hover: hover) {
+  .timepanel__opt:hover {
+    background: var(--panel-2);
+  }
+}
+/* The window in force: the disc says it, for the reason on .regionmenu__opt. */
+
+/*
+ * The footer: which clock the timestamps on the board are in, and the control
+ * that changes it.
+ *
+ * Grafana's footer names the zone and offers a way to change it, and this is
+ * that row with the promise attached: the note is explicit that only the
+ * *timestamps* move, because a timezone control that looks like it re-cuts the
+ * numbers is the dangerous kind. On its own surface so the panel closes with an
+ * edge rather than trailing off.
+ */
+.timepanel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
+  /* The panel's own radius less its 1px border, so the fill sits inside the
+     curve rather than cutting across it. */
+  border-end-start-radius: calc(var(--r-lg) - 1px);
+  border-end-end-radius: calc(var(--r-lg) - 1px);
+}
+.timepanel__zoneline {
+  font-size: var(--fs-micro);
+  color: var(--sub);
+  min-width: 0;
+  line-height: var(--lh-body);
+}
+
+/*
+ * The anchor switch: a track with a thumb, the same idiom as the language
+ * tiles in the masthead and for the same reason - two states, one of which is
+ * always in force, is a switch and not two buttons.
+ *
+ * It sits on --panel, a step *up* from the footer it is on, where the masthead's
+ * version sits on --panel-2, a step down from the white band. Same relationship
+ * either way: the track has to separate from whatever is behind it.
+ */
+.timepanel__seg {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: var(--ctl-h);
+  padding: 0.1875rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+}
+.timepanel__segbtn {
+  appearance: none;
+  border: none;
+  background: none;
+  border-radius: var(--r-control);
+  padding: 0 0.6875rem;
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--sub);
+  white-space: nowrap;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+/* The window in force: filled, for the same reason the filter capsules are.
+   This is a segmented control, so the selected tile has to be findable among
+   its neighbours at a glance and a 4% tint is not that. */
+.timepanel__segbtn[aria-pressed='true'] {
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
+  font-weight: 600;
+}
+@media (hover: hover) {
+  .timepanel__segbtn:not([aria-pressed='true']):hover {
     color: var(--text);
+  }
+}
+
+/*
+ * Narrow viewports stack the two columns. 30rem of panel does not fit a phone,
+ * and the alternative - a horizontal scrollbar inside a popover - is worse than
+ * two rows. The board itself stacks at 1000px (see .board), but this panel is
+ * 480px and only starts to bind well below that.
+ */
+@media (max-width: 680px) {
+  .timepanel {
+    width: 21rem;
+  }
+  .timepanel__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .timepanel__quick {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-inline: var(--sp-4);
+  }
+  .timepanel__foot {
+    flex-wrap: wrap;
+  }
+}
+
+/* ----------------------------------------------------------- export button */
+/*
+ * The last control on the filter row, and the only filled one on the board.
+ *
+ * Same capsule and same height as `.filter` beside it, so the row stays on one
+ * baseline; everything else about it is deliberately different, because it is
+ * the only control here that produces something rather than re-scoping the
+ * screen. A row of five outlined capsules with one solid one at the end reads
+ * as "these narrow, that does" without a label saying so.
+ *
+ * The same --accent-fill / --accent-on-fill pair as the filter capsule that is
+ * on, the board tab in front and the alert count: the brand orange at full
+ * saturation, with a white label on it.
+ *
+ * This button is where the white label was asked for, and taking it here alone
+ * was tried twice - once as a deep ground per theme and per density, which
+ * passed every check and stopped matching the capsule beside it, and once as
+ * the shared dark label, which matched and was not white. It ends up on the
+ * shared token because a single control in its own orange, or with its own
+ * label colour, is the one outcome both attempts agreed was worse. The pair is
+ * a waived 2.51:1 - see --accent-on-fill in tokens.css.
+ */
+.exportbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+  height: var(--ctl-h);
+  /* Transparent rather than absent: `.filter` carries a 1px border, and a
+     borderless capsule beside it is 2px shorter in the box model.
+     No hairline, which is the board's existing call for every filled control
+     and not a new one here: the brand orange is 2.32:1 against the light page,
+     under the 3:1 a boundary owes on its own, and what identifies the control
+     is the label inside it plus the outlined capsules either side. A ground
+     deep enough to close its own shape is the same ground that stops being the
+     brand colour - see the note above. */
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  padding: 0 0.875rem;
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
+  font: inherit;
+  font-size: var(--fs-chip);
+  /* A step heavier than the filters. It is the action, and on a solid ground a
+     regular weight at 13px starts to thin out. */
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+@media (hover: hover) {
+  .exportbtn:not(:disabled):hover {
+    background: var(--accent-fill-strong);
+  }
+}
+/*
+ * Nothing to export: an outlined capsule in the row's own greys.
+ *
+ * Not the orange at reduced opacity, which is the usual reflex and the wrong
+ * one here - a translucent fill puts the label somewhere between 2:1 and 7:1
+ * depending on what is behind it, and an unreadable label is a worse way to say
+ * "unavailable" than simply not being filled.
+ */
+.exportbtn:disabled {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--sub);
+  cursor: default;
+}
+.exportbtn__icon {
+  inline-size: 1.05em;
+  block-size: 1.05em;
+  flex-shrink: 0;
+}
+/* The global :focus-visible rule squares every control off to --r-sm. On a
+   capsule that reads as a box drawn around it - see .themetoggle for the disc's
+   version of the same override. */
+.exportbtn:focus-visible {
+  border-radius: var(--r-control);
+}
+
+
+/* ------------------------------------------------------------ the calendar */
+
+/*
+ * The month grid, hung off the panel's left edge the way Grafana hangs its own.
+ *
+ * Left rather than below: the panel is already 480px of popover under a control
+ * at the right-hand end of the row, and a second layer below it would reach the
+ * bottom of an iPad's viewport. Left of the panel there is nothing but board.
+ */
+.calendar {
+  position: absolute;
+  top: 0;
+  right: calc(100% + var(--sp-2));
+  z-index: 2;
+  width: 17.5rem;
+  padding: var(--sp-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-modal);
+}
+.calendar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.calendar__title {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text);
+  line-height: var(--lh-tight);
+}
+.calendar__close {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: var(--fs-chip);
+  line-height: 1;
+  color: var(--sub);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+@media (hover: hover) {
+  .calendar__close:hover {
+    background: var(--accent-tint);
+    color: var(--accent-ink);
+  }
+}
+
+/* The month, with a step either side. The label is centred by taking the
+   leftover width, so the two chevrons stay pinned to the edges. */
+.calendar__month {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+.calendar__label {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.calendar__nav {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--r-sm);
+  color: var(--sub);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+@media (hover: hover) {
+  .calendar__nav:hover {
+    background: var(--accent-tint);
+    color: var(--accent-ink);
+  }
+}
+/* The same drawn chevron as the filter row and the sort heads, turned to point
+   along the month. Two borders on a rotated box - see .filter__caret. */
+.calendar__navchev {
+  box-sizing: border-box;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-right: 0.09375rem solid currentColor;
+  border-bottom: 0.09375rem solid currentColor;
+  /* Right, and the modifier below turns it back the other way. */
+  rotate: -45deg;
+  /* The chevron's ink sits on a diagonal of its box, so an unadjusted box reads
+     as sitting a pixel or two off the button's centre. */
+  margin-left: -0.0625rem;
+}
+.calendar__navchev--prev {
+  rotate: 135deg;
+  margin-left: 0.0625rem;
+}
+
+.calendar__heads,
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.calendar__weekday {
+  padding-block: 0.25rem;
+  text-align: center;
+  font-size: var(--fs-nano);
+  font-weight: 600;
+  color: var(--sub);
+  /* Thai weekday abbreviations are two characters and Latin's are three, so the
+     column is sized by the grid and the label is allowed to be whatever it is. */
+  overflow: hidden;
+}
+
+/*
+ * No gap between the cells, deliberately: the days inside a picked range carry
+ * a continuous wash, and a gap turns that band into a row of separate blocks.
+ * The cells keep their own hit area - 40px at this width - and the two ends of
+ * the range are discs inset within it.
+ */
+.calendar__day {
+  appearance: none;
+  border: 0;
+  background: none;
+  aspect-ratio: 1;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-body);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Square, so the range band meets cleanly; the ends round themselves. */
+  border-radius: 0;
+}
+/* A day belonging to the month either side of this one. Kept rather than
+   blanked: a blank first row reads as a rendering fault, and a reader dragging a
+   range across a month boundary needs to see where they are going. */
+.calendar__day--outside {
+  color: var(--sub);
+  opacity: 0.5;
+}
+/*
+ * A day the board cannot answer for: after today in the reference zone. Drawn
+ * quiet and inert rather than hidden, so the reader can see that the month
+ * continues and that the limit is deliberate.
+ */
+.calendar__day:disabled {
+  color: var(--sub);
+  opacity: 0.32;
+  cursor: default;
+}
+.calendar__day--inside {
+  background: var(--accent-tint);
+}
+/*
+ * The two ends of the range: a filled disc with reversed type.
+ *
+ * --accent-fill, not --accent-mark. The number inside it is *text* at 12px, so
+ * it owes 4.5:1 and not the 3:1 a mark owes: white on --accent-mark is 3.56:1
+ * and would fail. --accent-fill is the pair this board already measures for
+ * exactly this case (see tokens.css and the FILL tables in
+ * scripts/check-contrast.mjs), and it inverts correctly in the dark theme where
+ * the fill is light and the type is the page.
+ */
+.calendar__day--edge {
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
+  border-radius: 50%;
+  font-weight: 600;
+}
+/* Today, when it is not itself an end of the range. A ring rather than a fill,
+   which is the difference between "this is where we are" and "this is picked". */
+.calendar__day--today:not(.calendar__day--edge) {
+  box-shadow: inset 0 0 0 0.0625rem var(--accent-line);
+  border-radius: 50%;
+}
+@media (hover: hover) {
+  .calendar__day:not(:disabled):not(.calendar__day--edge):hover {
+    background: var(--accent-tint-strong);
+  }
+}
+
+.calendar__foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+/* The instruction the redraw prints under the grid. It is there because the
+   two-click interaction is not discoverable from the shape of a calendar. */
+.calendar__hint {
+  font-size: var(--fs-nano);
+  color: var(--sub);
+  line-height: var(--lh-body);
+  min-width: 0;
+}
+.calendar__clear {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0.125rem 0.25rem;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--accent-ink);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.calendar__clear:disabled {
+  color: var(--sub);
+  cursor: default;
+}
+@media (hover: hover) {
+  .calendar__clear:not(:disabled):hover {
+    background: var(--accent-tint);
   }
 }
 
@@ -701,67 +1996,38 @@ button.filter {
  * qualifier moved up; the definition took its place.
  */
 .kpi {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--line);
   /*
-   * Tone-coloured per card, not one uniform orange across all six.
-   *
-   * The rail is reinforcement and never the signal: the label names the state in
-   * words and the figure or the qualifier beside it repeats it in ink, so
-   * src/domain/status.ts's no-status-by-colour-alone rule is already satisfied
-   * before the rail is drawn. It is drawn from the *mark* tokens because it is a
-   * graphic and needs 3:1, not 4.5:1. The neutral is the same grey the map uses
-   * for "no reading here".
-   *
-   * 3px, up from 2. At 2px the rail read as a slightly heavier hairline than the
-   * card's own 1px border rather than as a separate mark, and the difference
-   * between "this card is bordered" and "this card is tiered" was a pixel. 3px
-   * is the first step where the colour has enough area to register from across
-   * the room without becoming a stripe the card hangs from.
+   * Rounder than the panel step (var(--r-lg), 14px) on purpose: this strip is
+   * the one place asked to read softer than the board under it, so it takes its
+   * own value instead of the shared token. The alert badge stays at --r-sm,
+   * which keeps it visibly less round than the card carrying it.
    */
-  border-top: 0.1875rem solid var(--status-nodata-mark);
+  border-radius: 1rem;
   /*
-   * The panel radius, not the control radius.
-   *
-   * A KPI card is a sibling of the panels below it, not a chip inside one - the
-   * six of them are the top row of the same board - so the nesting rule in
-   * tokens.css puts this on the panel step rather than one below it. At 8px the
-   * strip read as six controls parked above the board; at 12px it reads as part
-   * of it. Nothing on the card fights the curve: the alert badge stays at
-   * --r-sm, which keeps it visibly less round than the card carrying it.
+   * 18px block, 12px inline - deliberately not square. Up from the original
+   * 14px/8px for a taller card, but dialled back from a first pass at 22px:
+   * centred content plus that much padding read as more air than the three
+   * lines inside it could justify.
    */
-  border-radius: var(--r-lg);
-  /*
-   * 14px block, 8px inline - deliberately not square.
-   *
-   * The inline value is the constrained one: "NEEDING ATTENTION" beside its
-   * badge is the widest header on the strip and measured 3px over at 10px of
-   * padding, and the strip is six equal grid tracks, so the only place that 3px
-   * could come from was here. The block value has no such limit - it is paid for
-   * out of the board below, which flexes - so it is set for the reading instead.
-   * The first draft's 6px left the label sitting on the rail and the caption on
-   * the bottom edge; 10px cleared them but still drew the card as a strip of
-   * text rather than a card. The 4px added here, plus 2px on the row gap below,
-   * is the 16px the masthead gave back - the board's own height is unchanged.
-   */
-  padding: 0.875rem 0.5rem;
+  padding: 1.125rem 0.75rem;
   display: flex;
   flex-direction: column;
-  /* The three rows are three different kinds of thing - a heading, a reading, a
-     caveat - and butted together they read as one block of text. */
-  gap: 0.5rem;
+  /*
+   * The three rows - a heading, a reading, a caveat - stay a tight block
+   * (small gap) and that block sits centred in the card's extra height,
+   * rather than `space-between` stretching gaps between the rows themselves.
+   * A tight block with even air above and below reads as one composed card;
+   * three lines pushed apart to fill the box reads as gaps nobody meant to
+   * leave.
+   */
+  justify-content: center;
+  gap: 0.375rem;
   box-shadow: var(--shadow-panel);
   min-width: 0;
   overflow: hidden;
-}
-.kpi--rail-good {
-  border-top-color: var(--status-good-mark);
-}
-.kpi--rail-warn {
-  border-top-color: var(--status-warn-mark);
-}
-.kpi--rail-critical {
-  border-top-color: var(--status-crit-mark);
 }
 
 /*
@@ -1104,12 +2370,44 @@ button.filter {
  */
 .kpi__badge {
   display: inline-block;
-  padding: 0 0.25rem;
-  border-radius: var(--r-sm);
+  /*
+   * A pill, and set as a word rather than as caps.
+   *
+   * Fully rounded, so it reads as a tag hung on the figure rather than as a
+   * second small box competing with the card's own corners. The vertical
+   * padding comes with the radius: at 0 the tint closes on the type, and a
+   * 999px radius on a box the height of its own text renders as two half-circle
+   * smears rather than as a pill.
+   *
+   * The caps came off with it. "ALERT" at nano size is five tracked-out
+   * letterforms doing the shouting the red tint has already done - and on this
+   * card the tint, the red figure and the red foot are three copies of the same
+   * signal. Sentence case leaves the colour carrying the urgency and the word
+   * carrying the meaning.
+   */
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  line-height: 1.3;
   background: var(--status-crit-tint);
   color: var(--status-crit-ink);
-  text-transform: uppercase;
-  letter-spacing: var(--ls-caps);
+}
+
+/*
+ * Off the figure, when the badge rides the delta slot.
+ *
+ * The feature card sets a 2px gap between the number and its aside, which is
+ * measured for the qualifier that slot normally carries: "Target 95%" is type
+ * in a pill nearly as wide as the space left over, so 2px is separation enough
+ * and the pill needs those pixels more as padding. A badge on a card whose
+ * figure is a single digit is the opposite case - 140px of the row is empty and
+ * the box still lands against the digit, close enough that "1" and "Alert" read
+ * as one object rather than as a count and the flag on it.
+ *
+ * On the badge rather than on the row's gap, so %OA and %Achievement keep their
+ * 2px: this is the one qualifier on the strip with room to move.
+ */
+.kpi__delta .kpi__badge {
+  margin-left: 0.5rem;
 }
 
 .kpi__value {
@@ -1162,6 +2460,55 @@ button.filter {
  * It is also the one flex item here allowed to give way: if a six-figure
  * shortfall ever outruns the card, the footnote clips and the figure does not.
  */
+/*
+ * The figure row's right-hand column: a qualifier over a delta.
+ *
+ * Ranged right and centred on the figure's own height, so a card carrying only
+ * one of the two sits it on the number's optical middle rather than at the top
+ * of a half-empty column.
+ *
+ * It shrinks and the figure does not (`flex: 0 1 auto` against the number's
+ * `flex: none`). That order is deliberate: a truncated qualifier is a caption
+ * that lost a word, while a truncated figure is a *wrong number* on an executive
+ * board - the one failure this card cannot have.
+ */
+.kpi__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  /*
+   * 4px, up from 1. At 1px the pill's rounded underside sat on the delta's
+   * digits - two separate facts reading as one stacked object, and on the %OA
+   * card the amber pill and the amber delta are the same colour, so nothing else
+   * was separating them either.
+   *
+   * The column is centred, so the gap opens symmetrically: the pill lifts about
+   * 1.5px and the delta drops the same. It costs 3px of card height, which is
+   * the whole reason it is 4 and not 8 - this column sets the figure row's
+   * height, so every pixel here comes straight off the map underneath.
+   */
+  gap: 0.25rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  /*
+   * Centred against the figure, and this override is load-bearing rather than
+   * cosmetic.
+   *
+   * `.kpi__value` aligns its items on the baseline, which is right for a bare
+   * delta - "-8.6 pts" belongs on the number's own baseline. A *box* aligned
+   * that way is a different matter: the row lines up the aside's first line with
+   * the figure's baseline and then has to grow to fit everything hanging below
+   * it, so a 37px column inside a 37px row made the row 57px. Twenty pixels per
+   * card, off the map underneath, to align a pill nobody reads as text.
+   *
+   * `align-self: center` takes this column out of that calculation. The delta
+   * inside it is still baseline-aligned to the pill above it, which is the only
+   * baseline relationship in here that a reader can actually see.
+   */
+  align-self: center;
+}
+
 .kpi__delta {
   font-size: var(--fs-micro);
   font-weight: 600;
@@ -1266,6 +2613,308 @@ button.filter {
   padding-bottom: 0.3125rem;
 }
 
+/* -------------------------------------------- the strip card (.kpi--feature)
+
+ * An orange subject mark, a sentence-case label at reading size instead of
+ * tracked micro-caps, the qualifier as a tinted pill instead of loose type, a
+ * larger figure, and a softer, borderless card under all of it.
+ *
+ * This was drawn for the lead pair only - Total machine and Running - on the
+ * argument that six cards drawn identically have no entry point, and that a
+ * reader crossing the room should land on the two figures most people read
+ * *only*. The design owner has since taken the whole strip onto it, so the row
+ * is now six cards in one style and the entry point is gone by decision. What
+ * replaces it is the reading order itself: the strip runs left to right in the
+ * order the figures are wanted, and every card carries a mark that says what it
+ * is about rather than which of them matters most.
+ *
+ * The cost is worth stating where it will be found. A reader scanning a row of
+ * six identical objects picks whichever number is widest, which on this strip is
+ * usually the machine count and not the thing that needs acting on; the two
+ * signals that survive it are tone (the figure, the rail, the pill) and the
+ * NEEDING ATTENTION card's own red. If the strip stops reading, the smallest fix
+ * is to take `mark` back off the four analytic cards in KpiStrip.tsx - the class
+ * comes with the mark and nothing else selects on it.
+ *
+ * What the strip gives up in exchange is the qualifier column: label, meta,
+ * figure and foot in the same four places on all six cards, which is what let a
+ * reader compare across the row. That was already broken for the lead pair; it
+ * is now broken uniformly, which is at least consistent - the pill has one
+ * position and one shape on every card rather than two of one kind and four of
+ * another.
+ */
+.kpi--feature {
+  /*
+   * No hairline. The card is separated by its shadow instead, which is what
+   * makes it read as sitting *on* the board rather than being ruled off from it
+   * - and a border plus this radius plus this shadow is three separate edges
+   * around one box. The border is kept rather than removed so the box model
+   * does not shift by 2px against its neighbours.
+   */
+  border-color: transparent;
+  /* 20px against the standard card's 16px. Half a step, not a full one: the
+     pair has to look softer than the four beside it without looking like a
+     different component. */
+  border-radius: 1.25rem;
+  /*
+   * Squarer than the standard card's 18/12, because the mark widens the head
+   * and a 12px inline gutter puts the gear almost on the card's edge.
+   *
+   * The inline half is 13px rather than the 16px this was drawn at. That is 6px
+   * of content per card, spent first on the head fitting at 1180px and then on
+   * the qualifier pill's longest word - and 13px is still clear of the 12px that
+   * put the gear on the card's edge.
+   */
+  padding: 1.25rem 0.8125rem;
+  gap: 0.5rem;
+  /*
+   * A lift, where the standard card has only a hairline of a shadow. Two
+   * layers: a wide soft one for the lift and a tight one for the contact edge,
+   * so the card does not read as floating free of the board.
+   */
+  box-shadow:
+    0 0.25rem 0.75rem rgba(22, 24, 29, 0.06),
+    0 0.0625rem 0.125rem rgba(22, 24, 29, 0.05);
+}
+/*
+ * Dark: the shadow does nothing on a dark ground - a black glow under a dark
+ * card is invisible - so the hairline comes back and does the separating.
+ */
+:root[data-theme='dark'] .kpi--feature {
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+/*
+ * One row: mark, label and ⓘ ranged left, the qualifier pill ranged right.
+ *
+ * This head was briefly split across two rows, because on the iPad Air viewport
+ * this board is deployed on the one-row version truncated three of the six
+ * labels - "Av…", "%…", "Needin…". The measurement behind that is worth keeping,
+ * because it is what the qualifiers below are now spent against: a card is 182px
+ * wide at 1180px, so its content box is 150px, and the worst head wanted 215px
+ * of it - a 94px "%Achievement", a 73px "Plan 23,200" pill, and 48px of mark, ⓘ
+ * and gaps.
+ *
+ * The design owner took the second row back out - a pill under its label reads
+ * as a dropped line rather than as a qualifier - and paid for it by dropping the
+ * qualifier from the two cards that could not afford one, %OA and %Achievement.
+ * That is what makes the row fit: with the pill gone those two labels have the
+ * whole 150px, and the three that keep a pill have short labels to put beside
+ * it. See KpiStrip.tsx, where the two `meta` props are absent by decision.
+ *
+ * The rest of the budget is squeezed out below - a tighter title gap, a slightly
+ * smaller mark, a narrower inline gutter - which between them buy about 10px per
+ * card. The one head still living inside its means rather than comfortably is
+ * NEEDING ATTENTION while its ALERT badge is up; that case is noted on the card.
+ *
+ * Centred rather than baseline-aligned, which is the one place this card
+ * contradicts `.kpi__head`. The qualifier is a pill with its own padding, and a
+ * pill sat on a text baseline hangs below the label; the standard card's bare
+ * type has no such box. The mark is centred by the same rule and for the same
+ * reason `.kpi__title` gives for the ⓘ - an SVG has no baseline.
+ */
+.kpi--feature .kpi__head {
+  align-items: center;
+  /*
+   * A floor, so the head is the same height whether or not the card has a pill.
+   * The pill has vertical padding the bare mark-and-label row does not, so a
+   * card carrying one used to run 2.5px taller in English and 4.5px in Thai -
+   * and since the card centres its block, that pushed the figure down by the
+   * same amount. Four figures on one line and two 2.5px below it is exactly the
+   * "six posters" the flush-left setting was chosen to avoid.
+   *
+   * 1.7em of the label, not a pixel value: the pill's height is its own text's
+   * line box, so it moves with the density switch and it is taller in Thai than
+   * in English. The em floor clears both without a second rule.
+   */
+  min-height: 1.7em;
+}
+/*
+ * 4px, down from 6. Two gaps sit inside this group - mark to label, label to ⓘ -
+ * so the tightening is worth 4px of label on every card, and at this size the
+ * mark and the ⓘ still read as separate objects rather than as one cluster.
+ */
+.kpi--feature .kpi__title {
+  gap: 0.25rem;
+}
+
+/*
+ * The subject mark. --accent-fill is the undimmed brand orange, which is the
+ * right token *because* this is decoration: nothing on the board is decided by
+ * these two marks, so they are not held to the 4.5:1 --accent-ink is dimmed
+ * down to reach. See the note above --accent in tokens.css.
+ */
+.kpi__mark {
+  flex: none;
+  color: var(--accent-fill);
+}
+
+/*
+ * Sentence case at reading size, in the body ink rather than the secondary.
+ *
+ * Tracked micro-caps mark a string as a *label* - something to be skipped past
+ * on the way to the number - and that is right for the four analytic cards,
+ * whose figures are the point. Here the label is half the message: "Running"
+ * read as a word is what makes 52 mean anything. It is still allowed to
+ * ellipsis, inherited from `.kpi__label`.
+ */
+.kpi--feature .kpi__label {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+/*
+ * The share as a pill.
+ *
+ * Tinted, not solid, for the reason recorded on `.kpi__badge` and `.runstop`:
+ * at this size a solid status fill needs white type, and white on any of the
+ * mark colours is under 3:1. The tint grounds are the shared --chip-fill-*
+ * tokens, so this pill matches every other status pill on the board and picks
+ * up the dark theme's color-mix for free.
+ */
+.kpi--feature .kpi__meta {
+  padding: 0.1875rem 0.4375rem;
+  border-radius: 999px;
+  font-weight: 700;
+  background: var(--chip-fill-muted);
+  color: var(--sub);
+}
+/*
+ * The same pill, beside the figure instead of beside the label - and set
+ * smaller here than it is there.
+ *
+ * `white-space: normal` is the structural difference. In the head the pill must
+ * stay on one line, because it shares that line with the label and a wrap there
+ * would push the head to two rows. Here it has the figure's height to spend, so
+ * "Target 95%" sets as two centred lines rather than shrinking the figure or
+ * ellipsising itself - which is also what lets Thai's longer "เป้าหมาย 95%"
+ * render in full at the same width.
+ *
+ * It stays at --fs-nano, the same size as the pills on RUNNING and STOP.
+ *
+ * It was briefly set smaller - 0.9 of the token - to buy back height, and that
+ * was the wrong place to take it from: at 9px "Target" and "Plan" stopped being
+ * readable as words, which is the entire content of a qualifier. A pill nobody
+ * can read is not a smaller pill, it is a coloured smudge.
+ *
+ * The height comes out of the block padding instead, which costs the two lines
+ * nothing in legibility. What is left is about 4px per card against the figure's
+ * own row height, and 4px is a price the map underneath can pay.
+ *
+ * ## The typography reset, which is the part that was actually wrong
+ *
+ * Everything below the `padding` line undoes something this pill inherits from
+ * `.kpi__value` and should not. That row is styled for a 32px number - the
+ * display face, -0.035em of tracking to close the digits up, proportional
+ * figures - and every one of those is wrong at 10px: the negative tracking in
+ * particular jammed "Target" and "Plan" into a smudge, which is what a reader
+ * complained about and what the pill's own size was blamed for first.
+ *
+ * The four properties put it back to exactly what the head pills on RUNNING and
+ * STOP render as, so "Target" beside the figure and "82.3%" beside the label are
+ * the same text in the same face at the same tracking. That is the whole ask:
+ * this is a pill, not part of the number it sits next to.
+ */
+.kpi--feature .kpi__aside .kpi__meta {
+  /*
+   * 6px inline, not the head pill's 7 - every pixel here is a pixel the longest
+   * word does not have. See the Thai note on `.kpi__aside` below.
+   */
+  padding: 0.125rem 0.375rem;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+  font-family: var(--font-ui);
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+}
+.kpi--feature .kpi__meta--good {
+  background: var(--chip-fill-good);
+  color: var(--status-good-ink);
+}
+.kpi--feature .kpi__meta--warn {
+  background: var(--chip-fill-warn);
+  color: var(--status-warn-ink);
+}
+.kpi--feature .kpi__meta--critical {
+  background: var(--chip-fill-crit);
+  color: var(--status-crit-ink);
+}
+/*
+ * A `.kpi__badge` is a tinted pill in its own right, so inside the head's pill
+ * it would be two nested boxes with two radii and two tints of the same red -
+ * which reads as a rendering fault rather than as emphasis. There it flattens to
+ * type and the pill around it carries the tint.
+ *
+ * Scoped to the head deliberately: the strip's one badge now renders in the
+ * figure row instead (see KpiStrip.tsx), where there is no pill around it and it
+ * keeps its own. This rule stays for any qualifier that goes back to the corner.
+ */
+.kpi--feature .kpi__meta .kpi__badge {
+  display: inline;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+}
+
+/*
+ * The figure: 1.15x the strip's size, at the strip's own weight.
+ *
+ * Scaled off --fs-kpi rather than given a number of its own, so the kiosk
+ * density switch still moves it - a hardcoded 32px would hold still while the
+ * four cards beside it doubled. min-height is scaled by the same factor for the
+ * reason the base rule records: it holds the row at a figure's height when the
+ * card has no figure, so the strip does not step up and down across a refresh.
+ *
+ * The weight is deliberately *not* stepped up with the size. It used to be 800,
+ * and at 32px that put two headline-weight figures at the head of the row where
+ * the pair is only meant to be one entry point - the eye had two places to land
+ * instead of one, and the extra ink read as emphasis rather than as hierarchy.
+ * Inheriting .kpi__value's 600 leaves size, the mark and the softer card doing
+ * that work, which is the difference the reader is actually meant to see.
+ *
+ * Tighter tracking than --ls-tight, which is drawn for 28px; at this size the
+ * digits close up on their own and the default setting reads gappy.
+ */
+/*
+ * The delta a step smaller than the standard card's, because the feature figure
+ * is 1.15x and the row is not: %OA renders "81.9%" at 32px and "-11.7 pts"
+ * beside it, which at 1180px came within 2px of the card's inner width and went
+ * over it whenever the gap needed a digit more. A point of type size on the
+ * qualifier is the cheapest 5px on the card - the alternative was shrinking the
+ * figure, which is the one thing this style exists to make bigger.
+ */
+.kpi--feature .kpi__delta {
+  font-size: var(--fs-nano);
+}
+
+.kpi--feature .kpi__value {
+  /* 2px between the figure and its aside, half the standard card's. The figure
+     is set at -0.035em and reads as a closed shape; the pill beside it needs
+     the 2px far more as text than the row needs it as separation. */
+  gap: 0.125rem;
+  font-size: calc(var(--fs-kpi) * 1.15);
+  min-height: calc(var(--fs-kpi) * 1.3225);
+  letter-spacing: -0.035em;
+  margin-top: 0.125rem;
+}
+/*
+ * Not at kiosk density. 56px there is a floor derived from angular size at
+ * three metres, not a style choice, so there is nothing for a multiplier to
+ * buy - and 64px in a 404px card starts costing the board underneath height it
+ * needs more. The tracking stays; only the size steps back.
+ */
+:root[data-density='tv'] .kpi--feature .kpi__value {
+  font-size: var(--fs-kpi);
+  min-height: calc(var(--fs-kpi) * 1.15);
+}
+
 /* ============================================================== layout */
 
 /*
@@ -1307,11 +2956,19 @@ button.filter {
   flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
-  /* No gap. The slanted sides put a V between neighbours on their own, and a
-     gap on top of that reads as two separate buttons rather than one file. */
+  /* No gap. The sloped trailing edges put a V between neighbours on their own,
+     and a gap on top of that reads as two separate buttons rather than one
+     file. */
   gap: 0;
-  /* Inset from the board's rounded corner, so a tab never sits on the curve. */
-  padding-inline: var(--sp-3);
+  /* Flush, not inset. This used to carry a --sp-3 inset, on the argument that a
+     tab should never sit on the board's rounded corner - true while both sides
+     of the tab sloped, because the leading edge then met the board at an angle
+     and the corner had nowhere to resolve. With the leading edge plumb and cut
+     to the board's own --r-lg, the two corners are the same corner: the tab's
+     left border runs into the board's left border and the eye reads one
+     unbroken line from the top of the tab to the bottom of the card. That line
+     is the whole "these are one sheet". */
+  padding-inline: 0;
   /* The seating - the negative margin and the stacking - is on .boardbar now,
      because that is .view's child. What stays here is the tab file itself: the
      selected tab paints white over the board's top border so the two whites
@@ -1320,13 +2977,16 @@ button.filter {
 }
 
 /*
- * A tab is drawn as a card, not as a label with a rule under it: icon, name,
- * count. The reader is at arm's length on a stand, and at that distance the
- * shape and the number are read before the words are - which is the whole
- * reason the icon and the pill are there rather than the name alone.
+ * A tab is drawn as a card, not as a label with a rule under it - and it is now
+ * a name and nothing else. It used to hold a glyph and a count as well, on the
+ * argument that a reader at arm's length takes in a shape and a number before a
+ * word. The folder shape is that shape: the tab in front already differs from
+ * the one behind in outline, fill and ink, and a glyph inside it was a fourth
+ * signal carrying nothing the first three did not. The counts went earlier, for
+ * their own reason - see the note in OverviewPage.
  *
  * The button paints nothing itself. Its fill is two pseudo-elements below,
- * because the shape wanted here is a trapezoid and a border-box cannot be one.
+ * because the shape wanted here is a folder tab and a border-box cannot be one.
  */
 .boardtabs__btn {
   appearance: none;
@@ -1334,30 +2994,53 @@ button.filter {
   z-index: 0;
   background: none;
   border: 0;
-  /* Wider than it looks it needs to be: the skew below pulls each top corner
-     about 8px inward, and this is the room that buys back for the label. */
-  padding: 0.375rem 1.375rem;
+  /*
+   * Asymmetric on both axes.
+   *
+   * Inline: nothing eats into the leading edge any more - it is plumb - so that
+   * side only owes the label clearance past the corner round. The trailing edge
+   * still leans, and at this height the skew pulls its top corner about 11px
+   * inward, so that side buys the room back.
+   *
+   * Block: 0.75rem, up from the 0.375rem that left the tab barely taller than
+   * its own line box. A folder tab has to look like something the label is
+   * sitting *in* rather than a word with an outline drawn round it, and at 30px
+   * against a 17px line box there was no room for that reading. This puts the
+   * drawn height near 42px, which is also where the tab stops needing
+   * --target-min to prop it up to a hittable size.
+   */
+  padding: 0.75rem 1.5rem 0.75rem 1.125rem;
   font: inherit;
   font-size: var(--fs-chip);
   color: var(--sub);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
   white-space: nowrap;
   min-height: var(--target-min);
 }
 
 /*
- * The folder shape.
+ * The folder shape: a straight leading edge, a sloped trailing one.
  *
- * Two halves, each skewed toward the middle from a bottom origin, so the tab
- * narrows as it rises and its sides slope the way a real file tab's do. skewX
- * leaves the origin edge alone, so the bottom stays exactly the width of the
- * button - neighbours meet cleanly and nothing has to be clipped.
+ * Two halves. Only the trailing one is skewed, from a bottom origin, so the tab
+ * keeps its full width at the bottom and loses it toward the top on the right
+ * alone. skewX leaves the origin edge alone, so the bottom stays exactly the
+ * width of the button - neighbours meet cleanly and nothing has to be clipped.
+ *
+ * Both sides used to slope, symmetrically. That is the wrong shape: a real file
+ * tab is cut, not tapered, and the taper on the *left* is what made this read as
+ * a badge balanced on a point rather than as the front edge of the sheet under
+ * it. The leading edge stands straight up out of the board now and turns the
+ * corner on a --r-lg round, the board's own radius, so the tab and the card
+ * below it are drawn with one curve. The slope is kept on the trailing edge,
+ * where it is doing real work: it is what cuts the notch between two tabs and
+ * lets the one behind read as behind.
  *
  * The halves overlap by a percent to kill the hairline seam that lands down
- * the middle when two backgrounds are asked to butt at a fractional pixel.
+ * the middle when two backgrounds are asked to butt at a fractional pixel. The
+ * skew widens that overlap at the top rather than opening a gap, because the
+ * trailing half's leading edge moves *left* as it rises.
  *
  * The resting tab is outlined; the selected one is not. That split is the
  * point. Dropping the border is what lets the *selected* tab dissolve into the
@@ -1365,8 +3048,9 @@ button.filter {
  * edge at all, and colour alone cannot buy that edge back: the page and the
  * board are 1.09:1 apart, so every fill between them, white included, is
  * within five percent of the ground. The hairline is the only lever with any
- * travel. Because the halves are skewed, their borders skew too, so a plain
- * top-and-side border draws the sloped folder outline for free.
+ * travel. Because the trailing half is skewed, its border skews with it, so a
+ * plain top-and-side border draws the whole outline - straight up the left,
+ * across the top, down the slope - for free.
  */
 .boardtabs__btn::before,
 .boardtabs__btn::after {
@@ -1389,12 +3073,17 @@ button.filter {
     background-color 120ms ease,
     border-color 120ms ease;
 }
+/* The leading half: no transform at all, so the left edge is plumb with the
+   board's own left edge and the corner is a plain --r-lg round. */
 .boardtabs__btn::before {
   inset-inline-start: 0;
   border-inline-start: 1px solid var(--line);
-  border-start-start-radius: var(--r-md);
-  transform: skewX(-15deg);
+  border-start-start-radius: var(--r-lg);
 }
+/* The trailing half carries the whole slope. --r-md and not --r-lg here: the
+   skew stretches a corner radius along the direction it leans, so the same
+   number that reads as a round on the plumb left comes out visibly slacker on
+   the slope. The smaller value lands the two at about the same tightness. */
 .boardtabs__btn::after {
   inset-inline-end: 0;
   border-inline-end: 1px solid var(--line);
@@ -1403,39 +3092,45 @@ button.filter {
 }
 
 /*
- * Sized in `em` so the kiosk type scale carries the glyph with the label
- * instead of leaving a 14px icon beside 24px type. Stroked in currentColor,
- * which is what makes it pick up the selected state below for free.
+ * The selected tab is the front of the surface underneath: same white, and no
+ * edge at all where the two meet. The dropped *bottom* border is the
+ * load-bearing half - with it, the board's top line runs straight through the
+ * tab and the join reads as a seam rather than as one sheet of paper.
+ *
+ * What it keeps is its own outline, and that outline is the same grey hairline
+ * the board is drawn with - not a brand edge, and not a darker one. Anything
+ * heavier along the top turns the tab back into a chip *sitting on* the board;
+ * the whole effect being bought here is that a reader who clicks Fleet Overview
+ * sees one sheet of paper with a tab cut into its top edge, and a sheet does not
+ * change colour or gain a lip where the tab starts.
+ *
+ * So: --panel, exactly the board's fill, and --line, exactly the board's edge.
+ * The bottom border stays gone and the row above it is pulled down a pixel, so
+ * the board's own top line is painted over across the width of the tab and the
+ * two surfaces meet with nothing between them.
  */
-.boardtabs__icon {
-  inline-size: 1.15em;
-  block-size: 1.15em;
-  flex-shrink: 0;
-}
-
-/*
- * The selected tab is the front of the surface underneath, and that is the
- * whole of the treatment: same white, no border, no edge between the two. The
- * dropped bottom border is the load-bearing half - with it the board's top
- * line runs straight through the tab and the join reads as a seam instead of
- * as one sheet of paper. The rest of the outline goes with it: an outlined tab
- * on the board's own white would read as a button sitting on the card.
- */
+/* 600, not the 700 this used to carry: the same weight a panel head inside the
+   board is set in, at the same 13px. The tab in front names the board the way
+   "Device Location & Health" names the panel under it, so the two are the same
+   piece of type and should not be two different ones - at 700 the tab outweighed
+   every heading it was sitting above, which is backwards. Nothing about which
+   board is in front rests on the weight anyway: the shape says that first, and
+   the ink step from --sub to --text says it again. */
 .boardtabs__btn[aria-selected='true'] {
   color: var(--text);
-  font-weight: 700;
+  font-weight: 600;
 }
 .boardtabs__btn[aria-selected='true']::before,
 .boardtabs__btn[aria-selected='true']::after {
   background: var(--panel);
-  border: 0;
+  border-color: var(--line);
+  border-bottom: 0;
 }
 
-/* Hover moves the tab one more step toward the board, never onto it: the fill
-   stops short of white and the seam line stays, so "about to come forward" is
-   never confused with "already selected". --panel-2 was used here and is now
-   darker than the resting fill, which made hover read as pressing the tab back
-   into the page. */
+/* Hover moves the tab one step toward the selected chip, never onto it: the
+   fill lifts toward the board's white and the seam line stays, so "about to come
+   forward" is never confused with "already selected". Neutral grey, like the
+   rest of the strip. */
 @media (hover: hover) {
   .boardtabs__btn:not([aria-selected='true']):hover {
     color: var(--text);
@@ -1443,7 +3138,7 @@ button.filter {
   .boardtabs__btn:not([aria-selected='true']):hover::before,
   .boardtabs__btn:not([aria-selected='true']):hover::after {
     background: var(--tab-rest-hover);
-    border-color: var(--line-strong);
+    border-color: var(--line);
   }
 }
 
@@ -1459,7 +3154,27 @@ button.filter {
   flex-direction: column;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  /* A step past the inset fleet panels' corner (.panel--map / .panel--rank at
+     1.25rem) and well past the standard --r-lg, so the outer card wraps the
+     cards it holds with a visibly softer edge. */
+  border-radius: 1.5rem;
+  /*
+   * Three corners, not four. The top-left one belongs to the first tab.
+   *
+   * The tab strip starts flush with this card's left edge, so the leading tab's
+   * left border and this card's left border are the same 1px line at the same x.
+   * With a round here they are not: the tab's border comes straight down and
+   * this one is already curving away to the right underneath it, and what a
+   * reader sees at the join is a step - the line breaks and picks up again a
+   * dozen pixels inboard. Squaring it lets the tab's own --r-lg round *be* the
+   * corner, and the line runs unbroken from the top of the tab to the bottom of
+   * the card.
+   *
+   * Unconditional, not tied to which tab is selected: the first tab covers this
+   * corner whether it is the one in front or not, so there is no state in which
+   * a bare square shows.
+   */
+  border-start-start-radius: 0;
   padding: var(--sp-2);
   overflow: hidden;
 }
@@ -1511,6 +3226,58 @@ button.filter {
  */
 .board--map {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/*
+ * Every board's panels, each set apart from the board card it sits in.
+ *
+ * They get a margin on every side so there is a clear band of card showing
+ * between their border and the board card's inner edge - on top of the --sp-2
+ * the .boardwrap already pads with - and their corners are rounded a step past
+ * the standard --r-lg panel. One frame treatment for both boards: same inset,
+ * same corner, lifted off the board rather than letting the borders sit a hair
+ * apart.
+ */
+.panel--map,
+.panel--rank,
+.board--analytics .panel {
+  margin: var(--sp-3);
+  border-radius: 1.25rem;
+}
+
+/*
+ * Every fleet/analytics-board panel already carries a margin on every side, so
+ * the grid `gap` between facing edges just stacks on top of it - one panel's
+ * trailing margin, the gap, and the next panel's leading margin, all in one
+ * band - tripling the middle band versus the single margin that shapes every
+ * other edge of the board. The margins alone are enough to frame the middle
+ * the same as the sides, so the redundant gap is dropped for both boards.
+ */
+.board--fleet,
+.board--analytics {
+  gap: 0;
+}
+
+/*
+ * A further nudge past the even margins above: the map's right margin drops
+ * to 0, trimming the band it shares with the ranking panel down to a bare
+ * --sp-3 (matched by the ranking's own untouched left margin). The left
+ * margin stays at --sp-3 so the map widens into the space that used to be
+ * its own right-hand margin, rather than the whole box sliding right - that
+ * keeps the map's own left inset the same as the ranking's right inset
+ * instead of trading one lopsided band for another. Scoped to the collapsed
+ * (two-column) layout only - the expanded map is the sole column, and an
+ * uneven inset there would show up as a lopsided frame with nothing to its
+ * right to explain it.
+ */
+.board--fleet:not(.board--map) .panel--map {
+  margin-inline-end: 0;
+}
+
+/* Same nudge on the analytics board's left-hand panel, so its middle band
+   matches the fleet board's rather than sitting at the full doubled margin. */
+.board--analytics .panel:first-child {
+  margin-inline-end: 0;
 }
 
 /* Drill-down pages keep the ordinary flow grids; they scroll inside the outlet. */
@@ -1614,28 +3381,46 @@ button.filter {
  * gives it at every width from 1010 up, so the clip is a guard rather than a
  * behaviour anyone will meet.
  */
+/*
+ * ## Why this row is baseline-aligned and not centred
+ *
+ * Every run in it is set in a different face: the counts are --font-num (Inter,
+ * with Sarabun behind it), the words are --font-ui (Poppins, then Sarabun), and
+ * the glyph is an SVG box with no text metrics at all. At 11px those three come
+ * out 14px, 16px and 9.8px tall, because a face carrying Thai has to reserve
+ * ascent for the tone marks and descent for the vowels hung underneath.
+ *
+ * `align-items: center` centres each of those boxes independently, which lines
+ * the *baselines* up only by coincidence of which fonts happened to load - and
+ * the coincidence breaks exactly where we are least likely to see it: a client
+ * that never got the webfonts, a Thai fallback with different vertical metrics,
+ * a fractional device pixel ratio. What the reader gets then is three groups on
+ * three slightly different lines, stepping downwards across the head.
+ *
+ * Baseline alignment makes that structurally impossible: each group is a block
+ * whose first line box carries all of its text, so the digits and the Thai sit
+ * on one line by construction whatever face draws them. The one thing with no
+ * baseline of its own - the icon - is pinned to that line by a fixed em offset
+ * below it, so it moves with the text rather than with a box height.
+ */
 .statuschips {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.25rem;
   min-width: 0;
   overflow: hidden;
-  /*
-   * Not because a chip needs to be 28px, but because the map's methodology
-   * opener beside it is: the two panels sit side by side and their heads share a
-   * hairline, so a 12px difference in content height puts the two rules on
-   * different rows. The same reason the head's own min-height exists.
-   */
-  min-height: var(--target-min);
   font-size: var(--fs-micro);
   line-height: var(--lh-tight);
 }
+/*
+ * A block, not a nested flex: a flex item's baseline is its first line box's,
+ * and one line box holding glyph, count and word is what puts all three of them
+ * on the same line. The gaps the flex `gap` used to draw are margins below -
+ * tight on purpose, since these share a head with the panel title and the
+ * margin they have there is measured in single digits (see StatusSummary).
+ */
 .statuschip {
-  display: inline-flex;
-  align-items: center;
-  /* Tight on purpose. These share a head with the panel title, and the margin
-     they have there is measured in single digits - see StatusSummary. */
-  gap: 0.1875rem;
+  display: inline-block;
   flex-shrink: 0;
   padding-inline: 0.25rem;
   white-space: nowrap;
@@ -1646,11 +3431,22 @@ button.filter {
    triangle, and they are what a deuteranope and a three-metre viewer both read. */
 /* Slightly smaller than the count beside it, as before - the em-relative icon
    size picks this up on its own. */
+/*
+ * The icon rides the text baseline rather than a box centre.
+ *
+ * An inline-block whose only content is a block-level SVG has no line box, so
+ * its own baseline is its bottom edge, and `vertical-align` then sets that edge
+ * a fixed distance under the line's baseline. -0.113em of the glyph's own size
+ * drops the icon's centre onto the middle of the digits' cap band, which is
+ * where the eye reads the line as sitting. Being em-relative it survives the
+ * kiosk density switch and any font substitution underneath it.
+ */
 .statuschip__glyph {
-  display: inline-flex;
-  align-items: center;
+  display: inline-block;
   font-size: 0.85em;
-  line-height: 1;
+  line-height: 0;
+  vertical-align: -0.113em;
+  margin-inline-end: 0.1875rem;
 }
 .statuschip__count {
   font-family: var(--font-num);
@@ -1664,6 +3460,9 @@ button.filter {
  */
 .statuschip__word {
   display: var(--chip-word, inline);
+  /* The count-to-word gap, carried by the droppable half: at TV density the word
+     goes to `display: none` and takes the gap with it. */
+  margin-inline-start: 0.1875rem;
 }
 
 /*
@@ -1675,13 +3474,17 @@ button.filter {
  * at the head at all. It is still the half that accounts for every base.
  */
 .statuschips__cover {
-  display: inline-flex;
-  align-items: center;
+  display: inline-block;
   flex-shrink: 0;
-  gap: 0.3125rem;
   padding-inline-start: 0.5rem;
   white-space: nowrap;
   color: var(--sub);
+}
+/* What the flex `gap` used to do. `:not(.visually-hidden)` keeps it off the
+   screen-reader sentence at the end, which is absolutely positioned and would
+   take the margin for nothing. */
+.statuschips__cover > span + span:not(.visually-hidden) {
+  margin-inline-start: 0.3125rem;
 }
 /* Only when something precedes it. With no base below target the head is the
    coverage reading alone, and a rule hanging off its left edge would read as a
@@ -1797,22 +3600,77 @@ button.filter {
   font-weight: 600;
 }
 /*
- * The caret. `em`, not `rem`: it has to scale with the column head, which
- * triples in size at TV density.
+ * The sort mark: a pair of stroked chevrons, drawn rather than typed.
  *
- * Two glyphs when the column is merely sortable, one when it is the sort. The
- * pair is the affordance and the single arrow is the state - and the state is
- * also on the <th> as aria-sort, which is the half a screen reader can use.
+ * It was `▲▼` and `▲` - two solid triangles at 8px, taken from whatever face
+ * the platform keeps its geometric shapes in. Four of those pairs across one
+ * header row is the heaviest ink in the table, which is backwards: the marks
+ * were louder than the figures they order, and on a board this quiet they read
+ * as the only thing that had not been drawn on purpose.
+ *
+ * The information design is unchanged. Two chevrons when the column is merely
+ * sortable - the pair is the affordance - and one when it is the sort, which is
+ * the state. The state is also on the <th> as aria-sort, and that attribute is
+ * now what drives all of this: nothing here reads a class, so the mark cannot
+ * disagree with what a screen reader is told.
+ *
+ * Sized in `em` throughout, because the column head triples at TV density and
+ * a 5px mark beside 18px type is not a mark. `--line-strong` for the resting
+ * pair rather than `--sub`: it is a hint about what the head can do, not a
+ * reading, and at 1px strokes --sub read as a second sorted column.
  */
 .th-sort__glyph {
-  font-size: 0.8em;
-  line-height: 1;
-  letter-spacing: -0.08em;
-  color: var(--sub);
   flex-shrink: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--line-strong);
 }
-.rank-table th.is-sorted .th-sort__glyph {
-  color: var(--text);
+.th-sort__glyph::before,
+.th-sort__glyph::after {
+  content: '';
+  box-sizing: border-box;
+  width: 0.5em;
+  height: 0.5em;
+  border-right: 0.1em solid currentColor;
+  border-bottom: 0.1em solid currentColor;
+}
+/* Two borders on a rotated box: the same chevron the filter row uses, turned to
+   point up and down. */
+.th-sort__glyph::before {
+  rotate: 225deg;
+}
+.th-sort__glyph::after {
+  rotate: 45deg;
+}
+/*
+ * No gap between the two, and none needed.
+ *
+ * Rotation does not affect layout, so the pair is laid out as two touching
+ * 0.5em squares - but the drawn mark inside each one is only about 0.35em tall
+ * and sits centred, which leaves roughly 0.15em of daylight between the two
+ * chevrons on its own. A negative margin was tried here to tighten it and the
+ * two tips met: an up chevron and a down chevron whose points touch is a
+ * diamond, and four diamonds across a header row read as bullets rather than as
+ * a sort control.
+ */
+/*
+ * The column being sorted: one chevron, in brand orange.
+ *
+ * Orange because this is a choice the reader made - the same thing the filter
+ * capsules, the range segment and the ticked menu row are saying - and because
+ * the answer to "what is this ordered by" then lands in the one colour on the
+ * board that never means anything about a machine. --accent-ink is 4.70:1 on
+ * the sticky header, so it clears AA as type even though it is only a mark
+ * here.
+ */
+.rank-table th[aria-sort='ascending'] .th-sort__glyph,
+.rank-table th[aria-sort='descending'] .th-sort__glyph {
+  color: var(--accent-ink);
+}
+.rank-table th[aria-sort='ascending'] .th-sort__glyph::after,
+.rank-table th[aria-sort='descending'] .th-sort__glyph::before {
+  display: none;
 }
 /*
  * At TV density only the sorted column keeps its caret. Nobody taps a wall
@@ -1939,10 +3797,20 @@ button.filter {
   width: 100%;
   text-align: left;
 }
+/*
+ * The expander, and the empty slot that keeps a company with no plants aligned
+ * with one that has four.
+ *
+ * The mark is a stroked chevron like the sort pair and the filter row's, drawn
+ * on the button rather than typed into it - see .rank-id__caret--btn below.
+ * This rule is the box and the rotation only, so the spacer span can share it
+ * without drawing anything.
+ */
 .rank-id__caret {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 0.5rem;
-  font-size: 0.4375rem;
   color: var(--sub);
   transition: transform 0.15s;
   flex-shrink: 0;
@@ -1959,10 +3827,33 @@ button.filter {
   border: none;
   padding: 0;
   font: inherit;
-  font-size: 0.4375rem;
   line-height: 1;
   color: var(--sub);
   cursor: pointer;
+}
+/*
+ * The chevron itself, shared with the "Not reporting" disclosure below.
+ *
+ * `::before`, not `::after`: this button carries `.tap`, whose 44px hit area is
+ * an `::after` on the same element.
+ *
+ * The rotation is on the parent (`[aria-expanded='true']`, above and below), so
+ * the drawn mark starts pointing right and the state turns it - which is what
+ * makes the 0.15s transition on the parent animate the disclosure rather than
+ * swapping one glyph for another. -45deg here plus the parent's 90deg is a
+ * chevron pointing down.
+ */
+.rank-id__caret--btn::before,
+.row-toggle__caret::before {
+  content: '';
+  box-sizing: border-box;
+  display: block;
+  /* `em` so both marks follow the row's type at TV density. */
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 0.1em solid currentColor;
+  border-bottom: 0.1em solid currentColor;
+  rotate: -45deg;
 }
 .rank-id__caret[aria-expanded='true'] {
   transform: rotate(90deg);
@@ -2057,15 +3948,22 @@ button.filter {
  * #0000EE and underlined - because nothing styled them, which on a warm-grey
  * board is the one saturated blue on the page.
  */
+/* Lives in the masthead now (see .topbar__crumbs), not at the top of the page
+   content, so it carries no margin of its own. */
 .breadcrumb {
-  margin-bottom: var(--sp-3);
+  min-width: 0;
 }
 .breadcrumb ol {
   display: flex;
   gap: var(--sp-2);
   list-style: none;
-  flex-wrap: wrap;
-  font-size: var(--fs-micro);
+  /* One line: it is inside a fixed-height band now, and a wrapped trail would
+     grow the band rather than the page. */
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  /* The band's size, not the page's. It read as a caption at 11px when it sat
+     above the page content; between two 13px capsules it just read as small. */
+  font-size: var(--fs-chip);
   color: var(--sub);
 }
 .breadcrumb li {
@@ -2073,7 +3971,7 @@ button.filter {
   gap: var(--sp-2);
 }
 .breadcrumb a {
-  color: var(--status-good-ink);
+  color: var(--accent-ink);
   text-decoration: none;
   font-weight: 600;
 }
@@ -2272,10 +4170,13 @@ button.filter {
   min-height: var(--target-min);
   width: 100%;
 }
+/* The "Not reporting (6)" disclosure. Same chevron as the row expander above,
+   which is the rule that draws it. */
 .row-toggle__caret {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 0.5rem;
-  font-size: 0.4375rem;
   color: var(--sub);
   transition: transform 0.15s;
   flex-shrink: 0;
@@ -2312,8 +4213,8 @@ button.filter {
 }
 @media (hover: hover) {
   .rowlink:hover {
-    background: var(--panel-3);
-    color: var(--text);
+    background: var(--accent-tint);
+    color: var(--accent-ink);
   }
 }
 
@@ -2361,8 +4262,7 @@ button.filter {
  * MeasureValue - so it still reads as "this slot is empty and here is why"
  * rather than as a small figure.
  */
-.kpi__value .measure--absent,
-.drawer__tile-value .measure--absent {
+.kpi__value .measure--absent {
   font-size: var(--fs-chip);
   letter-spacing: normal;
 }
@@ -2411,8 +4311,11 @@ button.filter {
 .chip {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 0.1875rem 0.5rem;
+  /* Pressable, so it is a capsule like the filter row - see --r-control. The
+     one chip that is not pressable, .chip--quiet, has no fill or edge to shape
+     anyway. */
+  border-radius: var(--r-control);
+  padding: 0.1875rem 0.6875rem;
   font: inherit;
   font-size: var(--fs-micro);
   color: var(--sub);
@@ -2435,13 +4338,44 @@ a.chip {
 @media (hover: hover) {
   button.chip:hover,
   a.chip:hover {
-    border-color: var(--line-strong);
-    color: var(--text);
+    border-color: var(--accent-line);
+    background: var(--accent-tint);
+    color: var(--accent-ink);
   }
 }
 .chip--quiet {
   border-color: transparent;
   background: none;
+}
+
+/*
+ * The one chip on a state page that is the thing to do next: "load the last 24
+ * hours" on a timeout, "select every base" on an empty board, "back to the
+ * global overview" on a 404.
+ *
+ * Filled in the body ink, deliberately NOT in the brand orange. Orange on this
+ * board means "you narrowed this" - it is the filter row's on-state and the
+ * Export button's fill, and nothing else is allowed to wear it (see
+ * ExportButton and .filter--on). A recovery button is the opposite of a filter,
+ * so it takes the strongest neutral instead: solid against a row of outlined
+ * capsules reads as "this is the action" without borrowing a meaning that is
+ * already spoken for.
+ */
+.chip--action {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--panel);
+  font-weight: 500;
+}
+@media (hover: hover) {
+  button.chip--action:hover,
+  a.chip--action:hover {
+    /* Overrides the accent hover every other chip takes: a filled capsule that
+       turned into a tinted outline on hover read as being disabled. */
+    background: var(--ink-2);
+    border-color: var(--ink-2);
+    color: var(--panel);
+  }
 }
 
 /* =========================================================== shift chip */
@@ -2476,6 +4410,20 @@ a.chip {
   line-height: var(--lh-body);
   border: 1px solid;
   flex: 0 0 auto;
+}
+/*
+ * The one banner that reports something good: an outage that has just ended.
+ *
+ * It is the same shape and the same weight as the two that report faults, and
+ * that is on purpose - it carries a fact the reader needs, that the trend has a
+ * hole in it, so making it quieter than the notice that opened the hole would
+ * be the wrong way round. It earns the green by taking itself off after eight
+ * seconds rather than by shouting; see useRecovery.
+ */
+.banner--good {
+  background: var(--status-good-tint);
+  border-color: var(--status-good-mark);
+  color: var(--status-good-ink);
 }
 .banner--warn {
   background: var(--status-warn-tint);
@@ -2616,6 +4564,253 @@ a.chip {
   white-space: pre-wrap;
 }
 
+/* ========================================================== state page
+ *
+ * The board with no numbers on it: still loading, cannot reach the API, cannot
+ * reach the database, filtered to nothing, no such site. See StatePage.tsx for
+ * why this is an empty ground with one column of type on it and not a card -
+ * a card says "one object among several", and here it is the only object there
+ * is.
+ *
+ * Note what is absent: no border, no fill, no radius, no shadow. Every other
+ * block on this board has all four, and spending them here is what made the
+ * first version read as a dialog somebody had to dismiss.
+ */
+
+.statepage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  /*
+   * Not centred vertically, and not centred horizontally either.
+   *
+   * The column starts at about a third of the height, which is where the eye
+   * lands and where Chrome's own offline page puts it - dead centre puts the
+   * first line of a five-line block below that point. Left-aligned because the
+   * "try this" list needs a left edge to run against; centred, the three items
+   * form a ragged diamond nobody can scan.
+   */
+  align-items: flex-start;
+  justify-content: flex-start;
+  /*
+   * The left inset is generous on purpose. #main already contributes
+   * --shell-pad-x, and at only --sp-5 on top of it the column sat 44px off the
+   * viewport edge - jammed into the corner of an otherwise empty screen, which
+   * read as a layout fault rather than as a composition. Chrome's own page
+   * holds its text about a twelfth of the width in, and that is what the 5%
+   * here is.
+   */
+  padding: clamp(var(--sp-6), 12%, 6rem) clamp(var(--sp-5), 5%, 4rem) var(--sp-5);
+}
+
+.statepage__column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  /* Roughly 60 characters at --fs-body, which is where a line stops needing a
+     second fixation to read. */
+  max-width: 34rem;
+  min-width: 0;
+}
+
+.statepage__glyph {
+  /* The neutral ink, and it is the default rather than a modifier because three
+     of the eight states - loading, empty, not-found - are not faults at all.
+     See the tone table in StatePage.tsx. */
+  color: var(--status-nodata-mark);
+  margin-bottom: var(--sp-1);
+}
+.statepage--warn .statepage__glyph {
+  color: var(--status-warn-mark);
+}
+.statepage--crit .statepage__glyph {
+  color: var(--status-crit-mark);
+}
+.statepage--other .statepage__glyph {
+  color: var(--status-other-mark);
+}
+
+/*
+ * The heading. --fs-h1 at 500, where every other heading on this board is 600 -
+ * and it is the weight that is doing the work, not the size.
+ *
+ * An error page whose heading shouts is one people stop reading, and the alarm
+ * here is already carried twice: by the Offline capsule in the masthead, which
+ * is the one place on this board a colour is allowed to shout, and by the board
+ * being empty. A statement at reading weight is the third thing a reader needs,
+ * not a third alarm.
+ */
+.statepage__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.statepage__body {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.65;
+  color: var(--sub);
+}
+
+/* ---- the "try this" list ---- */
+
+.statepage__try {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-body);
+  color: var(--sub);
+}
+.statepage__try-label {
+  font-size: var(--fs-nano);
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.statepage__try ul {
+  margin: 0;
+  /* Hanging indent: the markers sit in the gutter so the text of every item
+     lines up with the heading above it and the body above that. */
+  padding-inline-start: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.statepage__try li {
+  line-height: 1.55;
+}
+.statepage__try li::marker {
+  color: var(--status-nodata-mark);
+}
+
+/* ---- the machine's own words ---- */
+
+/*
+ * Last, quietest, and the only monospace on the page. This is the line somebody
+ * photographs and sends to IT, which is why it carries the endpoint, the status
+ * and the clock time together - and why it is at --fs-nano, because it is the
+ * one part of this page an executive never needs to read.
+ *
+ * One line by default, scrolling in its own box rather than wrapping: a wrapped
+ * error code is harder to read back over a phone than a scrolled one.
+ */
+.statepage__code {
+  margin: 0;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sub);
+  white-space: pre;
+  overflow-x: auto;
+}
+/*
+ * `contract` only, where the useful string is the server's own complaint about
+ * a field. It wraps because it is a sentence, and its case is left alone
+ * because upper-casing a JSON path destroys the one string on the page a
+ * developer needs verbatim.
+ */
+.statepage__code--block {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: var(--sp-3);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  text-align: left;
+}
+
+/* ---- actions ---- */
+
+.statepage__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+/* The retry sentence beside the buttons: a readout, not a control, so it takes
+   the caption size and never the capsule treatment. */
+.statepage__note {
+  font-size: var(--fs-micro);
+  color: var(--sub);
+}
+
+/*
+ * Reload, in the corner Chrome keeps it - which on this board is also the
+ * corner the refresh control occupies when the page is healthy, so a returning
+ * reader reaches for it where they left it.
+ */
+.statepage__reload {
+  position: absolute;
+  top: 0;
+  right: var(--sp-5);
+}
+
+/* ---- the indeterminate track ---- */
+
+/*
+ * Indeterminate, and that is the honest choice: this end knows a request is in
+ * flight and nothing more, so a bar claiming a percentage of a query it cannot
+ * measure would be the same invention as a fabricated figure.
+ *
+ * The board's standing rule is that nothing pulses - see LiveBadge, where a
+ * perpetual animation is both a burn-in risk and invisible after the first
+ * hour. This is the exception the rule allows for: it exists only while a first
+ * load is genuinely outstanding, so it is never on screen long enough to burn
+ * in, and while it IS on screen the one question a reader has is whether the
+ * board is working or hung.
+ */
+.statepage__track {
+  width: 12rem;
+  max-width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.statepage__track > i {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--status-nodata-mark);
+  animation: statepage-sweep 1.4s ease-in-out infinite;
+}
+.statepage--warn .statepage__track > i {
+  background: var(--status-warn-mark);
+}
+.statepage--crit .statepage__track > i {
+  background: var(--status-crit-mark);
+}
+@keyframes statepage-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+/* Still a filled track, so the state is legible without the motion carrying it. */
+@media (prefers-reduced-motion: reduce) {
+  .statepage__track > i {
+    width: 100%;
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
 /* ============================================================ skeleton */
 
 .skeleton {
@@ -2638,50 +4833,88 @@ a.chip {
 
 .alert-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-2) 0;
-  min-height: 2.25rem;
+  gap: var(--sp-2);
+  /* The right inset is for the scrollbar, not for looks. This list is the one
+     that overflows, and `scrollbar-gutter: stable` on .panel__scroll reserves
+     exactly the thumb's 6px - so the clock, which is the row's rightmost thing
+     and the one nobody can afford to misread, ended up under the thumb. The
+     border below still spans the full width, so the dividers stay flush. */
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) 0;
   border-bottom: 1px solid var(--line-row);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-body);
 }
 .alert-row:last-child {
   border-bottom: none;
 }
-.alert-row__left {
-  display: flex;
+/*
+ * The severity mark: the shape on its own, with nothing behind it.
+ *
+ * It used to sit on a 2.4em grey disc. The disc was there to keep the icon off
+ * a tinted background, but this panel's rows are overwhelmingly one severity at
+ * a time, so what it actually produced was a column of ten identical circles -
+ * chrome that framed every mark instead of separating them, and 2.4em of width
+ * taken from the machine name and the clock. The shape and the pill's word
+ * still carry the meaning, which is all the disc was ever holding.
+ *
+ * Still sized in `em` off the row's own font size, so the kiosk switch - which
+ * scales the font tokens and not the root size - carries the mark along with
+ * the type instead of leaving an 11px icon beside 22px text.
+ */
+.alert-row__mark {
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
+  /* A fixed box with no fill. The marks differ in outline before they differ in
+     anything else - triangle, ring, ring with a dot - and so differ in width; a
+     column that ragged on its left edge is the one thing this list cannot
+     afford. */
+  width: 1.3em;
+  /* Pinned to the identity line rather than centred on the row. The row is two
+     lines of unequal weight, and a mark centred over both floats in the gap
+     between the machine name and the site line, belonging to neither. The mark
+     names the machine, so it sits on the machine's line: the box is exactly one
+     body line tall and the icon is centred inside it, which puts it on the same
+     optical centre as the name whatever the density switch does to the type. */
+  align-self: flex-start;
+  height: calc(var(--lh-body) * 1em);
+}
+.alert-row__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* The identity line. `baseline` and not `center`: the pill's word has to sit on
+   the machine name's baseline, or a 10px capsule beside 12px type reads as a
+   floating sticker. */
+.alert-row__head {
+  display: flex;
+  align-items: baseline;
   gap: var(--sp-2);
   min-width: 0;
-  flex: 1 1 auto;
 }
-/*
- * The severity column. A floor rather than a fixed width: the words are
- * translated ("Critical" / "เล็กน้อย"), so a hard width is a clipped badge in
- * one language or a gutter of dead space in the other. What matters is that the
- * five reasons below start on one x, and a floor buys that in both.
- */
-.alert-row__sev {
-  flex: 0 0 auto;
-  min-width: 5.25rem;
+.alert-row__machine {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /*
  * The severity capsule.
  *
- * Tint inside, mark on the edge - the same pair the Run/Stop pills use, and both
- * are measured against the ink that sits on them by check-contrast. The border is
- * doing real work at three metres: the tints are deliberately pale washes, and
- * without an edge a pale capsule on a white panel is a word with a smudge behind
- * it. Colour is still last in line here; the icon and the word arrive first.
+ * Tint inside with its own ink on it - the same pair the Run/Stop pills use, and
+ * check-contrast measures every one of them. No border: the shape that tells a
+ * reader what this row is arrives in the circle to the left, so the capsule only
+ * has to name it, and an outline on a 10px pill beside a 28px disc is noise.
  */
 .sev-badge {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.0625rem 0.4375rem;
+  padding: 0.125rem 0.4375rem;
   border-radius: var(--r-pill);
-  border: 1px solid transparent;
   font-size: var(--fs-nano);
   font-weight: 600;
   line-height: var(--lh-tight);
@@ -2689,7 +4922,11 @@ a.chip {
 }
 .alert-row__loc {
   color: var(--sub);
-  font-size: var(--fs-nano);
+  font-size: var(--fs-micro);
+  margin-top: 0.125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /*
  * The stopwatch column, right-aligned against a floor wide enough for h:mm:ss.
@@ -2702,7 +4939,7 @@ a.chip {
 .alert-row__time {
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-body);
   font-weight: 600;
   white-space: nowrap;
   flex: 0 0 auto;
@@ -2715,17 +4952,50 @@ a.chip {
   padding: var(--sp-4) 0;
 }
 
-/* A panel with nothing in it because nothing was asked for - the ranking with
-   no region selected. Centred in the space the rows would have filled, so it
-   reads as the panel's own answer rather than a first row. */
+/*
+ * A panel with nothing in it while the rest of the board is fine - the plant
+ * list of a base that runs no Injection, the machine grid of a plant that runs
+ * none. Centred in the space the rows would have filled, so it reads as the
+ * panel's own answer rather than as a first row.
+ *
+ * `flex` column rather than the `grid` + `place-items: center` this was: it now
+ * stacks a mark, a sentence, a way out and a reassurance, and in a single grid
+ * cell all four landed on top of each other. Centred content with a centred
+ * column is still the right call here and not on StatePage - one short sentence
+ * inside a panel has no list to run a left edge against, and the panel's own
+ * heading already sets the left margin the eye is using.
+ */
 .panel-empty {
   flex: 1 1 auto;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
   padding: var(--sp-6) var(--sp-4);
   color: var(--sub);
   font-size: var(--fs-body);
   text-align: center;
+}
+/* Quieter than the state page's mark. Inside a panel it is a note, not a
+   headline, so it takes the no-data grey whatever the reason. */
+.panel-empty .statepage__glyph {
+  color: var(--status-nodata-mark);
+  margin-bottom: 0;
+  opacity: 0.75;
+}
+.panel-empty__message {
+  margin: 0;
+  max-width: 24rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+/* The "everything else is current" line. Below the way out, and at the
+   caption size, because it is the part a reader needs only once. */
+.panel-empty__note {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--sub);
 }
 
 /* =============================================================== trend */
@@ -2803,10 +5073,26 @@ a.chip {
   gap: var(--sp-2);
   flex-shrink: 0;
 }
+/*
+ * The row under a chart, pinned to the bottom of the panel.
+ *
+ * `align-content: flex-end` is what keeps it there when it does wrap. The row
+ * is already the last flex item in a `.panel__body` column, so its BOTTOM edge
+ * never moves - but a wrapped block grows upwards, and without this the rows
+ * inside it pack to the top of the taller box and leave the gap under them.
+ * Packing from the end puts the empty space where the chart can still use it.
+ *
+ * It stays `wrap` and not `nowrap`: the same legend is drawn under the company
+ * page's narrow strip, and a row that cannot wrap there would clip a warning
+ * rather than move it. What must not happen is the row changing height while
+ * the reader is USING it - that is handled where the content is written, by
+ * keeping each item's width steady across its states.
+ */
 .legend {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  align-content: flex-end;
   gap: var(--sp-3);
   font-size: var(--fs-nano);
   color: var(--sub);
@@ -2817,6 +5103,49 @@ a.chip {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
+}
+/*
+ * The trend's axis-ceiling zoom, offered only when the fitted axis has hours
+ * above it (see TrendChart). It sits in the legend row rather than the panel
+ * head because it is the answer to the off-scale warning printed beside it.
+ */
+.trend-zoom {
+  gap: var(--sp-2);
+}
+/*
+ * The caption box, sized for the longer of the two strings it can hold.
+ *
+ * Without this the legend row changes width as the slider is dragged, which at
+ * board widths tips the row in and out of wrapping - and a legend that reflows
+ * resizes the chart above it by a line, on every drag. Reserving the width once
+ * costs a few millimetres and buys a row that does not move.
+ */
+.trend-zoom__caption {
+  min-inline-size: 5.5rem;
+}
+/* The warning half of it. Same ink as the coverage warning beside it, because
+   it is the same kind of statement: what this chart is not showing. */
+.trend-zoom__note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--status-warn-ink);
+}
+.trend-zoom__range {
+  /* Narrow on purpose: this is a legend affordance, not a filter. The full
+     travel is still 50-plus steps of 5 points, which is finer than anybody
+     reads a %OA axis to. */
+  inline-size: 3.5rem;
+  /* The native track is ~4px tall and the row is a touch target like any other
+     control on the board, so the element carries the height and the track
+     stays centred inside it. */
+  block-size: var(--target-min);
+  margin: 0;
+  padding: 0;
+  /* Paints the track fill and the thumb in the series colour, in both themes,
+     without rebuilding the control per engine. */
+  accent-color: var(--trend-line);
+  cursor: ew-resize;
 }
 .legend__swatch {
   width: 0.625rem;
@@ -2854,6 +5183,32 @@ a.chip {
   flex-shrink: 0;
 }
 
+/* The methodology opener. It sits a few centimetres from the KPI strip's own ⓘ
+   and the code treats the two as the same mark, so it carries no chip fill or
+   edge - just the bare glyph, matching `.kpi__info` at rest and on hover. */
+.quality-footer__info {
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: var(--fs-micro);
+  line-height: 1;
+  color: var(--sub);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.quality-footer__info:focus-visible {
+  color: var(--text);
+}
+@media (hover: hover) {
+  .quality-footer__info:hover {
+    color: var(--text);
+  }
+}
+
 .methodology {
   position: fixed;
   inset: 0;
@@ -2878,6 +5233,9 @@ a.chip {
   color: var(--text);
 }
 
+/* The dismiss mark is `.drawer__close`, whose rule this shares - see the base
+   drawer block below. */
+
 /* =========================================================== base drawer ===
  *
  * A full-height panel over the right-hand edge of the board, holding one base.
@@ -2891,6 +5249,21 @@ a.chip {
  * deliberately exactly one viewport tall with no scrollbar; positioning against
  * the viewport is what lets the panel be full-height without any ancestor having
  * to be told about it, and what stops a panel's `overflow: hidden` clipping it.
+ *
+ * ## It is a card, not a slab
+ *
+ * It used to be flush to three edges with a single hairline down its left side,
+ * and against this board that read as a different application arriving over the
+ * top of one. Every other surface here - the panels, the KPI cards, the map's
+ * label cards - is a rounded box with a hairline all the way round, seated on
+ * --bg with a little of the page showing past it. So this one is too: inset by
+ * the shell's own padding, --r-lg like the panels it lands beside, and carrying
+ * --shadow-modal rather than a heavier edge to say it is the layer above.
+ *
+ * The strip of board left showing down its right-hand side is the point of the
+ * inset rather than a side effect of it. A sheet that reaches the edge has no
+ * near side, so nothing on screen says how far it goes; two dozen pixels of page
+ * past its corner is what makes it read as something placed on the board.
  */
 
 /*
@@ -2920,18 +5293,31 @@ a.chip {
  *
  * On the 1180px iPad this is 416px, about a third of the width, which is the
  * proportion the reference draws.
+ *
+ * The inset is the shell's own and not a value of its own: --shell-pad-x holds
+ * the board off the left and right edges of the page and --shell-pad-y /
+ * --shell-pad-bottom hold it off the top and bottom, so this panel's corners
+ * land on exactly the margin the ranking's corners do rather than near it. The
+ * width clamp subtracts both insets for the same reason - at 380px the old
+ * 92vw put the panel's left edge inside the page margin.
+ *
+ * `overflow: hidden` is what makes the radius worth having: the head's hairline,
+ * the foot's, and the body's scroll all run to the panel's edge, and without it
+ * they square off the four corners the rule below rounds.
  */
 .drawer {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(26rem, 92vw);
+  top: var(--shell-pad-y);
+  right: var(--shell-pad-x);
+  bottom: var(--shell-pad-bottom);
+  width: min(26rem, calc(100vw - 2 * var(--shell-pad-x)));
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-left: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-modal);
+  overflow: hidden;
   animation: drawer-in 220ms cubic-bezier(0.22, 0.8, 0.3, 1);
 }
 /*
@@ -2941,7 +5327,9 @@ a.chip {
  */
 @keyframes drawer-in {
   from {
-    transform: translateX(100%);
+    /* Past its own inset as well as its own width, or the panel begins the
+       slide with --shell-pad-x of itself already showing at the page edge. */
+    transform: translateX(calc(100% + var(--shell-pad-x)));
   }
 }
 
@@ -2972,31 +5360,83 @@ a.chip {
   letter-spacing: var(--ls-caps);
   line-height: var(--lh-tight);
 }
-.drawer__close {
-  grid-column: 2;
-  grid-row: 1;
-  width: 1.75rem;
-  height: 1.75rem;
+/*
+ * The dismiss mark, shared with the methodology dialog rather than described as
+ * being like it: those two are the only modal surfaces on the board, and a
+ * reader who has learned one mark should not meet a differently sized one in the
+ * other. One rule is what keeps that true through the next edit.
+ *
+ * A capsule, because every pressable thing on this board is one (--r-control),
+ * and an 8px-cornered square tucked into the corner of a 14px-cornered sheet was
+ * the one control that was not - two radii within a few pixels of each other,
+ * which is the pairing that reads as a mistake rather than as a step.
+ *
+ * --target-min rather than a hardcoded 1.75rem: the same 28px at this density,
+ * and 44px on the kiosk switch, where a fixed rem left a 28px target on a panel
+ * whose type had doubled around it.
+ */
+.drawer__close,
+.methodology__close {
+  flex: none;
+  width: var(--target-min);
+  height: var(--target-min);
   display: grid;
   place-items: center;
   padding: 0;
   font: inherit;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-chip);
+  line-height: 1;
   color: var(--sub);
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-control);
   cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
+.drawer__close {
+  grid-column: 2;
+  grid-row: 1;
+}
+/*
+ * The mark is drawn, not typed - two strokes in the same 16-unit box the map's
+ * zoom and expand controls use (see `.map-btn svg`), at the same cap and much
+ * the same weight. The character it replaces is set from whichever face the
+ * platform resolves it in, which on this board meant a mark lighter than every
+ * glyph beside it and optically off centre in its own box.
+ *
+ * Sized in `em` against the button's own font-size, so the kiosk switch carries
+ * the mark along with the target it sits in.
+ */
+.drawer__close svg,
+.methodology__close svg {
+  width: 0.85em;
+  height: 0.85em;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+/* Hover is the board's own - the accent tint every other chip and capsule takes,
+   rather than a one-step-darker hairline that on a 28px target cannot be seen. */
 @media (hover: hover) {
-  .drawer__close:hover {
-    color: var(--text);
-    border-color: var(--line-strong);
+  .drawer__close:hover,
+  .methodology__close:hover {
+    color: var(--accent-ink);
+    background: var(--accent-tint);
+    border-color: var(--accent-line);
   }
 }
 .drawer__title {
   grid-column: 1 / -1;
-  margin: 0;
+  /*
+   * The head's 0.375rem row gap is right between the title and its subtitle -
+   * those two are one block - but too tight under the state pill, which read as
+   * stuck to the flag and the name rather than as a line of its own. The extra
+   * step goes here rather than on the head's row-gap, so the title and subtitle
+   * keep the spacing that pairs them.
+   */
+  margin: var(--sp-2) 0 0;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -3049,49 +5489,146 @@ a.chip {
   gap: var(--sp-3);
 }
 
+/*
+ * --grid-gap, which is the same 8px `--sp-2` was at this density and the token
+ * the KPI strip and the board itself are gapped with - so the channel between
+ * two tiles is the channel between two KPI cards, and it widens with them on the
+ * kiosk switch instead of holding at 8px while the type doubles.
+ */
 .drawer__tiles {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--sp-2);
-}
-.drawer__tile {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  min-width: 0;
-  padding: 0.625rem 0.75rem;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-}
-.drawer__tile-label {
-  font-size: var(--fs-nano);
-  font-weight: 700;
-  color: var(--sub);
-  text-transform: uppercase;
-  letter-spacing: var(--ls-caps);
-  line-height: var(--lh-tight);
+  gap: var(--grid-gap);
 }
 /*
- * The figure. `--fs-kpi` is the strip's 28px, deliberately reused: a base's own
- * %OA should read at the same size as the group's, so the two are comparable
- * across the scrim rather than one looking like a footnote to the other.
+ * A tile *is* the strip's card - `.kpi.kpi--feature`, the same classes
+ * KpiStrip renders - rather than a second card built to look like it.
+ *
+ * It was the second card, and the drift was already visible: 8px corners against
+ * the strip's 20, 12px of padding against 20, tracked micro-caps in --sub where
+ * the strip had moved to a sentence-case label at reading size, and a figure set
+ * in the numeric face at weight 800 where the strip sets the display face at 600.
+ * Four properties, each defensible on its own, that between them made a base's
+ * own figures look like a different product's from the group's on the board
+ * behind them - which is the one comparison this drawer exists to support.
+ *
+ * The mark comes with the style and not as decoration on top of it: KpiCard's
+ * note on `mark` records that the sentence-case label, the reading-size type and
+ * the softer card are one decision, and that a card in this style with no mark
+ * has a hole where the mark goes. Three of the four take the mark the strip
+ * already uses for the same quantity - gauge for %OA, play for the running
+ * count, target for %Achievement - so a reader crossing the scrim meets the same
+ * icon for the same idea. Downtime takes `stop`, which is what it is time in.
+ *
+ * The coupling is the point. If the strip's card changes, these change with it;
+ * if the design owner takes `.kpi--feature` back off the strip (see the note on
+ * that class), these come back with it too, and neither move needs finding this
+ * block.
+ *
+ * Only what the drawer's ground makes necessary is overridden below.
  */
-.drawer__tile-value {
-  font-family: var(--font-num);
+
+/*
+ * The fill, which is the one thing that cannot be inherited.
+ *
+ * .kpi--feature is white on the board's --bg and separated by a shadow. Here the
+ * ground is the panel's own white, so a white card on it is a shadow and nothing
+ * else. --panel-2 on --panel is the same one step of value the other way round -
+ * #f7f8fa on #fff against the strip's #fff on #f4f6f9 - so the card reads as the
+ * same object with the figure and the ground swapped, which is what a surface
+ * one layer up should look like.
+ */
+.drawer__tiles .kpi {
+  background: var(--panel-2);
+}
+/*
+ * The strip drops its hairline because the shadow and the fill are already two
+ * edges; here they are the same two, so it stays dropped. Restated rather than
+ * inherited because .kpi (not .kpi--feature) is what declares the border, and a
+ * dark-theme rule below puts it back for the same reason the strip's does.
+ */
+.drawer__tiles .kpi--feature {
+  border-color: transparent;
+}
+:root[data-theme='dark'] .drawer__tiles .kpi--feature {
+  border-color: var(--line);
+}
+
+/*
+ * The label is allowed two lines, and every head is two lines tall whether it
+ * needs them or not.
+ *
+ * The strip ellipsises instead, and it can: a card labelled "Runnin…" is one of
+ * six on a row the reader has learned, and the figure under it says which. These
+ * four are read once, in a panel opened on purpose, and "Accumulated downti…"
+ * loses the word that distinguishes a shift total from a current reading -
+ * nothing else on the tile says which of the two it is. At 416px that label
+ * wants about 145px of the 143 the mark leaves it, so it truncates by two
+ * characters; a second line costs 15px and returns the word.
+ *
+ * The floor is what keeps the four readable as a set. Without it the tile whose
+ * label wrapped started its figure a line lower than its neighbour's - visible
+ * at kiosk density, where every label wraps - and four figures on three baselines
+ * is the "six posters" the strip's flush-left setting exists to avoid. Two lines
+ * of --fs-label rather than an em of the head's own size, because the label is
+ * the thing being cleared and the two tokens part company at kiosk density.
+ *
+ * `start` rather than the strip's `center`: in a box taller than its contents,
+ * centring drops a one-line label half a line below a two-line one, which is the
+ * misalignment the floor was added to remove.
+ */
+.drawer__tiles .kpi__head {
+  align-items: start;
+  min-height: calc(2 * 1.25 * var(--fs-label));
+}
+
+/*
+ * ---- the same card, at the panel's scale ----
+ *
+ * .kpi--feature is measured for a card that is one of six across a 1180px board,
+ * read at a glance and often from across the room: 20px of block padding, an 8px
+ * gap between its three rows, and a figure at 1.15x the strip size. Four of those
+ * stacked two-up in a 416px panel came to 290px - more than a third of the
+ * drawer's height spent on four numbers, with the reading, the plant list and
+ * the footer pushed down behind them.
+ *
+ * So the type, the mark, the corner and the fill all stay exactly as the strip
+ * sets them - that is what makes it the same card - and only the air comes out.
+ * Nothing here changes what the tile *is*; it changes how much room it takes to
+ * say it.
+ */
+.drawer__tiles .kpi--feature {
+  /* 14/12, down from 20/13. The block half is where the height is: it is spent
+     twice per tile and four times down the panel. The inline half barely moves,
+     because it is what keeps the mark off the card's edge. */
+  padding: 0.875rem 0.75rem;
+  /* 6px between the three rows, down from 8. They are a label, a figure and a
+     caption about that figure - one block, and at 8px in a shorter card they had
+     started to read as three. */
+  gap: 0.375rem;
+}
+/*
+ * Back to --fs-kpi, which is where this figure started.
+ *
+ * The strip's 1.15x buys a hero number on a board scanned in passing. Nobody
+ * scans this panel in passing - it is open because somebody asked for this base
+ * by name - and the reason the drawer's figure was set at --fs-kpi in the first
+ * place still holds: a base's %OA should read at the same size as the group's on
+ * the strip behind it, so the two are comparable across the scrim rather than
+ * one looking like a footnote to the other. The multiplier is what broke that
+ * parity, not what created it.
+ *
+ * min-height follows the size for the reason .kpi__value records - it holds the
+ * row at a figure's height when a tile has no figure to show - and the feature
+ * card's 2px lead above the figure comes off with the rest of the air.
+ */
+.drawer__tiles .kpi__value {
   font-size: var(--fs-kpi);
-  font-weight: 800;
-  letter-spacing: var(--ls-tight);
-  line-height: 1.05;
-  color: var(--text);
-  /*
-   * Never wrapped. `overflow-wrap: anywhere` was here to stop a long figure
-   * widening its grid column, and at kiosk density it did something far worse:
-   * it broke "73.6%" across two lines as "73.6" and "%", and "3h 07m" into "3h"
-   * and "07m". A number split in half is not a number. The kiosk block below
-   * gives the panel the width instead.
-   */
-  white-space: nowrap;
+  min-height: calc(var(--fs-kpi) * 1.15);
+  margin-top: 0;
+}
+.drawer__tiles .kpi__label {
+  white-space: normal;
 }
 /* The denominator of the machine count, quieter than the running figure it
    qualifies - 17 is the number being read, 21 is the context. */
@@ -3100,12 +5637,6 @@ a.chip {
   font-weight: 600;
   font-size: 0.62em;
 }
-.drawer__tile-caption {
-  font-size: var(--fs-nano);
-  color: var(--sub);
-  line-height: var(--lh-tight);
-}
-
 /*
  * The reading: the gap to target and the gap to plan, tinted by tier.
  *
@@ -3117,7 +5648,10 @@ a.chip {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding: 0.625rem 0.75rem;
+  /* The tiles' padding exactly. It is the block directly under them and a
+     different inset would read as a different kind of container rather than as
+     the same box holding a sentence instead of a figure. */
+  padding: 0.75rem;
   border-radius: var(--r-md);
 }
 .drawer__reading p {
@@ -3140,13 +5674,23 @@ a.chip {
   flex-direction: column;
   gap: 0.125rem;
 }
+/*
+ * Set like a panel head, not like a tile label.
+ *
+ * It was 10px uppercase on --ls-caps, which is the treatment the tile captions
+ * take - and there it is right, because a caption is the field name for the
+ * figure under it. This is not that: it is the name of a section, the same job
+ * `.panel-head h2` does on the board, and that head is deliberately in sentence
+ * case at the body size one weight up (see base.css for the three reasons).
+ * "4 PLANTS AT THIS BASE" was also the drawer's third tracked-out uppercase line
+ * in 300px, after the state pill and four tile labels.
+ */
 .drawer__plants h3 {
-  margin: 0 0 0.25rem;
-  font-size: var(--fs-nano);
-  font-weight: 700;
-  color: var(--sub);
-  text-transform: uppercase;
-  letter-spacing: var(--ls-caps);
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-chip);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  color: var(--text);
 }
 .drawer__plant {
   display: grid;
@@ -3246,17 +5790,39 @@ a.chip {
  * for the caption underneath.
  */
 :root[data-density='tv'] .drawer {
-  width: min(40rem, 96vw);
+  width: min(40rem, calc(100vw - 2 * var(--shell-pad-x)));
 }
-:root[data-density='tv'] .drawer__tile-value {
+/*
+ * The strip's kiosk rule steps its figure back to --fs-kpi - 56px, the floor
+ * derived from angular size at three metres. That is right for six cards across
+ * a 1920 board and wrong for four stacked two-up in a 640px panel: at 56px the
+ * four tiles alone are taller than the panel, so the reading and the plant list
+ * below them are only reachable by scrolling a wall display nobody can scroll.
+ *
+ * 36px clears three metres for a figure the reader has deliberately opened a
+ * panel to look at, which is a different reading distance problem from a number
+ * that has to catch the eye of somebody walking past.
+ */
+:root[data-density='tv'] .drawer__tiles .kpi__value {
   font-size: 2.25rem;
+  min-height: calc(2.25rem * 1.3225);
 }
-/* The footer's controls run the full width - there is one of them today, and a
-   chip floating at the left of a 416px bar reads as misplaced rather than
-   minimal. */
+/*
+ * The footer's controls run the full width - there is one of them today, and a
+ * chip floating at the left of a 416px bar reads as misplaced rather than
+ * minimal.
+ *
+ * At the board's control height, though, and not at a chip's. `.chip` is sized
+ * for something inline in a panel head; stretched across a 416px bar at its own
+ * 28px it read as a wide thin slot with small type adrift in the middle of it.
+ * --ctl-h and --fs-chip are what the filter row, the range picker and the export
+ * button are, which is what a footer action should be.
+ */
 .drawer__foot > * {
   justify-content: center;
   width: 100%;
+  min-height: var(--ctl-h);
+  font-size: var(--fs-chip);
 }
 
 /* --------------------------------------------------------- refresh picker */
@@ -3270,10 +5836,12 @@ a.chip {
   position: relative;
   display: inline-flex;
   align-items: stretch;
-  height: 1.875rem;
+  height: var(--ctl-h);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-control);
+  /* Not `hidden`: the interval menu hangs out of this box. The two halves clip
+     themselves to the capsule instead, below. */
   overflow: visible;
 }
 .refreshpicker__now,
@@ -3290,17 +5858,32 @@ a.chip {
   white-space: nowrap;
   cursor: pointer;
 }
-/* A hairline between the two halves, so it is visibly two targets rather than
-   one button with a decorative arrow. */
+/*
+ * Two targets in one capsule: the left half refetches now, the right half opens
+ * the interval menu.
+ *
+ * Each half rounds its own outer end to the capsule's radius and leaves the
+ * inner end square, which is what lets a hover wash land inside the shape
+ * instead of over its corners. The hairline between them stays - it is the only
+ * thing saying this is two buttons rather than one with a decorative arrow.
+ */
+.refreshpicker__now {
+  border-start-start-radius: var(--r-control);
+  border-end-start-radius: var(--r-control);
+  padding-inline-start: 0.75rem;
+}
 .refreshpicker__caret {
   border-left: 1px solid var(--line);
-  padding: 0 0.4375rem;
+  border-start-end-radius: var(--r-control);
+  border-end-end-radius: var(--r-control);
+  padding: 0 0.625rem 0 0.4375rem;
   color: var(--sub);
 }
 @media (hover: hover) {
   .refreshpicker__now:hover,
   .refreshpicker__caret:hover {
-    background: var(--panel-3);
+    background: var(--accent-tint);
+    color: var(--accent-ink);
   }
 }
 .refreshpicker__val {
@@ -3338,8 +5921,8 @@ a.chip {
   flex-direction: column;
   padding: var(--sp-1);
   background: var(--panel);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-modal);
 }
 .refreshmenu__opt {
@@ -3348,11 +5931,11 @@ a.chip {
   justify-content: space-between;
   gap: 0.75rem;
   width: 100%;
-  min-height: 2rem;
+  min-height: 2.125rem;
   padding: 0.25rem 0.5rem;
   background: none;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
   font: inherit;
   font-size: var(--fs-body);
   color: var(--text);
@@ -3364,9 +5947,9 @@ a.chip {
 }
 @media (hover: hover) {
   .refreshmenu__opt:hover {
-    background: var(--panel-3);
+    background: var(--panel-2);
   }
 }
-.refreshmenu__opt[aria-checked='true'] {
-  font-weight: 600;
-}
+/* The interval in force is said by the filled disc alone, as it is in the
+   filter menus - no wash and no weight, for the reason recorded on
+   .regionmenu__opt. The disc's own rules are shared with .regionmenu__check. */

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useMeta } from '../../api/queries';
-import { formatRegions, parseRegions, type Meta } from '../../api/contract';
+import { formatRegions, parseRegions, regionMatcher, type Meta } from '../../api/contract';
 import { useI18n, type TFunction } from '../../i18n/I18nProvider';
 import { useFilters, useFilterSearch } from '../../state/useFilters';
 
@@ -23,8 +23,24 @@ import { useFilters, useFilterSearch } from '../../state/useFilters';
  * make the common case worse. "Which base" and "which Lamp" are separate
  * thoughts, asked in separate sentences, and a reader who wants Lamp 2 should
  * not have to expand THS to find it. The two filters intersect, so Region=TH
- * plus Lamp=6332 is the one plant, and neither control has to know about the
- * other.
+ * plus Lamp=6332 is the one plant.
+ *
+ * ## Why the choices narrow with the region above
+ *
+ * The list is the lamps of the companies Region has left on the board, not
+ * every lamp in the group - the same rule ZoneFilter applies one level further
+ * down, for the same reason. Scoped to Thailand this menu was still reading
+ * "All - 6 lamps" with Japan's `STJ-1` ticked under it: a control naming a
+ * scope the numbers behind it do not have, which is the mistake
+ * ProcessFilter.tsx documents.
+ *
+ * It is also what makes the default follow the region with no second tap.
+ * `all` is not an enumeration of six codes, it is "every lamp in scope", so
+ * picking Thailand re-reads it as Thailand's five and picking Japan re-reads
+ * it as `STJ-1`. A lamp the reader ticked by hand stays in the URL and simply
+ * stops being ticked while its company is off the board - so the tick is
+ * theirs until they change it, and it never counts a plant the board is not
+ * showing.
  *
  * ## The rest
  *
@@ -48,7 +64,10 @@ export function PlantFilter() {
   const menu = useRef<HTMLDivElement>(null);
   const menuId = useId();
 
-  const tree = useMemo(() => buildTree(meta.data ?? null, lang), [meta.data, lang]);
+  const tree = useMemo(
+    () => buildTree(meta.data ?? null, lang, filters.region),
+    [meta.data, lang, filters.region],
+  );
   const fromUrl = useMemo(() => expand(filters.plant, tree), [filters.plant, tree]);
 
   /* Held while the menu is open, for the same reason RegionFilter holds one:
@@ -143,6 +162,9 @@ export function PlantFilter() {
   };
 
   const everything = tree.all.length > 0 && picked.size === tree.all.length;
+  /* Whether the capsule is holding a scope. Same rule, and the same reason for
+     the length guard, as the Region control - see the note there. */
+  const narrowed = tree.all.length > 0 && !everything;
   const selected = describe(picked, tree, everything, t);
   const lamps = (count: number) =>
     t(count === 1 ? 'filter.plantCount.one' : 'filter.plantCount.other', { count });
@@ -152,7 +174,7 @@ export function PlantFilter() {
       <button
         ref={trigger}
         type="button"
-        className="filter tap"
+        className={narrowed ? 'filter filter--on tap' : 'filter tap'}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -287,11 +309,17 @@ interface Tree {
  * order the config lists them. Neither survives an alphabetical sort, and both
  * are how the floor refers to them.
  *
+ * Only the companies the `region` parameter has left on the board, matched with
+ * the same code the server filters by - so this menu and the numbers above it
+ * can never disagree about what is in scope.
+ *
  * A company with no plants in master data is not a group anybody can pick.
  */
-function buildTree(meta: Meta | null, lang: string): Tree {
+function buildTree(meta: Meta | null, lang: string, region: string): Tree {
   if (!meta) return { companies: [], all: [] };
+  const inRegion = regionMatcher(region);
   const companies = meta.companies
+    .filter(inRegion)
     .map((co) => ({
       code: co.code,
       label: (lang === 'th' && co.name_th ? co.name_th : co.name) || co.code,
@@ -301,7 +329,13 @@ function buildTree(meta: Meta | null, lang: string): Tree {
   return { companies, all: companies.flatMap((c) => c.plants.map((p) => p.code)) };
 }
 
-/** The parameter, as the set of plant codes it puts on the board. */
+/**
+ * The parameter, as the set of plant codes it puts on the board.
+ *
+ * Intersected with the region's scope, which is what the filter over
+ * `tree.all` already does: a lamp left in the URL from a wider region stops
+ * being ticked the moment its company leaves the board.
+ */
 function expand(plant: string, tree: Tree): Set<string> {
   const tokens = parseRegions(plant);
   if (tokens === null) return new Set(tree.all);
@@ -315,8 +349,9 @@ function expand(plant: string, tree: Tree): Set<string> {
  * Unlike `region`, a fully-ticked company does NOT collapse to its own code:
  * `plant=THS` would be ambiguous with a plant literally named THS, and the
  * matcher only ever compares plant codes. Everything ticked still collapses to
- * `all`, which keeps the common URL bare and stays correct when a plant is
- * commissioned.
+ * `all`, which keeps the common URL bare, stays correct when a plant is
+ * commissioned, and - because `all` means "every lamp in scope" rather than a
+ * list of codes - re-reads itself against whatever region is picked next.
  */
 function collapse(plants: Set<string>, tree: Tree): string {
   if (plants.size > 0 && plants.size === tree.all.length) return 'all';

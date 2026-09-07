@@ -1,6 +1,5 @@
 {
   "_comment": "Edited on the server after deploy. MUST be served with no-cache - if this file is cached, changing apiBaseUrl silently does nothing. See docs/RUNBOOK.md.",
-  "dataSource": "http",
   "apiBaseUrl": "/api/v1",
   "_refreshMs_comment": "The DEFAULT auto-refresh; the viewer can override it with the refresh picker (REFRESH_CHOICES in src/state/prefsStore.ts) and that choice persists per browser. 5000 to match the plant board next to it, and it must be one of those choices or the menu opens with nothing ticked. MUST also stay ABOVE the backend SNAPSHOT_INTERVAL_MS (default 2000ms): the UI calls the feed frozen after 3 identical payloads, so a client outrunning the poller false-alarms on a healthy system.",
   "refreshMs": 5000,

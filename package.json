@@ -14,7 +14,6 @@
     "dev": "vite",
     "dev:lan": "vite --host",
     "build": "tsc -b && vite build",
-    "build:mock": "vite build --mode mock",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
@@ -24,7 +23,7 @@
     "check:contrast": "node scripts/check-contrast.mjs",
     "check:offline": "node scripts/check-offline.mjs",
     "check:nodash": "node scripts/check-nodash.mjs",
-    "extract:logo": "node scripts/extract-logo.mjs",
+    "gen:favicon": "node scripts/make-favicon.mjs",
     "verify": "npm run typecheck && npm run lint && npm run check:contrast && npm run check:nodash && npm run test"
   },
   "dependencies": {
@@ -36,6 +35,8 @@
     "@fontsource/poppins": "^5.3.0",
     "@fontsource/sarabun": "^5.3.0",
     "@tanstack/react-query": "^5.101.4",
+    "html2canvas-pro": "^2.4.1",
+    "jspdf": "^4.2.1",
     "leaflet": "1.9.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@rolldown/binding-win32-x64-msvc": "^1.2.2",
     "@types/geojson": "^7946.0.16",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^24.13.3",

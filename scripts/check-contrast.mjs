@@ -37,12 +37,19 @@ function contrast(a, b) {
 // `attention` is the ranking's critical-row tint. It carries the whole row -
 // country, clock, percentages - so every ink has to clear it too. The pill-sized
 // --status-crit-tint was the first choice and failed `sub` here at 4.4:1.
+// `accentTint` and `accentTintStrong` are the brand-orange grounds a control
+// that is *on* is drawn with - the open filter, the range in force, the
+// selected language. They carry their own label, so they are text surfaces like
+// the rest and every ink is measured on them. The pair was chosen by this
+// script: two steps deeper and --accent-ink came out at 4.34:1.
 const LIGHT_SURFACES = {
   panel: '#FFFFFF',
   panel2: '#F7F8FA',
   panel3: '#F2F4F7',
   bg: '#F4F6F9',
   attention: '#FDF4F3',
+  accentTint: '#FDF3EA',
+  accentTintStrong: '#FCEFE3',
 };
 
 // Keep in sync with src/theme/tokens.css.
@@ -54,7 +61,7 @@ const LIGHT_SURFACES = {
 // #828790 here. Checking one surface is how that ships unnoticed.
 const LIGHT_MARK = {
   'status-good-mark': '#12946A',
-  'status-warn-mark': '#B3771A',
+  'status-warn-mark': '#D9660A',
   'status-crit-mark': '#D63B30',
   'status-nodata-mark': '#828790',
   'status-other-mark': '#7166B5',
@@ -62,6 +69,19 @@ const LIGHT_MARK = {
   // surfaces, so it is held to the same 3:1 - see tokens.css for why the line
   // stopped being green.
   'trend-line': '#0B74B8',
+  // Nor is this one: brand orange, as the marks that carry a meaning wear it -
+  // the selected board tab's top edge and the focus ring. The *decorative*
+  // orange (--accent, #EB7113) is deliberately absent and stays exempt, on the
+  // same grounds the note at the top of this file gives: nothing is read from
+  // it. A mark a keyboard user has to find is not decoration, hence this row.
+  //
+  // Do not be tempted to alias this row onto the brand hue. #F5871F measures
+  // 2.51:1 on the panel and 2.20:1 on the worst surface in the list above - it
+  // does not pass as a mark on any of them, which is why the mark is cut a step
+  // deeper than the brand value and always has been. The brand orange's own
+  // place on the board is as a *ground*, which is the block at the bottom of
+  // this file, not this one.
+  'accent-mark': '#D86E0A',
 };
 
 // Desktop text: AA 4.5:1 on every surface.
@@ -71,10 +91,17 @@ const LIGHT_MARK = {
 // every text use of them resolves here - see the note in tokens.css.
 const LIGHT_INK = {
   'status-good-ink': '#0F7A58',
-  'status-warn-ink': '#8A5C11',
+  'status-warn-ink': '#A85410',
   'status-crit-ink': '#C0362C',
   'status-nodata-ink': '#5C616B',
   'status-other-ink': '#574B93',
+  // Brand orange as type. No longer the label on a control that is on - that
+  // moved to a filled ground with a dark label, see LIGHT_FILL below - but
+  // still the breadcrumb links, the sort glyph, the mixed-scope tick and every
+  // hover wash. Same 4.5:1 as everything here, and it is this row that forces
+  // the token to a lightness that cannot look like the logo. Nothing to be done
+  // about that: 4.5:1 on #F2F4F7 caps an orange at about L 35%.
+  'accent-ink': '#AA5708',
   text: '#16181D',
   'ink-2': '#3A3D45',
   sub: '#676C76',
@@ -84,10 +111,11 @@ const LIGHT_INK = {
 // glossy, and the viewer is ~3 m away. Applied via [data-density="tv"].
 const LIGHT_INK_TV = {
   'status-good-ink': '#0A5B41',
-  'status-warn-ink': '#6B470B',
+  'status-warn-ink': '#7A4109',
   'status-crit-ink': '#8F2419',
   'status-nodata-ink': '#494E57',
   'status-other-ink': '#443A75',
+  'accent-ink': '#7E4006',
   text: '#16181D',
   'ink-2': '#3A3D45',
   sub: '#4A4E57',
@@ -117,6 +145,8 @@ const DARK_SURFACES = {
   panel3: '#1C2942',
   bg: '#0A1020',
   attention: '#2C1821',
+  accentTint: '#2A1D0F',
+  accentTintStrong: '#33230F',
 };
 
 const DARK_MARK = {
@@ -126,6 +156,9 @@ const DARK_MARK = {
   'status-nodata-mark': '#7D8BA1',
   'status-other-mark': '#8B7CE8',
   'trend-line': '#38BDF8',
+  // The same value as --accent in this theme, unlike the light one - see the
+  // note on the pair in tokens.css.
+  'accent-mark': '#F2A94A',
 };
 
 const DARK_INK = {
@@ -134,6 +167,7 @@ const DARK_INK = {
   'status-crit-ink': '#FF7080',
   'status-nodata-ink': '#A3B0C2',
   'status-other-ink': '#A99BF5',
+  'accent-ink': '#FFB366',
   // Not #FFFFFF: pure white on a near-black ground haloes on the glossy panels
   // these boards run on, and at 12px that bloom closes up Thai tone marks.
   text: '#EEF2F8',
@@ -147,6 +181,8 @@ const DARK_INK_TV = {
   'status-crit-ink': '#FF9AA4',
   'status-nodata-ink': '#C0CBDB',
   'status-other-ink': '#C3B8FF',
+  // Unchanged from DARK_INK: it clears AAA as it stands. See tokens.css.
+  'accent-ink': '#FFB366',
   text: '#F4F7FB',
   'ink-2': '#D8E0EC',
   sub: '#B3BFD0',
@@ -163,6 +199,117 @@ const DARK_INK_TV = {
 // mistake that is easy to make and impossible to see in a swatch grid, so each
 // pair is now held to the same minimums as any other text.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// The filled control.
+//
+// The orange ground a control that is *on* is drawn with: the filter capsules,
+// the board tab in front, the range in force, the alert count. This file is the
+// reason nobody can ship `background: var(--accent)` with a white label on it,
+// which measures 2.4:1.
+//
+// Measured as a text pair rather than against the five surfaces, because that
+// is what it is: --accent-on-fill is the label, --accent-fill is the only thing
+// it is ever set on. The hover ground is measured too - a hover that drops the
+// label below AA for as long as the pointer is over it is still a failure, and
+// it is the state a reader is in at the moment they read the word.
+//
+// The two themes do NOT run the same way round any more, and the light one is
+// this file's one waived pair.
+//
+// ---- the waiver ----
+//
+// A white label on the brand orange measures 2.51:1, where AA wants 4.5:1. It
+// is shipped anyway, by an explicit and repeated design instruction taken after
+// the number was quoted. `waived` on the table below is what says so.
+//
+// Read what that flag does before reaching for it again. It does not silence
+// the row: the ratio still prints, on every run, flagged WAIVE and listed again
+// in the summary at the bottom. What it does is stop the row failing the build,
+// so that one accepted deviation does not force the whole gate to be switched
+// off - which is the actual risk to a check like this one. A waiver is a debt
+// somebody chose to take on, recorded where the next person will see it; it is
+// not a way to make a colour pass.
+//
+// Do not add a second one without the same conversation. And do not "fix" this
+// row by editing the hex here - this table describes what tokens.css ships, and
+// a value changed only here measures a colour nobody sees.
+// ---------------------------------------------------------------------------
+
+const WAIVER_WHITE_ON_ORANGE =
+  'white on the brand orange, accepted by design decision - see tokens.css';
+
+const LIGHT_FILL = {
+  'accent-on-fill': '#FFFFFF',
+  fill: '#F5871F',
+  // Deeper than the ground, not lighter, now the label is white: the pointer
+  // has to raise the label's contrast (3.41:1) rather than drop it. This is
+  // --accent-mark's value, the same hue one step down.
+  fillStrong: '#D86E0A',
+  waived: WAIVER_WHITE_ON_ORANGE,
+};
+
+// Unchanged from LIGHT_FILL. Every other ink in the tv block is deepened to
+// clear AAA; this pair has no AA to promote, and the only lightness where
+// deepening would mean anything is one that stops being the brand orange. The
+// waiver is the same at both densities and worse at this one - see tokens.css.
+const LIGHT_FILL_TV = LIGHT_FILL;
+
+const DARK_FILL = {
+  'accent-on-fill': '#0A1020',
+  fill: '#FFB366',
+  fillStrong: '#F2A94A',
+};
+
+// Unchanged from DARK_FILL: both grounds already clear AAA against the page
+// ground the label is set in. See the note in tokens.css.
+//
+// No waiver here, and that is deliberate rather than an omission. The rule that
+// produced the light theme's white label named a colour - #F5871F - and this
+// theme's ground is #FFB366. White on it is 1.77:1, which is not a legibility
+// trade but an invisible label, so the dark board keeps the pair that passes.
+const DARK_FILL_TV = DARK_FILL;
+
+// ---------------------------------------------------------------------------
+// The pastel control.
+//
+// The filter capsules, and only those: the ground a scope capsule takes while
+// it is holding one, plus the deeper step it takes when its menu is open or the
+// pointer is on it. The saturated FILL tables above still describe Export, the
+// board tab in front and the alert count, which did not move.
+//
+// Measured as a text pair for the same reason the fill is - --accent-on-pastel
+// is the label and these two grounds are the only things it is ever set on -
+// and held to the ordinary minimums, with no waiver on either row. That is the
+// point of the pair rather than an accident of it: the fill's white label is
+// waived at 2.51:1 because no ink passes on the brand orange undimmed, and
+// dropping the ground to a pastel is what buys a label that simply passes. If
+// an edit here ever needs a waiver to go green, the edit is wrong.
+// ---------------------------------------------------------------------------
+
+const LIGHT_PASTEL = {
+  'accent-on-pastel': '#8A4606',
+  pastel: '#FDE3C8',
+  pastelStrong: '#FBDCBB',
+};
+
+// Two steps deeper for AAA, which is available here and is not on the fill:
+// this pair has a passing AA to promote. 7.62:1 and 7.20:1.
+const LIGHT_PASTEL_TV = {
+  'accent-on-pastel': '#6E3805',
+  pastel: '#FDE3C8',
+  pastelStrong: '#FBDCBB',
+};
+
+// Inverted, like DARK_FILL: a warm near-black ground under the light orange.
+const DARK_PASTEL = {
+  'accent-on-pastel': '#FFC98A',
+  pastel: '#3A2A16',
+  pastelStrong: '#46331B',
+};
+
+// Unchanged from DARK_PASTEL - 9.18:1 and 7.99:1 already clear AAA.
+const DARK_PASTEL_TV = DARK_PASTEL;
 
 const LIGHT_TINT = {
   good: '#E3F5EE',
@@ -188,6 +335,10 @@ const THEMES = [
     ink: LIGHT_INK,
     inkTv: LIGHT_INK_TV,
     tint: LIGHT_TINT,
+    fill: LIGHT_FILL,
+    fillTv: LIGHT_FILL_TV,
+    pastel: LIGHT_PASTEL,
+    pastelTv: LIGHT_PASTEL_TV,
   },
   {
     name: 'dark',
@@ -196,6 +347,10 @@ const THEMES = [
     ink: DARK_INK,
     inkTv: DARK_INK_TV,
     tint: DARK_TINT,
+    fill: DARK_FILL,
+    fillTv: DARK_FILL_TV,
+    pastel: DARK_PASTEL,
+    pastelTv: DARK_PASTEL_TV,
   },
 ];
 
@@ -204,12 +359,35 @@ const KIOSK_MIN = 7.0; // AAA - factory ambient light, 3 m viewing distance
 const MARK_MIN = 3.0; // AA non-text graphic
 
 let failed = 0;
-const row = (name, hex, surface, value, min) => {
+const waived = [];
+
+/*
+ * One measured pair, printed.
+ *
+ * `waiver` is a reason string, and it is present only on a pair somebody has
+ * explicitly decided to ship below its minimum. A failing row that has one
+ * prints WAIVE, is collected for the summary at the bottom, and does not fail
+ * the build; a failing row without one fails it, which is the whole reason this
+ * runs in CI.
+ *
+ * The build not going red is the point, and it is also the risk. A gate that
+ * fails on a deviation the team has already accepted gets switched off, and
+ * then it stops catching the accidental ones too - so the accepted deviation is
+ * recorded here instead, in front of anyone who runs the script, rather than
+ * either failing forever or disappearing.
+ *
+ * A row that passes prints PASS whether or not a waiver was offered. A waiver
+ * on a passing pair is dead weight and reads as though the pair were broken.
+ */
+const row = (name, hex, surface, value, min, waiver) => {
   const ok = value >= min;
-  if (!ok) failed++;
-  const flag = ok ? 'PASS' : 'FAIL';
+  const flag = ok ? 'PASS' : waiver ? 'WAIVE' : 'FAIL';
+  if (!ok && !waiver) failed++;
+  if (!ok && waiver) {
+    waived.push(`${name} on ${surface}: ${value.toFixed(2)}:1 (min ${min}) - ${waiver}`);
+  }
   console.log(
-    `  [${flag}] ${name.padEnd(20)} ${hex} on ${surface.padEnd(11)} ` +
+    `  [${flag.padEnd(4)}] ${name.padEnd(20)} ${hex} on ${surface.padEnd(11)} ` +
       `${value.toFixed(2).padStart(5)}:1  (min ${min})`,
   );
 };
@@ -230,6 +408,27 @@ const checkPills = (label, ink, tint, min) => {
     const inkName = `status-${tone}-ink`;
     row(inkName, ink[inkName], `${tone}-tint`, contrast(ink[inkName], tintHex), min);
   }
+};
+
+// The label on the filled control, on the ground it is filled with and on that
+// ground's hover. Two rows, because the hover is the state a pointer user is in
+// while they read the word.
+const checkFill = (label, fill, min) => {
+  console.log(`\n${label}`);
+  const ink = fill['accent-on-fill'];
+  row('accent-on-fill', ink, 'accent-fill', contrast(ink, fill.fill), min, fill.waived);
+  row('accent-on-fill', ink, 'fill:hover', contrast(ink, fill.fillStrong), min, fill.waived);
+};
+
+// The label on the pastel control, on both of its grounds. Same shape as
+// checkFill and deliberately a separate function rather than a parameter on it:
+// the two take different minimums at kiosk density and one of them carries a
+// waiver the other must never inherit.
+const checkPastel = (label, pastel, min) => {
+  console.log(`\n${label}`);
+  const ink = pastel['accent-on-pastel'];
+  row('accent-on-pastel', ink, 'accent-pastel', contrast(ink, pastel.pastel), min);
+  row('accent-on-pastel', ink, 'pastel:open', contrast(ink, pastel.pastelStrong), min);
 };
 
 const RULE = '='.repeat(74);
@@ -261,6 +460,18 @@ for (const theme of THEMES) {
     theme.tint,
     KIOSK_MIN,
   );
+  checkFill(
+    'Filled control (desktop) - the label on its own ground, AA 4.5:1',
+    theme.fill,
+    TEXT_MIN,
+  );
+  checkFill('Filled control (kiosk/TV) - AAA 7:1', theme.fillTv, KIOSK_MIN);
+  checkPastel(
+    'Pastel control (desktop) - the filter capsules, on their own grounds, AA 4.5:1',
+    theme.pastel,
+    TEXT_MIN,
+  );
+  checkPastel('Pastel control (kiosk/TV) - AAA 7:1', theme.pastelTv, KIOSK_MIN);
 }
 
 console.log(
@@ -269,8 +480,20 @@ console.log(
     'must also carry a glyph and a word. See src/domain/status.ts.\n',
 );
 
+// Printed above the pass/fail line, not below it, so it is the last thing read
+// before the verdict rather than a footnote after it.
+if (waived.length > 0) {
+  console.log(`${waived.length} pair(s) shipped below the minimum by decision:`);
+  for (const line of waived) console.log(`  - ${line}`);
+  console.log('');
+}
+
 if (failed > 0) {
   console.error(`${failed} contrast check(s) failed.`);
   process.exit(1);
 }
-console.log('All contrast checks passed.\n');
+console.log(
+  waived.length > 0
+    ? `All contrast checks passed, with ${waived.length} waived pair(s) above.\n`
+    : 'All contrast checks passed.\n',
+);

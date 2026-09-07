@@ -93,14 +93,16 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
   if (!data) return <div className="skeleton" style={{ flex: 1, minHeight: 0 }} />;
 
   /*
-   * The one payload with no rows at all: the region picker's All row tapped off,
-   * so nothing is selected. A bare table head over white reads as a panel that
-   * failed to load; this says which of the two it is, next to the control that
-   * caused it.
+   * There is no empty branch here any more.
+   *
+   * This used to catch the one payload with no rows at all - the region
+   * picker's All row tapped off - and say so next to the control that caused
+   * it. That case is now answered a level up: OverviewPage returns EmptyState
+   * for `companies.length === 0` before it renders this board at all, because a
+   * region picked down to nothing empties the KPI strip, the map and the trend
+   * too, and explaining that inside one of four blank panels left the other
+   * three looking broken. This branch was unreachable the moment that landed.
    */
-  if (data.companies.length === 0) {
-    return <p className="panel-empty">{t('table.noRegion')}</p>;
-  }
 
   const ranked = sortRows(
     data.companies.filter((c) => isRankable(c.status)),
@@ -224,9 +226,7 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
                     aria-expanded={showNotReporting}
                     onClick={() => setShowNotReporting((v) => !v)}
                   >
-                    <span className="row-toggle__caret" aria-hidden="true">
-                      ▶
-                    </span>
+                    <span className="row-toggle__caret" aria-hidden="true" />
                     {t('table.notReporting', { count: notReporting.length })}
                   </button>
                 </td>
@@ -265,10 +265,7 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
                         </td>
                         <td className="cell-readiness">
                           <span style={{ color: token.inkVar }}>
-                            <StatusGlyph token={token} />
-                            <span className="quiet">
-                              {t(`readiness.${c.data_readiness}` as TKey)}
-                            </span>
+                            <StatusGlyph token={token} showLabel />
                           </span>
                         </td>
                         <td className="num quiet">-</td>
@@ -326,9 +323,11 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
    *     is the whole column head. The header cannot grow to 44px without
    *     redrawing the table, and a 10px label is not a hit area on an iPad.
    *
-   * The inactive heads carry a quiet ▲▼ pair and the sorted one a single arrow
-   * in ink, so "which column is this ordered by" is answerable from three metres
-   * without reading anything.
+   * The inactive heads carry a quiet pair of chevrons and the sorted one a
+   * single chevron in the brand orange, so "which column is this ordered by" is
+   * answerable from three metres without reading anything. Both marks are drawn
+   * in CSS from this cell's own `aria-sort`, so the glyph cannot disagree with
+   * the attribute - see .th-sort__glyph.
    */
   function SortHead({
     col,
@@ -358,9 +357,7 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
           title={active ? t('sort.reverse') : t('sort.by', { column: label })}
         >
           <span>{label}</span>
-          <span className="th-sort__glyph" aria-hidden="true">
-            {active ? (sort.dir === 'asc' ? '▲' : '▼') : '▲▼'}
-          </span>
+          <span className="th-sort__glyph" aria-hidden="true" />
         </button>
       </th>
     );
@@ -423,7 +420,12 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
                   onClick={onToggle}
                   title={t(isOpen ? 'table.collapse' : 'table.expand', { company: company.code })}
                 >
-                  ▶
+                  {/* No content: the chevron is drawn in CSS. That also fixes
+                      the button's accessible name, which was computed from the
+                      glyph - a screen reader read this row's expander as
+                      "black right-pointing triangle" and the title beside it
+                      was never reached. Empty, the name falls through to the
+                      title: "Expand THS". */}
                 </button>
               ) : (
                 <span className="rank-id__caret" aria-hidden="true" />

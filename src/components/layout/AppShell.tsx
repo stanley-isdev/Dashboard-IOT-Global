@@ -19,7 +19,7 @@ import { TopBar } from './TopBar';
  */
 
 interface ShellState {
-  setConnection: (info: ConnectionInfo, baseCount: number | null) => void;
+  setConnection: (info: ConnectionInfo) => void;
 }
 
 const ShellContext = createContext<ShellState | null>(null);
@@ -30,6 +30,7 @@ const IDLE: ConnectionInfo = {
   snapshotAt: null,
   degraded: true,
   downSources: [],
+  errorKind: null,
 };
 
 export function AppShell() {
@@ -38,7 +39,6 @@ export function AppShell() {
   const kiosk = usePrefs((s) => s.kiosk);
   const theme = usePrefs((s) => s.theme);
   const [connection, setConnectionState] = useState<ConnectionInfo>(IDLE);
-  const [baseCount, setBaseCount] = useState<number | null>(null);
 
   /*
    * Device class is one attribute on <html>, resolved once. It never changes
@@ -99,10 +99,7 @@ export function AppShell() {
 
   const shell = useMemo<ShellState>(
     () => ({
-      setConnection: (info, count) => {
-        setConnectionState(info);
-        setBaseCount(count);
-      },
+      setConnection: setConnectionState,
     }),
     [],
   );
@@ -121,7 +118,7 @@ export function AppShell() {
           {t('nav.skip')}
         </a>
 
-        <TopBar connection={connection} baseCount={baseCount} />
+        <TopBar connection={connection} />
 
         {configProblem ? <ConfigProblemBanner problem={configProblem} /> : null}
 
@@ -135,13 +132,13 @@ export function AppShell() {
 
 /** Publishes a page's connection state to the shell's badge. */
 // eslint-disable-next-line react-refresh/only-export-components -- context + hook co-located deliberately
-export function useShellConnection(info: ConnectionInfo, baseCount: number | null): void {
+export function useShellConnection(info: ConnectionInfo): void {
   const shell = use(ShellContext);
   useEffect(() => {
-    shell?.setConnection(info, baseCount);
+    shell?.setConnection(info);
     // Comparing on the fields that actually change avoids re-publishing on
     // every one-second clock tick.
-  }, [shell, info.state, info.ageSec, info.degraded, baseCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shell, info.state, info.ageSec, info.degraded]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 export function ShellProvider({ children }: { children: ReactNode }) {

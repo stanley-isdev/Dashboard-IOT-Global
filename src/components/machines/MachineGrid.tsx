@@ -13,14 +13,18 @@ import { StatusGlyph } from '../primitives/StatusGlyph';
  * A machine with no telemetry in the window renders as no-data, never as
  * stopped - the same rule that governs companies and plants, applied at the
  * bottom of the hierarchy where it is easiest to forget.
+ *
+ * There is no empty branch here any more, and its absence is deliberate. This
+ * printed "No telemetry yet" whenever the list was empty, which was wrong
+ * whenever the list was empty because Zone or Process had excluded everything -
+ * it reported a dead gateway on a plant that was reporting perfectly. Only the
+ * page knows which of the two happened, because only the page knows the
+ * filters, so PlantPage decides between the two PanelEmpty variants and hands
+ * this a non-empty list or does not render it at all.
  */
 export function MachineGrid({ machines }: { machines: Machine[] }) {
-  const { t } = useI18n();
-
-  if (machines.length === 0) {
-    return <p style={{ color: 'var(--sub)' }}>{t('site.neverConnected')}</p>;
-  }
-
+  /* No `useI18n` here any more: the only string this level held was the empty
+     branch's, and every label below belongs to MachineCard, which has its own. */
   const zones = new Map<string, Machine[]>();
   for (const m of machines) {
     const key = m.zone ?? '-';

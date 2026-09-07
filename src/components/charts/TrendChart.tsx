@@ -1,8 +1,24 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useId, useLayoutEffect, useMemo, useState } from 'react';
 import type { TrendPoint } from '../../api/contract';
 import { useI18n } from '../../i18n/I18nProvider';
-import { formatClock, formatPct, formatSigned, zoneAbbrev, zoneHour } from '../../i18n/format';
-import { extremesOf, timeTickIndices, trendDomain, yTicks } from './trendScale';
+import {
+  formatClock,
+  formatDayShort,
+  formatPct,
+  formatSigned,
+  zoneAbbrev,
+  zoneHour,
+} from '../../i18n/format';
+import {
+  extremesOf,
+  fullCeiling,
+  overflowOf,
+  timeTickIndices,
+  trendDomain,
+  withCeiling,
+  yTicks,
+} from './trendScale';
+import { StatusIcon } from '../primitives/StatusIcon';
 
 /**
  * Hourly %OA trend.
@@ -73,17 +89,39 @@ interface Props {
   referenceTimezone: string;
 }
 
-export function TrendChart({ points, target, warnAt, referenceTimezone }: Props) {
+/*
+ * Memoised, and this is the one on the board where it matters most.
+ *
+ * Both boards stay mounted - the inactive one is `hidden`, so the map keeps its
+ * pan and zoom - which means this chart was re-deriving its path geometry, its
+ * average, its peak and its low once a second while nobody was even looking at
+ * the tab it sits on. `points` comes memoised out of `useTrendWindow` and the
+ * rest are numbers, so it now recomputes when the trend or the window moves.
+ */
+export const TrendChart = memo(function TrendChart({ points, target, warnAt, referenceTimezone }: Props) {
   const { t, lang } = useI18n();
   const [asTable, setAsTable] = useState(false);
 
   /* Which hour the pointer is over. Null is the resting state, not hour zero. */
   const [hover, setHover] = useState<number | null>(null);
 
+  /*
+   * The axis ceiling the reader has asked for, `null` while it is derived.
+   *
+   * Null rather than "the fitted value" so the chart keeps following the data
+   * until somebody actually intervenes: a window change that moves the fitted
+   * ceiling should move the axis with it, not leave it pinned to a number that
+   * was right for a different fifteen hours. Dragging back to the left end
+   * returns to null rather than parking on today's fitted figure, for the same
+   * reason - that is what makes the control's left stop mean "auto".
+   */
+  const [ceiling, setCeiling] = useState<number | null>(null);
+
   /* Two charts can be mounted at once (overview and company detail), and a
      duplicated gradient id would have them share one fill and one clip. */
   const uid = useId();
   const fillId = `trend-fill-${uid}`;
+  const zoomId = `trend-zoom-${uid}`;
   const clipId = `trend-below-${uid}`;
 
   /*
@@ -94,7 +132,26 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
    * the y-axis by 4x and drags every label and stroke out of shape with it.
    * One unit here is one pixel, so type and line weights stay true at any size.
    */
-  const plotRef = useRef<HTMLDivElement>(null);
+  /*
+   * The plot's node is held in state and set by a callback ref, rather than in
+   * a `useRef` that an effect reads once - and that difference is a bug rather
+   * than a preference.
+   *
+   * This component swaps its plot node out without ever unmounting: the
+   * `usable.length < 2` guard below returns a paragraph instead of the chart
+   * whenever the picked window comes back with fewer than two readings, and the
+   * table twin replaces the whole subtree. An effect keyed on mount observes
+   * the node that existed at mount; when the plot came back React had built a
+   * *new* div and the ResizeObserver was still watching the detached one. No
+   * measurement ever landed again, so the viewBox stayed at FALLBACK - 600x150
+   * stretched across a 1000x430 panel by `preserveAspectRatio="none"`, which is
+   * exactly the chart drawn at three times its type size that a reader reports,
+   * and exactly why reloading the page "fixes" it: a reload is a fresh mount.
+   *
+   * A callback ref re-runs the effect against whichever node is on screen now,
+   * so the observer cannot be left watching a corpse.
+   */
+  const [plotEl, setPlotEl] = useState<HTMLDivElement | null>(null);
   const [size, setSize] = useState(FALLBACK);
 
   /*
@@ -107,35 +164,59 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
    * today and three tomorrow. Reserving room for "100" at all times also keeps
    * the plot from jiggling sideways when the domain moves under it.
    */
-  const probeRef = useRef<SVGTextElement>(null);
+  const [probeEl, setProbeEl] = useState<SVGTextElement | null>(null);
   const [gutter, setGutter] = useState(PAD_X_MIN);
 
-  useEffect(() => {
-    const el = probeRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(([entry]) => {
-      const next = Math.max(PAD_X_MIN, Math.ceil(entry.contentRect.width) + 10);
+  useLayoutEffect(() => {
+    if (!probeEl) return;
+    const apply = (w: number) => {
+      /* Zero is the probe not being rendered, not a label with no width. */
+      if (!(w > 0)) return;
+      const next = Math.max(PAD_X_MIN, Math.ceil(w) + 10);
       setGutter((prev) => (prev === next ? prev : next));
-    });
-    ro.observe(el);
+    };
+    /* SVG geometry, so the first measurement is taken in user units with
+       `getBBox`. `getBoundingClientRect` would come back multiplied by whatever
+       the viewBox is currently scaled to, and the gutter is a viewBox figure -
+       feeding one into the other is how a self-inflating axis starts. */
+    if (typeof probeEl.getBBox === 'function') apply(probeEl.getBBox().width);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => apply(entry.contentRect.width));
+    ro.observe(probeEl);
     return () => ro.disconnect();
-  }, [asTable]);
+  }, [probeEl]);
 
-  useEffect(() => {
-    const el = plotRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      const box = entry.contentRect;
+  useLayoutEffect(() => {
+    if (!plotEl) return;
+    /*
+     * A zero box is the absence of a measurement, not a measurement of zero.
+     * Both boards stay mounted and the one behind is `hidden`, so this panel
+     * reports 0x0 for as long as the reader is on the other tab. Rounding that
+     * up through the 240x90 floors would overwrite a real box with a fabricated
+     * one; dropping it keeps the last true size until the panel is shown again
+     * and the observer reports for real.
+     */
+    const apply = (width: number, height: number) => {
+      if (!(width > 0) || !(height > 0)) return;
       const next = {
-        w: Math.max(240, Math.round(box.width)),
-        h: Math.max(90, Math.round(box.height)),
+        w: Math.max(240, Math.round(width)),
+        h: Math.max(90, Math.round(height)),
       };
       // Guard the update, or a rounding wobble becomes a render loop.
       setSize((prev) => (prev.w === next.w && prev.h === next.h ? prev : next));
-    });
-    ro.observe(el);
+    };
+    /* Measured here as well as observed, so the first frame after the node
+       appears is already drawn against its own box. The observer would land a
+       frame later, and that frame is the fallback stretched over the panel. */
+    const box = plotEl.getBoundingClientRect();
+    apply(box.width, box.height);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) =>
+      apply(entry.contentRect.width, entry.contentRect.height),
+    );
+    ro.observe(plotEl);
     return () => ro.disconnect();
-  }, [asTable]);
+  }, [plotEl]);
 
   const { w: W, h: H } = size;
 
@@ -150,10 +231,30 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
   );
 
   /* Scale arithmetic lives in trendScale.ts, where it is under test. */
-  const domain = useMemo(
-    () => trendDomain(usable.map((p) => p.oa_pct as number), target),
-    [usable, target],
-  );
+  const oaValues = useMemo(() => usable.map((p) => p.oa_pct as number), [usable]);
+
+  /* What the data asks for. The reader's ceiling is applied on top of this
+     rather than replacing it, so the floor never moves under the pointer. */
+  const fitted = useMemo(() => trendDomain(oaValues, target), [oaValues, target]);
+
+  /* The far end of the zoom: the ceiling at which nothing is off-scale. */
+  const ceilingMax = useMemo(() => fullCeiling(oaValues, fitted), [oaValues, fitted]);
+
+  /*
+   * Only offered when there is something above the fitted ceiling to go and
+   * look at. A slider whose two ends draw the same chart is a control that
+   * teaches the reader it does nothing.
+   *
+   * Note this is asked of the FITTED domain, never the current one: basing it
+   * on what is off-scale right now would make the control vanish the moment it
+   * was dragged far enough to work, and snap the axis back under the pointer.
+   */
+  const zoomable = ceilingMax > fitted.max;
+
+  const domain = useMemo(() => {
+    if (ceiling === null || !zoomable) return fitted;
+    return withCeiling(fitted, Math.min(Math.max(ceiling, fitted.max), ceilingMax));
+  }, [fitted, ceiling, zoomable, ceilingMax]);
 
   const gridlines = useMemo(() => yTicks(domain), [domain]);
 
@@ -164,7 +265,19 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
     [points, referenceTimezone],
   );
 
-  const extremes = useMemo(() => extremesOf(points.map((p) => p.oa_pct)), [points]);
+  /*
+   * Which of the two axis labels to print.
+   *
+   * A chart a day wide or less is a chart of clock times, and `14:00` is what
+   * places a dip against a shift. Past that the ticks land on midnights, and
+   * seven labels all reading `00:00` say nothing about WHICH midnight - so the
+   * axis switches to dates. The threshold is the span the points actually
+   * cover, not the window that was asked for: a seven-day pick that only
+   * returned four hours of buckets should still be labelled in hours.
+   */
+  const spansDays = points.length > 26;
+
+    const extremes = useMemo(() => extremesOf(points.map((p) => p.oa_pct)), [points]);
 
   const average = useMemo(() => {
     if (usable.length === 0) return null;
@@ -189,10 +302,32 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
     H - PAD_BOTTOM - ((v - domain.min) / (domain.max - domain.min)) * (H - PAD_TOP - PAD_BOTTOM);
   const clampToDomain = (v: number) => Math.min(Math.max(v, domain.min), domain.max);
 
+  /*
+   * Every reading is plotted at its CLAMPED height.
+   *
+   * It used to be plotted raw, which was invisible while the domain was pinned
+   * at 0..100 and every %OA happened to fit under it. Once an hour came in at
+   * 392% (a machine running three PO slots in one shot - D-27) the point was
+   * drawn at a negative y, outside the viewBox, and the polyline came out flat
+   * along the top edge. A reader cannot tell that flat from a real plateau, so
+   * the chart was making a claim about production out of the paper edge.
+   *
+   * Clamping puts the point on the top rail instead, where `overflow` marks it
+   * with a caret and the legend says how many hours are up there and how high
+   * the highest one went. The line still bends towards it, the value is still
+   * exact in the tooltip, the annotation and the table twin - what is lost is
+   * only the vertical distance, which the axis could not have shown legibly at
+   * any scale that also kept the 80-110% band readable.
+   */
+  const yClamped = (v: number) => y(clampToDomain(v));
+
   const line = points
-    .map((p, i) => (p.oa_pct === null ? null : `${x(i)},${y(p.oa_pct)}`))
+    .map((p, i) => (p.oa_pct === null ? null : `${x(i)},${yClamped(p.oa_pct)}`))
     .filter(Boolean)
     .join(' ');
+
+  /* The hours sitting on the rail rather than at their own height. */
+  const overflow = overflowOf(points.map((p) => p.oa_pct), domain);
 
   const targetY = y(clampToDomain(target));
   const warnY = y(clampToDomain(warnAt));
@@ -231,7 +366,7 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
 
   /** Nearest hour to a pointer position. The viewBox is 1:1 with pixels. */
   const indexAt = (clientX: number): number | null => {
-    const el = plotRef.current;
+    const el = plotEl;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
     const inner = rect.width - gutter - PAD_RIGHT;
@@ -252,6 +387,13 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
     extremes.dip < 0
       ? ''
       : `${t('trend.dip')} ${formatPct(points[extremes.dip].oa_pct as number, lang)}`,
+    overflow.length === 0
+      ? ''
+      : `${t('trend.offscale', { count: overflow.length })} ${t('trend.ceiling')} ${formatPct(
+          domain.max,
+          lang,
+          0,
+        )}`,
   ]
     .filter(Boolean)
     .join('. ');
@@ -297,7 +439,13 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
             <tbody>
               {points.map((p) => (
                 <tr key={p.ts}>
-                  <td className="mono">{formatClock(p.ts, referenceTimezone, lang)}</td>
+                  {/* The date too once the chart spans days, for the same reason the
+                      axis carries it: a column of bare clock times over a week
+                      repeats every value seven times. */}
+                  <td className="mono">
+                    {spansDays ? `${formatDayShort(p.ts, referenceTimezone, lang)} ` : ''}
+                    {formatClock(p.ts, referenceTimezone, lang)}
+                  </td>
                   <td className="num mono">
                     {p.oa_pct === null ? '-' : formatPct(p.oa_pct, lang)}
                   </td>
@@ -318,7 +466,7 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
     <>
       <div
         className="trend-plot"
-        ref={plotRef}
+        ref={setPlotEl}
         onPointerMove={(e) => setHover(indexAt(e.clientX))}
         onPointerDown={(e) => setHover(indexAt(e.clientX))}
         onPointerLeave={() => setHover(null)}
@@ -354,7 +502,7 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
 
           {/* The gutter probe. Same class and therefore the same font as a real
               tick label, parked outside the viewBox. */}
-          <text ref={probeRef} className="tnum" x="-999" y="-999" aria-hidden="true">
+          <text ref={setProbeEl} className="tnum" x="-999" y="-999" aria-hidden="true">
             100
           </text>
 
@@ -438,6 +586,25 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
           ) : null}
 
           {/*
+           * The hours that did not fit under the ceiling.
+           *
+           * A caret sitting on the rail, one per hour, pointing off the top -
+           * the convention every axis-break uses, and the one mark that cannot
+           * be read as a value. The legend below carries the count and the
+           * highest of them, because "there is more above here" is only half an
+           * answer to a reader deciding whether to care.
+           */}
+          {overflow.map((i) => (
+            <polygon
+              key={`of${i}`}
+              /* In the top margin, clear of the rail - the clamped peak already
+                 carries a ring and a label at exactly this x. */
+              points={`${x(i) - 4.5},${PAD_TOP - 3} ${x(i)},${PAD_TOP - 10} ${x(i) + 4.5},${PAD_TOP - 3}`}
+              fill="var(--trend-line)"
+            />
+          ))}
+
+          {/*
            * Peak and low, marked and named.
            *
            * The word travels with the figure: "89.1%" alone in the middle of a
@@ -447,7 +614,7 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
           {annotations.map(({ i, key, up }) => {
             const v = points[i].oa_pct as number;
             const px = x(i);
-            const py = y(v);
+            const py = yClamped(v);
             /*
              * The label goes on the side the reader expects - above the peak,
              * below the low - and flips when that side has no room. A peak a few
@@ -496,7 +663,7 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
               {hovered.oa_pct === null ? null : (
                 <circle
                   cx={x(hover)}
-                  cy={y(hovered.oa_pct)}
+                  cy={yClamped(hovered.oa_pct)}
                   r="4"
                   fill="var(--panel)"
                   stroke={markFor(hovered.oa_pct)}
@@ -524,7 +691,9 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
                 textAnchor={i === 0 ? 'start' : i === lastIndex ? 'end' : 'middle'}
                 fill="var(--sub)"
               >
-                {formatClock(points[i].ts, referenceTimezone, lang)}
+                {spansDays
+                  ? formatDayShort(points[i].ts, referenceTimezone, lang)
+                  : formatClock(points[i].ts, referenceTimezone, lang)}
               </text>
             </g>
           ))}
@@ -536,10 +705,14 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
             aria-hidden="true"
             style={{
               left: Math.min(Math.max(x(hover as number), 58), Math.max(58, W - 58)),
-              top: Math.max(0, (hovered.oa_pct === null ? PAD_TOP + 40 : y(hovered.oa_pct)) - 54),
+              top: Math.max(
+                0,
+                (hovered.oa_pct === null ? PAD_TOP + 40 : yClamped(hovered.oa_pct)) - 54,
+              ),
             }}
           >
             <div className="trend-tip__meta">
+              {spansDays ? `${formatDayShort(hovered.ts, referenceTimezone, lang)} ` : ''}
               {formatClock(hovered.ts, referenceTimezone, lang)} · {tz}
             </div>
             <div className="trend-tip__value">
@@ -594,11 +767,98 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
             <b className="tnum">{formatPct(average, lang)}</b>
           </div>
         )}
+        {/*
+         * The zoom, next to the warning it answers.
+         *
+         * A reader told "3 h above 120%" has an obvious next question, and the
+         * honest answer to it is the rest of the axis rather than a tooltip. It
+         * runs from the fitted ceiling to one step past the peak, so the left
+         * stop is the chart the panel opens with and the right stop is every
+         * reading in view at its own height - and the reader chooses which
+         * trade they want rather than having it chosen for them.
+         *
+         * Native <input type="range">: arrow keys, Home/End and a real
+         * accessible name come with it, and none of the three would survive a
+         * hand-rolled track and thumb.
+         */}
+        {zoomable ? (
+          <div className="legend__item trend-zoom">
+            {/*
+             * The warning IS the slider's caption, rather than a legend row of
+             * its own beside it. Two items cost this row a wrap - the legend
+             * already carries five - and they were saying one thing between
+             * them: what is above the ceiling, and how to go and look at it.
+             *
+             * Once the reader has zoomed past the last off-scale hour there is
+             * no warning left to print, so the caption becomes the plain
+             * read-out of where they put the ceiling.
+             */}
+            {/*
+             * Both captions occupy the same box (see .trend-zoom__caption), and
+             * the ceiling is printed after the slider in either state rather
+             * than only in one.
+             *
+             * That is a layout rule, not a wording preference. The two states
+             * used to be different lengths - a warning naming the peak against
+             * a two-word label - so dragging the slider changed the width of
+             * the legend row, which at board widths tipped it in and out of
+             * wrapping. The chart above it then resized by a line on every
+             * drag, and the row the reader was aiming at moved under the
+             * pointer.
+             *
+             * The peak is gone from the warning for the same reason, and so is
+             * the ceiling read-out that used to follow the slider. Both are
+             * already on the picture - the peak as the "Peak" annotation, the
+             * ceiling as the top label of the axis the slider moves, which
+             * updates live as it is dragged. The legend was spending the widest
+             * run of characters in the row repeating two numbers the reader can
+             * already see, and paying for it in a wrapped row: at board widths
+             * that pushed the axis label and the table toggle onto a second
+             * line with a hand's width of nothing between them.
+             *
+             * Screen readers keep both: `aria-valuetext` on the slider carries
+             * the ceiling, and the chart's own summary carries the peak.
+             */}
+            <span className="trend-zoom__caption">
+              {overflow.length > 0 ? (
+                <span className="trend-zoom__note">
+                  <span className="glyph" aria-hidden="true">
+                    <StatusIcon name="alert-triangle" />
+                  </span>
+                  {t('trend.offscale', { count: overflow.length })}
+                </span>
+              ) : (
+                <label htmlFor={zoomId}>{t('trend.ceiling')}</label>
+              )}
+            </span>
+            <input
+              id={zoomId}
+              className="trend-zoom__range"
+              type="range"
+              min={fitted.max}
+              max={ceilingMax}
+              step={5}
+              value={domain.max}
+              /* Back at the left stop the ceiling goes to null, not to today's
+                 fitted number - so the axis resumes following the data. */
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setCeiling(next <= fitted.max ? null : next);
+              }}
+              /* The caption is a warning half the time, so the control carries
+                 its own name rather than borrowing whatever is printed beside
+                 it, and announces the ceiling as a percentage rather than as a
+                 bare slider position. */
+              aria-label={t('trend.ceiling')}
+              aria-valuetext={formatPct(domain.max, lang, 0)}
+            />
+          </div>
+        ) : null}
         <div className="legend__item">{t('trend.axis', { tz })}</div>
         {coverageChanged ? (
           <div className="legend__item" style={{ color: 'var(--status-warn-ink)' }}>
             <span className="glyph" aria-hidden="true">
-              ▲
+              <StatusIcon name="alert-triangle" />
             </span>
             {t('coverage.label', {
               reporting: points[lastIndex].site_count,
@@ -616,7 +876,7 @@ export function TrendChart({ points, target, warnAt, referenceTimezone }: Props)
       </div>
     </>
   );
-}
+});
 
 /** Every chart has a table twin, so no value is reachable only by hovering. */
 function TableToggle({ asTable, onToggle }: { asTable: boolean; onToggle: () => void }) {

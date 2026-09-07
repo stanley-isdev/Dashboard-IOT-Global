@@ -51,18 +51,21 @@
   /* The sticky ranking header. A real text surface - the column labels sit on
      it - so check-contrast measures against it too. */
   --panel-3: #f2f4f7;
-  /* The resting board tab. It used to borrow --panel-3, and that was the one
-     place the borrowing broke down: --panel-3 is a step *darker* than --bg, so
-     against the page the unselected tab lost its edge and read as nothing at
-     all - an executive could not see that a second board existed.
-     A tab is not behind the page, it is behind the *board*, so its fill belongs
-     between the two: the same blue-grey as --bg lifted six steps toward the
-     board's white. That lands it at 1.05:1 against the page - half the board's
-     own 1.09:1 separation, which is the depth being described. Both are lighter
-     than --panel-3, so that surface still sets the binding ink constraint and
-     check-contrast needs no row for these. */
-  --tab-rest: #fafcff;
-  --tab-rest-hover: #fdfeff;
+  /* The resting board tab - the one that is *not* in front.
+     There is no token for the selected tab, and that absence is the point: the
+     tab in front is not a chip on top of the board, it is the board's own front
+     edge, so it takes --panel and --line like the board does and the two become
+     one sheet. Only the resting tab needs a fill of its own.
+     It used to borrow --panel-3, and that was the one place the borrowing broke
+     down: --panel-3 is a step *darker* than --bg, so against the page the
+     unselected tab lost its edge and read as nothing at all - an executive could
+     not see that a second board existed. A tab is not behind the page, it is
+     behind the *board*, so its fill belongs between the two, and it has to be
+     far enough off the board's white that the seam between the two tabs is
+     legible at arm's length. Still lighter than --panel-3, so that surface sets
+     the binding ink constraint and check-contrast needs no row for these. */
+  --tab-rest: #eef1f4;
+  --tab-rest-hover: #e9ecf1;
 
   /*
    * The one row tint on the board: the site the NEEDING ATTENTION card is
@@ -87,14 +90,52 @@
 
   /* ---- status: mark tokens (fills, dots, pins, pills, bars) ---- */
   --status-good-mark: #12946a;
-  --status-warn-mark: #b3771a;
+  /*
+   * Orange, not the dark gold this was.
+   *
+   * Two reasons, and the second is the one that matters. The design owner asked
+   * for an orange that reads as orange beside a green and a red that both do -
+   * at #b3771a the map's warning pins read as brown. And #b3771a was the single
+   * worst colour on this board for the deuteranope the whole status system is
+   * built around: simulated, it landed 7 units from --status-crit-mark, which is
+   * to say the map's amber pin and its red pin were the same pin. This one sits
+   * 27 away. Going *more* orange improved that, because the confusion was with a
+   * dark yellow rather than with the orange itself.
+   *
+   * 3.18:1 on the worst surface, against the 3:1 a mark owes. That is the
+   * tightest margin of the five marks, and it is why this is the limit rather
+   * than a step brighter - see check-contrast.mjs, which fails the build if a
+   * later edit pushes it under.
+   */
+  --status-warn-mark: #d9660a;
   --status-crit-mark: #d63b30;
   --status-nodata-mark: #828790;
   --status-other-mark: #7166b5;
 
   /* ---- status: ink tokens (text) ---- */
   --status-good-ink: #0f7a58;
-  --status-warn-ink: #8a5c11;
+  /*
+   * The same orange as the mark above, taken down to where text can live.
+   *
+   * A mark owes 3:1 and a word owes 4.5:1, so these two cannot be one hex - but
+   * they are one hue (27 and 27), which is what makes an amber figure on a card
+   * and an amber pin on the map read as the same colour rather than as two
+   * different warnings. 4.72:1 on the worst surface.
+   *
+   * What it costs, recorded because it is a real regression and not a free win:
+   * against --status-crit-ink this measures 14 units apart simulated for a
+   * deuteranope, where the old #8a5c11 measured 34. Amber text and red text are
+   * now harder to tell apart for a red-green colour-blind reader than they were.
+   * The mitigation is the one src/domain/status.ts already mandates - every
+   * status carries a glyph and a word, never colour alone - and the one place
+   * that does not hold is the KPI figure itself, which has neither. The design
+   * owner accepted that on 2026-09-03 in exchange for a strip whose five other
+   * numbers are already coloured.
+   *
+   * True orange - #e8730c, or the brand's own #f26722 - is not available here at
+   * any lightness that stays orange: both measure under 2.8:1 as text.
+   */
+  --status-warn-ink: #a85410;
   --status-crit-ink: #c0362c;
   --status-nodata-ink: #5c616b;
   --status-other-ink: #574b93;
@@ -137,14 +178,66 @@
      the two curves fight. `--r-xl` used to sit here as a duplicate of --r-lg
      with nothing reading it, and is gone. */
   --r-sm: 0.25rem; /* 4px  - pills, swatches, map label cards */
-  --r-md: 0.5rem; /* 8px  - chips, controls, popovers */
-  --r-lg: 0.75rem; /* 12px - panels, KPI cards, the methodology dialog */
+  --r-md: 0.5rem; /* 8px  - menus, popovers, the alert badge */
+  --r-lg: 0.875rem; /* 14px - panels, the board, the methodology dialog */
   --r-pill: 62.5rem;
 
-  --shadow-panel: none;
+  /*
+   * Every control on the board is a capsule.
+   *
+   * The redraw draws the filter row, the range segment, the language switch and
+   * the refresh picker as pills of one height, and that is the whole of what
+   * makes it read as calm: eight controls in two bands, all the same shape, so
+   * the only thing that distinguishes one from another is its label and whether
+   * it is on. The 8px radius they used to share is what made the same row read
+   * as eight small boxes.
+   *
+   * It is a token rather than --r-pill written out at each call site, because
+   * the exception is a real possibility - a control wide enough that a capsule
+   * end starts to read as a slot rather than an edge - and that is one value to
+   * change here, not a search across the stylesheet.
+   */
+  --r-control: var(--r-pill);
+
+  /*
+   * One control height, both bands.
+   *
+   * The masthead's language switch and theme disc were already 2rem and the
+   * filter row's pills were 1.875rem, which is the kind of 2px difference that
+   * cannot be seen and cannot be unseen: the two rows never quite lined up with
+   * each other. Everything that can be pressed is this tall now, and the kiosk
+   * block below lifts it to the 44px hit minimum in one place instead of six.
+   */
+  --ctl-h: 2rem;
+
+  /*
+   * A whisper, not a drop shadow.
+   *
+   * This was `none`, on the argument that the white card is already a step above
+   * the page and does not need one. That still holds - the value step is doing
+   * the work - but the redraw seats its cards on a hint of soft edge, and at
+   * this alpha that is what it is: not a card floating above the page, just the
+   * bottom edge of a sheet resting on it. Anything heavier and the strip starts
+   * to look like six buttons.
+   */
+  --shadow-panel: 0 0.0625rem 0.125rem rgba(22, 24, 29, 0.04);
   --shadow-pop: 0 0.0625rem 0.1875rem rgba(22, 24, 29, 0.12);
   --shadow-modal: 0 1.125rem 3.125rem rgba(22, 24, 29, 0.18);
-  --focus-ring: 0 0 0 0.125rem rgba(15, 122, 88, 0.6);
+  /*
+   * The focus ring: brand orange, with the surface's own colour as a halo
+   * between it and the control.
+   *
+   * Two rings rather than one translucent one. A single 60%-alpha ring is the
+   * control's fill mixed with the accent, so its measured contrast depends on
+   * whatever it lands on - and on the white masthead the old green ring came out
+   * at 2.1:1, under the 3:1 a focus indicator owes a keyboard user. Both layers
+   * here are opaque: --accent-mark is 3.23:1 on the worst surface on the board,
+   * and the halo is the surface itself, so the ring reads as a ring at every
+   * radius instead of as a thicker border.
+   */
+  --focus-ring:
+    0 0 0 0.125rem var(--panel),
+    0 0 0 0.25rem var(--accent-mark);
 
   /* ---- spacing ---- */
   --sp-1: 0.25rem;
@@ -167,7 +260,7 @@
   --fs-kpi-label: 0.625rem; /* 10px - card captions, uppercase and tracked */
   --fs-h1: 1.5rem; /* 24px - dashboard title */
   --fs-brand: 0.6875rem; /* 11px - copyright line */
-  --fs-h2: 0.75rem; /* 12px - panel titles, uppercase and tracked */
+  --fs-h2: 0.75rem; /* 12px - the error state's heading */
   --fs-chip: 0.8125rem; /* 13px - filter and range controls */
   --fs-label: 0.75rem; /* 12px */
   --fs-body: 0.75rem; /* 12px - table body, the workhorse size */
@@ -177,35 +270,204 @@
   /* Tracking. The artboard leans on letter-spacing rather than weight to mark a
      label as a label, so the values are tokens like the sizes are. */
   --ls-caps: 0.08em; /* uppercase micro labels */
-  --ls-title: 0.06em; /* panel titles */
+  --ls-title: 0.06em; /* uppercase micro labels inside a panel */
   --ls-tight: -0.02em; /* the 34px KPI figures */
 
   /*
-   * Brand orange.
+   * ---- brand orange ----
    *
-   * Nothing reads it at the moment. Its last consumer was the underline on the
-   * selected panel tab, and the tab strip that carried it was replaced by the
-   * folder tabs at board level, which are drawn as surfaces rather than as
-   * underlined labels. The token is kept rather than deleted because it is the
-   * brand's colour and the decision to put it back - the selected tab's leading
-   * edge is the obvious slot - is a design call, not a cleanup.
+   * The board's one non-status colour, and now its primary one. The redraw asks
+   * for an orange interface on a pale grey ground, so anything with a state
+   * says so in orange: the filter that is narrowing the board, the range in
+   * force, the language selected, the board tab in front, the focus ring.
    *
-   * It is a masthead accent, not a status signal: it deliberately carries no
-   * information, which is why it is exempt from the status contrast rules in
-   * scripts/check-contrast.mjs. Anything that must be read as status gets a
-   * glyph and a word, never a colour alone.
+   * It is still not a status signal, and that distinction is the whole reason
+   * this can be a brand colour at all. Nothing on the board means anything
+   * *because* it is orange - the tab is also labelled and in front, the filter
+   * also names its scope, every reading that carries a state carries a glyph
+   * and a word - so orange is free to say "you did this" while the five status
+   * hues keep saying "this is what the machine is doing". A colour that meant
+   * both would mean neither.
    *
-   * Two former uses are gone. The KPI strip's top rail is tone-coloured now
-   * rather than six identical orange lines, and the selected language tile is a
-   * tint like the range segment beside it - which also retired `--on-accent`,
-   * the white that sat on this orange at 2.4:1 and was the board's one
-   * documented AA exception.
+   * Five tokens rather than one, split the way the status colours are split and
+   * for the same reason: one orange cannot be a 32px fill, a 2px edge and a
+   * 13px label at once without failing two of the three. The artboard's own
+   * value is the first of them and it is the only one allowed to be decorative.
    *
-   * The full-bleed gradient rails that used to frame the page top and bottom are
-   * gone too, and `--accent-grad`/`--rail-h` went with them rather than being
-   * left as tokens nothing reads.
+   *   --accent              the brand hue, #F5871F. Decoration only up here -
+   *                         the refresh spinner - and, since the redraw below,
+   *                         the ground of every control that is *on*. What it
+   *                         can never be is orange as *type*: it measures
+   *                         2.20:1 on the worst surface in the list below, and
+   *                         no orange bright enough to read as the brand mark
+   *                         gets anywhere near the 4.5:1 type owes. That is the
+   *                         whole reason --accent-ink exists and is dark.
+   *   --accent-mark         the same hue as a mark that carries meaning: the
+   *                         selected tab's top edge, the focus ring. 3.23:1 on
+   *                         the worst surface, clearing the 3:1 a non-text
+   *                         graphic owes.
+   *   --accent-ink          orange as type. 4.90:1 on the worst surface here,
+   *                         8.08:1 in the kiosk block below.
+   *   --accent-tint         the ground under --accent-ink on a control that is
+   *                         on. A real text surface, so check-contrast measures
+   *                         every ink in this file against it.
+   *   --accent-tint-strong  the same, one step down, for that control's hover.
+   *
+   * `--on-accent` is deliberately not back. It was the white that sat on the
+   * artboard's orange at 2.4:1 and was this board's one documented AA failure;
+   * a filled orange control with white type cannot pass at 13px, and the answer
+   * is the tint above rather than the exception. The solid orange button the
+   * note used to hypothesise now exists - the Export control at the end of the
+   * filter row - and it takes the three tokens below rather than this one.
    */
-  --accent: #e8942e;
+  /*
+   * The brand orange, H 29.2deg S 91.5% L 54.1%.
+   *
+   * Two values preceded it - #ee7c2b, the artboard's own, then #eb7113 - and
+   * both were rejected for the same reason: the board looked too *dark*. The
+   * orange a reader actually saw was never this token. It was --accent-ink, and
+   * that one is dark by arithmetic rather than by choice. Orange as type owes
+   * 4.5:1, and the lightest orange clearing it is L 32-40% at every hue from
+   * 19deg to 40deg. There is no bright brand orange that can be a 13px label on
+   * a pale ground; the trade is not available at any saturation.
+   *
+   * So the fix was not another hue. It was to stop using orange as type for the
+   * on-state and use it as a *ground* instead - see --accent-on-fill below, and
+   * the filter, language and range capsules in components.css - which is what
+   * lets the brand colour appear on the board at full saturation rather than as
+   * a brown label.
+   *
+   * What sits on that ground is a separate decision from this one, and it has
+   * moved: it was #16181D at 7.08:1, and it is now white at 2.51:1 by explicit
+   * instruction. The block below carries that argument and the measurement.
+   *
+   * The four tokens under it are this hue walked down to what each role owes.
+   * They are literals rather than a colour-mix() so check-contrast measures the
+   * value that ships.
+   */
+  --accent: #f5871f;
+  --accent-mark: #d86e0a;
+  --accent-ink: #aa5708;
+  --accent-tint: #fdf3ea;
+  --accent-tint-strong: #fcefe3;
+
+  /*
+   * ---- orange as a ground ----
+   *
+   * The board's one filled control. Three tokens because a fill needs its own
+   * hover and, unlike every other pair here, it needs a colour to put *on* it.
+   *
+   *   --accent-fill         the ground: the brand orange itself, undimmed. It
+   *                         used to be the same value as --accent-ink, because
+   *                         that was the depth at which *white* cleared AA on
+   *                         it - and a dark orange under a white label is what
+   *                         made this board's brand colour read as brown. The
+   *                         label went dark instead and the ground came back up
+   *                         to #F5871F. Still its own token rather than a
+   *                         `var()` onto --accent, so check-contrast measures a
+   *                         ground as a ground.
+   *   --accent-fill-strong  its hover, and the ground of a capsule whose menu
+   *                         is open. *Deeper* rather than lighter, which is the
+   *                         direction that raises a white label's contrast:
+   *                         3.41:1 against the ground's 2.51:1. It was lighter
+   *                         while the label was dark, for the same reason read
+   *                         the other way round.
+   *   --accent-on-fill      white, by explicit design decision - see below.
+   *
+   * ---- the white label, and what it costs ----
+   *
+   * White on #F5871F measures 2.51:1. AA wants 4.5:1 for a 13px label, so this
+   * pair does not pass, and it is the only text pair on the board that does
+   * not. It is here because it was asked for three times and confirmed after
+   * the number was put on the table; it is not an oversight, and it is not
+   * something check-contrast failed to notice. That script prints it as a WAIVE
+   * on every run, with the measured value, so it stays visible rather than
+   * quietly becoming the house style.
+   *
+   * What was tried instead, and why none of it was taken:
+   *
+   *   - A dark label (#16181D, 7.08:1). Passed AAA at both densities and was
+   *     what shipped before this. Rejected: white was wanted.
+   *   - Deepening the ground until white passes. Needs about L 36%, at which
+   *     point the control no longer reads as the same orange as the capsule
+   *     beside it. Rejected on those grounds once already, see the note further
+   *     down this block.
+   *   - A brighter hue at the same lightness. There is none: 4.5:1 under white
+   *     caps any orange near L 36% regardless of hue or saturation.
+   *
+   * The one thing that would make this legible is deciding the whole accent
+   * system runs deep. That is a real option and a one-value change here; it is
+   * simply not the one that was chosen.
+   *
+   * Note the scope. The rule given was "white wherever the ground is #F5871F",
+   * and the dark theme's ground is #FFB366, a different colour - white on it is
+   * 1.77:1, which is not a legibility trade but an invisible label. The dark
+   * block below therefore keeps its own dark-on-light-orange pair, which passes
+   * at 10.73:1.
+   */
+  --accent-fill: #f5871f;
+  --accent-fill-strong: #d86e0a;
+  --accent-on-fill: #ffffff;
+
+  /*
+   * A deep white-labelled ground was the other way to reach a white label, and
+   * it is not what shipped.
+   *
+   * It existed briefly: four extra tokens, a deep ground per theme and per
+   * density, every pair measured and passing. It came out because passing was
+   * not the problem - matching was. White forces the ground to about L 36%, and
+   * at that depth the control no longer read as the same orange as the capsule
+   * beside it, which was the objection that produced it in the first place.
+   *
+   * The decision above takes the opposite trade: the ground stays the brand
+   * orange everywhere and the label is white on it, at 2.51:1. Both options are
+   * on the table if this is revisited; what is not available is a bright ground
+   * and a passing white label at the same time.
+   */
+
+  /* The hairline around a tinted control. Decorative: the tint carries the
+     state and the ink carries the word, so this only has to close the shape. */
+  --accent-line: #f5cba3;
+
+  /*
+   * ---- orange as a pastel ground ----
+   *
+   * What a filter capsule wears while it is holding a scope, and the one place
+   * on the board that steps back from --accent-fill.
+   *
+   *   --accent-pastel         the ground of a filter that is on.
+   *   --accent-pastel-strong  its hover, and the ground of the capsule whose
+   *                           menu is open. Deeper, the same direction the fill
+   *                           pair moves, so both registers hover the same way.
+   *   --accent-on-pastel      the ink on both. Orange as type again, which is
+   *                           available here for the reason it was not on the
+   *                           fill: these grounds are pale enough to carry it.
+   *
+   * Why the step back, when the block above argues for filling solid. That
+   * argument was made about *a* control and it still holds for the ones it was
+   * made about - Export, the board tab in front, the alert count - each of which
+   * is one filled shape with white space around it. The filter row is up to five
+   * capsules in a line, and five saturated oranges across the top of the board
+   * stopped reading as "these are scoping your numbers" and started reading as
+   * an alarm. That was raised directly, in those words, by the person the board
+   * is for; this is the answer.
+   *
+   * It is not a return to the pale tint the fill replaced. --accent-tint is a 4%
+   * wash, invisible at arm's length, and that is the failure the fill was
+   * introduced to fix. These sit at roughly 14% and 20% of the hue: far enough
+   * up to be picked out of a row of white capsules across a room, far enough
+   * down to carry a real ink rather than a waived white one. Both are text
+   * surfaces, so check-contrast measures the pair - 5.74:1 and 5.43:1 here, and
+   * the tv block deepens the ink to clear AAA on both.
+   *
+   * Note what this does NOT change. --accent-fill and its white label stay
+   * exactly where they were, waiver included, on every control that was already
+   * using them. The board still has one brand orange; the filter row now says
+   * its piece one register quieter.
+   */
+  --accent-pastel: #fde3c8;
+  --accent-pastel-strong: #fbdcbb;
+  --accent-on-pastel: #8a4606;
 
   /*
    * The %OA trend series.
@@ -291,6 +553,57 @@
   --map-void: #e8eaee;
 
   /*
+   * The border between one country and the next.
+   *
+   * Its own token rather than --line-strong, which is what it used to be and
+   * was never chosen for this job: --line-strong is a hairline between two
+   * panels of the *same* colour, and at 0.6px over land it left the map looking
+   * like one continuous grey mass. That mattered the day the United States went
+   * orange - the 49th parallel is a genuinely straight border, and with nothing
+   * drawn on it a straight edge between an orange fill and a grey one reads as
+   * a rendering fault rather than as Montana meeting Saskatchewan.
+   *
+   * So borders are drawn as borders. Dark enough to be seen against --panel-2
+   * land, light enough that 176 outlines at world zoom stay a background: this
+   * is two steps down from --line-strong, not a full ink.
+   */
+  --map-border: #c2c7d0;
+
+  /*
+   * The land a base stands on: the wash under it, the hatch ruled over it, and
+   * the border around it.
+   *
+   * The fill used to be --accent-fill flat, and at world zoom a solid brand
+   * orange is the loudest thing on the board - a shape the size of Thailand in
+   * the same hue as the Export button reads as a control rather than as ground,
+   * and it takes the eye off the pins that carry the actual status. It is now a
+   * pastel wash with a 45-degree hatch ruled over it, which still answers
+   * "where is the estate" from across a room without being the first thing the
+   * eye lands on. The pattern itself is LitHatchPattern.
+   *
+   * --map-lit-ground is opaque on purpose, for the reason the old flat fill
+   * was: vector paths sit in Leaflet's overlay pane, *above* the raster tiles,
+   * so a translucent wash resolves against whatever tile is under it and the
+   * same landmass reads as a different colour over sea, desert and forest.
+   *
+   * --map-lit-hatch is the one value here that carries alpha, and it can: it is
+   * composited inside the pattern tile, over --map-lit-ground, so the tile the
+   * map actually paints stays opaque.
+   *
+   * --map-border-lit cannot be --map-border - a grey hairline disappears into
+   * the hatch - and it cannot be --accent-ink either, which in the dark theme
+   * is a *lighter* orange than the ground it would be drawn on. It was a deep
+   * brown, which was right against a full-strength orange fill and is far too
+   * heavy on a pastel one; #c2701a is the value that still clears the 3:1 a
+   * non-text boundary owes on both grounds - 3.28:1 on the light board's wash,
+   * 3.71:1 on the dark one's. One value, no per-theme row: it is the same line
+   * on both, which is what a border between two countries should be.
+   */
+  --map-lit-ground: #fdeedd;
+  --map-lit-hatch: rgba(245, 135, 31, 0.5);
+  --map-border-lit: #c2701a;
+
+  /*
    * Plates and washes the map draws over itself - the attribution strip, the
    * legend, the halo that keeps a pin's dot readable over a coastline - plus the
    * scrim behind the methodology dialog and the base drawer.
@@ -305,14 +618,14 @@
   /*
    * The plate behind the brand logo.
    *
-   * Transparent here, and load-bearing in the dark block: the logo is a raster
-   * whose wordmark is set in black - it was drawn for a white masthead and there
-   * is no dark-ground version of it (D-F16 is still open on getting the SVG).
-   * CSS cannot recolour a photograph, and inverting it turns the orange infinity
-   * mark cyan, so on the dark board it is given its own light ground instead.
+   * There is none, and there is nothing here to hold one. The logo used to be a
+   * raster whose wordmark was set in black on a white page: it was drawn for a
+   * white masthead, CSS cannot recolour a photograph, and inverting it turns the
+   * orange infinity cyan - so the dark board gave it a light chip to sit on. It
+   * is now shipped as two files, one inked for each board, and both are cropped
+   * to the artwork with the page unmultiplied out, so neither needs a ground.
+   * See .brand__mark in components.css. D-F16 is still open on the SVG.
    */
-  /* --brand-plate is gone: the logo is cropped to its orange mark, which needs
-     no ground on either board. See .brand__mark in components.css. */
 
   --scrim: rgba(22, 24, 29, 0.32);
   --map-plate: rgba(255, 255, 255, 0.72);
@@ -401,6 +714,9 @@ html[lang='th'] {
 
   --target-min: 2.75rem; /* 44px */
   --tap-min: 2.75rem;
+  /* The capsules carry 24px labels here, so the 2rem desktop height would clip
+     them before the hit minimum ever came into it. One value, six controls. */
+  --ctl-h: 2.75rem;
   --row-h: 4.5rem;
   --row-h-plant: 3rem;
 
@@ -424,10 +740,41 @@ html[lang='th'] {
 
   --sub: #4a4e57;
   --status-good-ink: #0a5b41;
-  --status-warn-ink: #6b470b;
+  /* The desktop orange one tier deeper, so the kiosk board is the same colour
+     rather than dropping back to brown at AAA. Hue 30 against the desktop's 27 -
+     the most orange that clears 7:1, measured; a step brighter lands at 6.76. */
+  --status-warn-ink: #7a4109;
   --status-crit-ink: #8f2419;
   --status-nodata-ink: #494e57;
   --status-other-ink: #443a75;
+  /* Orange as type at AAA. 8.01:1 on the worst surface, 7.09:1 on its own
+     hover tint - the deepest of the five, because it is the one carrying a
+     word rather than closing a shape. */
+  --accent-ink: #7e4006;
+  /* The pastel capsule's ink at AAA: 7.62:1 on --accent-pastel and 7.20:1 on
+     its hover. The two grounds themselves get no rows, and unlike the fill
+     below that is a saving rather than a decision - deepening the ink is enough
+     because this pair has a real AA to promote, which is exactly what the fill
+     underneath does not. */
+  --accent-on-pastel: #6e3805;
+  /*
+   * --accent-fill and --accent-fill-strong get no rows here, and with a white
+   * label back on them that is now a decision rather than a saving.
+   *
+   * Every other ink in this block is deepened because a 26px label seen from
+   * 3 m owes AAA rather than AA. The filled ground cannot follow that rule:
+   * white on it is 2.51:1, so there is no AA to promote to AAA, and the only
+   * lightness where the promotion means anything is one that stops being the
+   * brand orange - which is the trade the note in the :root block records being
+   * refused. Deepening it only here would also give the wall panel a different
+   * orange from every other screen, which is the specific thing this token was
+   * chosen to prevent.
+   *
+   * So the waiver is the same at both densities, and it is worse at this one.
+   * That is stated rather than hidden: if the kiosk board is the screen this
+   * matters most on, it is also the screen where a white label on the brand
+   * orange is hardest to read.
+   */
 }
 
 /*
@@ -497,8 +844,8 @@ html[lang='th']:root[data-density='tv'] {
   --panel-3: #1c2942;
   /* The resting board tab sits between page and board here too: above --bg,
      below --panel. Same arithmetic as the light theme, opposite direction. */
-  --tab-rest: #0d1524;
-  --tab-rest-hover: #101a2a;
+  --tab-rest: #131d31;
+  --tab-rest-hover: #172239;
 
   /* The attention row. Same job as its light counterpart - it carries a whole
      42px row, so it is a wash and not the pill-strength --status-crit-tint - and
@@ -564,16 +911,70 @@ html[lang='th']:root[data-density='tv'] {
      Darker and heavier than the light theme's. A shadow on a dark ground has
      only the shadow's own darkness to work with, so the alpha roughly doubles;
      it still only carries things that genuinely float (map cards, the dialog). */
+  /* A card's resting shadow goes back to nothing here. The light theme's is a
+     4%-black hairline under a white sheet; the same wash under a #101a2c card
+     on a #0a1020 page is invisible at best, and at any alpha where it is not it
+     reads as a smudge. The surface step is the whole of the elevation here. */
+  --shadow-panel: none;
   --shadow-pop: 0 0.0625rem 0.1875rem rgba(0, 0, 0, 0.55);
   --shadow-modal: 0 1.125rem 3.125rem rgba(0, 0, 0, 0.6);
   --shadow-pin-hover: 0 0.1875rem 0.5rem rgba(0, 0, 0, 0.5);
   --shadow-pin-sel: 0 0.125rem 0.375rem rgba(0, 0, 0, 0.55);
-  --focus-ring: 0 0 0 0.125rem rgba(63, 224, 168, 0.7);
+  /* No --focus-ring row. Both of its layers are `var()`s - the surface's own
+     colour and --accent-mark - so the declaration on :root resolves against
+     this block and comes out as an orange ring haloed in #101a2c. */
 
-  /* Brand orange, one step brighter: the light theme's #e8942e is mixed for
-     white and goes muddy against --panel. Still a masthead accent carrying no
-     information, so it stays exempt from the status contrast rules. */
+  /*
+   * Brand orange, lightened the way an ink is: the light theme's values are
+   * mixed for white and go muddy against --panel. Same five roles, same
+   * division of labour, measured the other way up.
+   *
+   * --accent and --accent-mark land on the same value here, and that is not an
+   * oversight. On white the brand hue has to be darkened before it can carry a
+   * meaning at 3:1; against a near-black page it already measures 7.30:1 on the
+   * lightest surface, so the decorative value and the load-bearing one are the
+   * same colour. The two tokens stay separate because the call sites mean
+   * different things by them and the light theme still needs both.
+   */
   --accent: #f2a94a;
+  --accent-mark: #f2a94a;
+  --accent-ink: #ffb366;
+  /* Each tint is its own hue mixed into the page rather than the light tint
+     darkened, the same rule as the status tints above. Both are text surfaces:
+     --accent-ink clears 9.28:1 and 8.57:1 on them, and --sub - which the value
+     half of a tinted filter is set in - clears 6.34:1 and 5.85:1. */
+  --accent-tint: #2a1d0f;
+  --accent-tint-strong: #33230f;
+  --accent-line: #4a3115;
+
+  /*
+   * The filled control, inverted rather than shifted.
+   *
+   * In the light theme the fill is a deep orange with white on it. Here the
+   * fill is the *ink* value - a light orange - and the type on it is the page
+   * ground, because there is no orange on a near-black board that white can sit
+   * on and still read as orange. The pair measures 10.73:1, and the hover goes
+   * a step darker (9.52:1) so the direction of the hover matches the light
+   * theme's even though the two move opposite ways on the greyscale.
+   *
+   * The dark tv block needs no rows for these: both already clear AAA.
+   */
+  --accent-fill: #ffb366;
+  --accent-fill-strong: #f2a94a;
+  --accent-on-fill: #0a1020;
+
+  /*
+   * The pastel filter capsule, inverted the same way the fill above is and for
+   * the same reason: there is no pale orange on a near-black board, so the
+   * ground goes warm-dark and the ink goes light. Deeper than --accent-tint,
+   * which is this theme's 4% wash and has the same arm's-length problem its
+   * light counterpart does.
+   *
+   * 9.18:1 and 7.99:1, so the dark tv block needs no row for the ink.
+   */
+  --accent-pastel: #3a2a16;
+  --accent-pastel-strong: #46331b;
+  --accent-on-pastel: #ffc98a;
 
   /* The %OA trend series, lightened for the dark ground the way an ink is.
      8.13:1 on --panel, 6.78:1 on the lightest surface. */
@@ -590,6 +991,20 @@ html[lang='th']:root[data-density='tv'] {
      basemap is absent. */
   --map-void: #070c16;
 
+  /* Country borders. --map-border is two steps *up* from --line-strong here for
+     the same reason it was two steps down there: the land is #16223a and a
+     boundary has to clear it. --map-border-lit needs no row - the deep brown
+     reads on this board's lighter orange fill at 4.76:1, better than it does on
+     the light board's. */
+  --map-border: #3a4c6d;
+
+  /* The lit ground, warmed a step out of --panel-2 rather than lightened: on a
+     navy basemap a neutral grey wash reads as a rendering artefact, and the
+     hatch over it is what has to say orange. --map-border-lit is deliberately
+     absent - it is one value on both boards, see the light row for why. */
+  --map-lit-ground: #232a3d;
+  --map-lit-hatch: rgba(255, 179, 102, 0.42);
+
   /*
    * The plates the map draws over itself, and the modal scrim. Each is the light
    * theme's translucent white turned into a translucent near-black at a slightly
@@ -599,7 +1014,8 @@ html[lang='th']:root[data-density='tv'] {
   /* No --brand-plate here either. It was an off-white chip carrying the PNG's
      black wordmark, and even at the least ground that wordmark could be read on
      it was the brightest thing on a near-black masthead - on a board whose
-     subject is nine plants. Cropping the wordmark away removed the need. */
+     subject is nine plants. The dark board now gets its own ink of the artwork
+     instead, so there is no black to protect. */
 
   --scrim: rgba(3, 6, 12, 0.66);
   --map-plate: rgba(10, 16, 32, 0.78);
@@ -626,6 +1042,10 @@ html[lang='th']:root[data-density='tv'] {
   --status-crit-ink: #ff9aa4;
   --status-nodata-ink: #c0cbdb;
   --status-other-ink: #c3b8ff;
+  /* --accent-ink needs no row. #ffb366 is already 8.23:1 on the lightest
+     surface and 8.57:1 on its own hover tint, so it clears AAA as it stands -
+     unlike its light-theme counterpart, which the tv block above has to deepen
+     by two steps. Lightening it further would only take it toward white. */
 }
 
 /*

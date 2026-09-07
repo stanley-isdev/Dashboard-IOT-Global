@@ -17,6 +17,32 @@ const zEnv = z.object({
   INFLUX_DATABASE: z.string().optional(),
   INFLUX_TOKEN: z.string().optional(),
 
+  /**
+   * The fleet's reference zone - where the time picker's calendar days are
+   * resolved to instants.
+   *
+   * MUST match `referenceTimezone` in public/config/runtime-config.json. The
+   * calendar draws "1 Aug" in the reader's reference zone and sends the plain
+   * day; if the server resolved it against its own clock instead, a Bangkok
+   * reader's window would land seven hours out and the first shift of their
+   * chosen day would be counted in the previous one.
+   *
+   * Defaulted rather than required because every other zone-aware value on this
+   * server already comes off master data; this is the one the CLIENT chose, and
+   * a boot failure over a value that is right in the overwhelming majority of
+   * deployments would be a worse trade than a default that matches it.
+   */
+  REFERENCE_TIMEZONE: z.string().min(3).includes('/').default('Asia/Bangkok'),
+
+  /**
+   * How long an assembled window is cached, in ms.
+   *
+   * Only absolute windows ever hit it - a `now`-anchored one has a new key
+   * every second - so this is really "how stale may a wall of screens showing
+   * the same fixed window be". See services/windowedSnapshot.ts.
+   */
+  WINDOW_CACHE_MS: z.coerce.number().int().nonnegative().default(30_000),
+
   /** Per-query ceiling. Measured p100 for the liveness query is ~100 ms. */
   INFLUX_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
 

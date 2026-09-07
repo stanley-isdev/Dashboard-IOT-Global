@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { latLngBounds } from 'leaflet';
 import { MapContainer, useMap } from 'react-leaflet';
 import type { CompanySummary, TierPolicy } from '../../api/contract';
 import { useConfig } from '../../config/AppContext';
-import { useNow } from '../../domain/connectionState';
 import { tierToken, siteToken } from '../../domain/status';
 import { useI18n } from '../../i18n/I18nProvider';
 import { usePrefs } from '../../state/prefsStore';
 import { StatusIcon } from '../primitives/StatusIcon';
 import { BaseGeoLayer } from './BaseGeoLayer';
+import { LitHatchPattern } from './LitHatchPattern';
 import { MapControls } from './MapControls';
 import { MapLabelLayer } from './MapLabelLayer';
 import { RasterTileLayer } from './RasterTileLayer';
@@ -23,8 +23,19 @@ import { RasterTileLayer } from './RasterTileLayer';
  * remounts, both of which produce "Map container is already initialized".
  * react-leaflet owns that lifecycle. Repeating the bug that killed the previous
  * approach would be an unusually avoidable mistake.
+ *
+ * ## Memoised, and why that is not a micro-optimisation
+ *
+ * The page above holds a one-second clock, because the ranking's local times are
+ * the board's proof of life. Without this the map re-rendered on every tick of
+ * it: the container, the basemap layer, the nine pins and the placement pass,
+ * sixty times a minute, to draw exactly what was already on screen. Every prop
+ * here is either a reference out of the query payload or a stable callback, so
+ * between polls this compares equal and the map is left alone - which is also
+ * what makes a region change cheap, since then the payload really has moved and
+ * the work that happens is work with a reason.
  */
-export function WorldMap({
+export const WorldMap = memo(function WorldMap({
   companies,
   targetOa,
   tierPolicy,
@@ -40,7 +51,6 @@ export function WorldMap({
 }) {
   const cfg = useConfig();
   const { t } = useI18n();
-  const nowMs = useNow(30_000);
   const theme = usePrefs((s) => s.theme);
   const [tilesDown, setTilesDown] = useState(false);
 
@@ -62,6 +72,10 @@ export function WorldMap({
 
   return (
     <div className="map-container">
+      {/* Draws nothing. It parks the hatch BaseGeoLayer fills lit land with
+          somewhere the overlay pane's paths can point at - see the component. */}
+      <LitHatchPattern />
+
       <MapContainer
         // The first frame only. FitToSites takes over as soon as the companies
         // arrive and the panel has a real size; this is what is on screen for
@@ -108,7 +122,7 @@ export function WorldMap({
         style={{ height: '100%', width: '100%' }}
       >
         {/* Always present, so the map is never blank and never a grey checkerboard. */}
-        <BaseGeoLayer />
+        <BaseGeoLayer sites={companies} />
 
         {tileUrl && !tilesDown ? (
           <RasterTileLayer
@@ -130,7 +144,7 @@ export function WorldMap({
          * placement pass that decides where each one goes lives in
          * MapLabelLayer; see the long comment there.
          */}
-        <MapLabelLayer companies={companies} nowMs={nowMs} />
+        <MapLabelLayer companies={companies} />
       </MapContainer>
 
       {/*
@@ -166,13 +180,10 @@ export function WorldMap({
           </span>
           {t('map.legend.noData')}
         </span>
-        {tilesDown || !tileUrl ? (
-          <span className="map-legend__item map-legend__item--quiet">{t('map.offlineBasemap')}</span>
-        ) : null}
       </div>
     </div>
   );
-}
+});
 
 /**
  * Keeps Leaflet's idea of the viewport in step with the box it actually sits in.
@@ -262,12 +273,22 @@ function WheelPassThrough() {
  * re-frames after that - a board that snapped back to the world view on the
  * next 30-second poll would be unusable. The flag resets only when the set of
  * sites itself changes, because that is a different map.
+ *
+ * `touched` was not enough on its own, though, and the gap is why this used to
+ * hitch every thirty seconds. A viewer who never touches the map leaves the flag
+ * false forever, so every poll - which hands this a fresh `companies` array and
+ * therefore a fresh `fit` - re-ran a `fitBounds` to the view the map was already
+ * at. That is a setView, a tile pass and a full label placement, to move
+ * nothing. So the size the fit was made against is remembered beside the sites:
+ * same sites in the same box means it has already been framed, and the answer
+ * cannot have changed.
  */
 function FitToSites({ companies }: { companies: CompanySummary[] }) {
   const map = useMap();
   const touched = useRef(false);
   const fitting = useRef(false);
   const framed = useRef<string | null>(null);
+  const framedIn = useRef('');
 
   const fit = useCallback(() => {
     const points = companies
@@ -285,9 +306,21 @@ function FitToSites({ companies }: { companies: CompanySummary[] }) {
       .map(([lat, lng]) => `${lat},${lng}`)
       .sort()
       .join('|');
-    if (key !== framed.current) touched.current = false;
-    else if (touched.current) return;
+    const box = `${size.x}x${size.y}`;
+
+    if (key !== framed.current) {
+      // A different set of sites is a different map, and it gets framed even if
+      // the last view was the viewer's own.
+      touched.current = false;
+    } else if (touched.current) {
+      return;
+    } else if (box === framedIn.current) {
+      // The poll case: same sites, same box, already framed. Nothing to do.
+      return;
+    }
+
     framed.current = key;
+    framedIn.current = box;
 
     /*
      * Padding is label room, not decoration. The outermost sites need roughly

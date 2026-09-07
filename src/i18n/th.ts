@@ -36,9 +36,8 @@ import type { Dict } from './en';
 export const th: Dict = {
   /* ------------------------------------------------------------- shell */
   'app.title': 'One Stanley Narong-Pat Global Executive Dashboard',
+  /* Not translated - see en.ts. */
   'app.bases': 'THS · ASI (ไทย) · VNS (เวียดนาม) · ISE (อินโดนีเซีย) · STJ (ญี่ปุ่น) · SUS · IIS (สหรัฐฯ) · SMX (เม็กซิโก) · SEH (ฮังการี)',
-  'app.copyright': '© 2026 บริษัท ไทยสแตนเลย์การไฟฟ้า จำกัด (มหาชน)',
-  'app.globalBases': '{count} ฐานผลิตทั่วโลก',
   'nav.skip': 'ข้ามไปยังเนื้อหาหลัก',
   'nav.overview': 'ภาพรวมทั่วโลก',
   'nav.back': 'ย้อนกลับ',
@@ -60,6 +59,15 @@ export const th: Dict = {
   'filter.plantCount.one': '{count} Lamp',
   'filter.plantCount.other': '{count} Lamp',
   'filter.noPlants': 'ยังไม่เลือก Lamp',
+  /* คงคำว่า Zone ไว้ด้วยเหตุผลเดียวกับ Lamp: บอร์ด operator เรียก `Zone_var`
+     และป้ายหน้างานก็เขียนแบบนี้ ส่วนค่าของโซน (`2A-A`) ไม่แปลในทุกภาษา */
+  'filter.zone': 'Zone',
+  'filter.allZones': 'ทั้งหมด · {count} โซน',
+  // ภาษาไทยไม่ผันตามจำนวน มีสองคีย์เพื่อให้ครบตาม schema
+  'filter.zoneCount.one': '{count} โซน',
+  'filter.zoneCount.other': '{count} โซน',
+  'filter.noZones': 'ยังไม่เลือกโซน',
+  'filter.zoneLamps': 'อยู่ใน {count} Lamp',
   'refresh.now': 'รีเฟรชเดี๋ยวนี้',
   'refresh.interval': 'รอบรีเฟรชอัตโนมัติ',
   'refresh.off': 'ปิด',
@@ -70,6 +78,17 @@ export const th: Dict = {
   'range.24h.short': '24 ชั่วโมง',
   'range.7d.short': '7 วัน',
   'filter.time': 'เวลา',
+  /* "Export" คงเป็นภาษาอังกฤษเหมือนที่ artboard เขียนไว้ และเหมือน PDF ที่เป็นชื่อรูปแบบไฟล์
+     ไม่ใช่คำบรรยาย ส่วน tooltip แปลเต็ม เพราะเป็นที่เดียวที่มีที่พอจะบอกว่าไฟล์มีอะไรอยู่
+
+     สองคีย์ท้ายคือหัวกระดาษที่อยู่บนสุดของไฟล์ ทั้งคู่เป็นเวลาและมักห่างกันไม่กี่วินาที
+     ป้ายจึงต้องบอกให้ชัดว่าอันไหนคืออันไหน: อันหนึ่งคือตอนที่วัดค่าได้ อีกอันคือตอนที่กดออกไฟล์ */
+  'export.label': 'Export',
+  'export.busy': 'กำลังออกไฟล์…',
+  'export.pdf': 'ดาวน์โหลดบอร์ดนี้เป็น PDF',
+  'export.generated': 'ข้อมูล ณ เวลา',
+  'export.exported': 'ออกไฟล์เมื่อ',
+  'export.empty': 'ยังไม่มีข้อมูลให้ export',
 
   /* --------------------------------------------------------- live badge */
   'live.live': 'สด',
@@ -79,6 +98,10 @@ export const th: Dict = {
   'live.offline': 'ขาดการเชื่อมต่อ',
 
   /* ------------------------------------------------------------ toggles */
+  'lang.label': 'ภาษา',
+  /* Endonyms, identical to en.ts on purpose - see the note there. */
+  'lang.th': 'ไทย',
+  'lang.en': 'English',
   'lang.toggle': 'English',
   'lang.current': 'ภาษาไทย',
   'theme.toDark': 'เปลี่ยนเป็นธีมมืด',
@@ -88,6 +111,25 @@ export const th: Dict = {
   'time.siteLocal': 'เวลาท้องถิ่น',
   'time.reference': 'เวลาสำนักงานใหญ่',
   'time.referenceNote': 'เวลาที่แสดงเป็น {tz} · การคำนวณยังใช้กะของแต่ละไซต์',
+  'time.siteLocalNote': 'เวลาที่แสดงเป็นเวลาท้องถิ่นของแต่ละไซต์ · การคำนวณยังใช้กะของแต่ละไซต์',
+
+  /* ------------------------------------------------------- time picker */
+  'time.range': 'ช่วงเวลา',
+  'time.quick': 'ช่วงเวลาที่ใช้บ่อย',
+  'time.absolute': 'ระบุช่วงเวลาเอง',
+  'time.from': 'จาก',
+  'time.to': 'ถึง',
+  'time.apply': 'ใช้ช่วงเวลานี้',
+  'time.selectRange': 'เลือกช่วงเวลา',
+  'time.closeCalendar': 'ปิดปฏิทิน',
+  'time.openCalendar': 'เลือกวันที่',
+  'time.prevMonth': 'เดือนก่อนหน้า',
+  'time.nextMonth': 'เดือนถัดไป',
+  'time.pickHint': 'คลิกครั้งแรก = วันเริ่ม · คลิกอีกครั้ง = วันสิ้นสุด',
+  'time.clear': 'ล้างค่า',
+  'time.absoluteActive': 'ขณะนี้บอร์ดใช้ช่วงวันที่ด้านบน',
+  'time.backToQuick': 'กลับไปใช้ช่วงเวลาสำเร็จรูป',
+  'time.absoluteChunks': 'ช่วงกว้างขนาดนี้ต้องอ่านข้อมูล {n} ครั้ง จึงใช้เวลาโหลดนานขึ้น',
 
   /* ---------------------------------------------------------------- KPI */
   'kpi.machines': 'เครื่องจักรทั้งหมด',
@@ -105,7 +147,7 @@ export const th: Dict = {
   'kpi.achievement.plan': 'แผน {qty} {unit}',
   'kpi.achievement.planShort': 'แผน {qty}',
   'kpi.achievement.actualUnit': 'จริง {qty} {unit}',
-  'kpi.achievement.gap': '{delta} {unit}',
+  'kpi.achievement.gap': '{delta}',
   'kpi.attention': 'ต้องเข้าดูแล',
   // Thai does not inflect for number; both keys exist to satisfy the schema.
   'table.plants.one': '{count} โรงงาน',
@@ -267,18 +309,69 @@ export const th: Dict = {
   'banner.config.title': 'ไฟล์ตั้งค่ามีปัญหา',
   'banner.retry': 'ลองใหม่',
   'banner.dismiss': 'ปิดข้อความแจ้งเตือน',
-  'banner.mock.title': 'ข้อมูลตัวอย่าง',
-  'banner.mock.body': 'บิลด์นี้แสดงข้อมูลจำลอง ไม่ใช่ฐานข้อมูลจริง',
+  'banner.recovered.title': 'เชื่อมต่อได้แล้ว',
+  'banner.recovered.body': 'บอร์ดไม่เป็นปัจจุบันไป {gap} กราฟช่วงนั้นจึงขาดไป',
+
+  /* ------------------------------------------------------- state pages */
+  'state.try': 'ลองเช็ค',
+  'state.reload': 'โหลดใหม่',
+  'state.retryNow': 'ลองใหม่เดี๋ยวนี้',
+  'state.retrying': 'กำลังเชื่อมต่อใหม่ — ครั้งที่ {n} จาก {total}',
+  'state.retryAuto': 'ระบบจะลองใหม่เองเรื่อยๆ',
+  'state.retryOff': 'ปิดการรีเฟรชอัตโนมัติอยู่ หน้านี้จะไม่หายไปเอง',
+  'state.copy': 'คัดลอกรายละเอียด',
+  'state.copied': 'คัดลอกแล้ว',
+
+  'state.loading.overview': 'กำลังโหลดข้อมูลภาพรวม',
+  'state.loading.scope': 'กำลังโหลด {name}',
+  'state.loading.body': '{range} · {process}',
+  'state.loading.code': 'กำลังรอการตอบกลับครั้งแรก',
 
   /* ------------------------------------------------------------ errors */
   'error.title': 'โหลดหน้านี้ไม่สำเร็จ',
   'error.network': 'ติดต่อเซิร์ฟเวอร์ไม่ได้',
-  'error.timeout': 'เซิร์ฟเวอร์ไม่ตอบสนองภายในเวลาที่กำหนด',
-  'error.http': 'เซิร์ฟเวอร์ส่งข้อผิดพลาดกลับมา',
-  'error.unauthorized': 'ยังไม่ได้เข้าสู่ระบบ',
-  'error.contract': 'รูปแบบข้อมูลจากเซิร์ฟเวอร์ไม่ตรงกับที่ตกลงไว้',
+  'error.timeout': 'เซิร์ฟเวอร์ไม่ตอบกลับภายใน {sec} วินาที',
+  'error.http': 'ต่อฐานข้อมูลไม่ได้',
+  'error.unauthorized': 'ต้องเข้าสู่ระบบก่อนดูบอร์ดนี้',
+  'error.contract': 'รูปแบบข้อมูลไม่ตรงกับที่ตกลงไว้',
   'error.notfound': 'ไม่พบไซต์ที่ระบุ',
-  'error.detail': 'รายละเอียดทางเทคนิค',
+
+  'error.network.body':
+    'เรียก API ไม่ถึงเลย ปัญหาจึงอยู่ที่เครือข่ายหรือเซิร์ฟเวอร์ที่ไม่ได้รันอยู่',
+  'error.network.check1': 'เครื่องนี้ต่อเครือข่ายของโรงงานอยู่หรือไม่',
+  'error.network.check2': 'API service ยังรันอยู่หรือไม่',
+
+  'error.timeout.body':
+    'ช่วงเวลาที่เลือกไว้อาจกว้างกว่าที่ฐานข้อมูลตอบได้ ลองย่อลงแล้วโหลดใหม่',
+  'error.timeout.check1': 'เลือกช่วงเวลาที่สั้นลงในตัวเลือกเวลา',
+  'error.timeout.check2': 'แคบตัวกรอง Region หรือ Process ลง',
+  'error.timeout.narrow': 'โหลด 24 ชั่วโมงล่าสุด',
+
+  'error.http.body':
+    'เซิร์ฟเวอร์ยังทำงานอยู่ แต่อ่านข้อมูลจาก InfluxDB ไม่สำเร็จ บอร์ดนี้จะว่างจนกว่าจะต่อได้',
+  'error.http.check1': 'InfluxDB ยังรันอยู่หรือไม่',
+  'error.http.check2': 'token และ bucket ในค่าตั้งของเซิร์ฟเวอร์',
+  'error.http.check3': 'ถ้ายังไม่หาย ส่งบรรทัดล่างสุดของหน้านี้ให้ทีม IT',
+
+  'error.contract.body':
+    'นี่เป็นปัญหาที่เซิร์ฟเวอร์ ไม่ใช่ที่เครื่องนี้ กดคัดลอกบรรทัดข้างล่างแล้วส่งให้ทีมพัฒนา',
+
+  'error.unauthorized.body': 'เซสชันหมดอายุ หรือเบราว์เซอร์นี้ยังไม่ได้เข้าสู่ระบบด้วยบัญชีบริษัท',
+
+  'error.notfound.body': 'ไม่มีรหัส {code} ในระบบ อาจถูกเปลี่ยนรหัสไปแล้ว หรือเป็นลิงก์เก่า',
+  'error.notfound.home': 'กลับหน้าภาพรวม',
+
+  /* ------------------------------------------------------ empty result */
+  'empty.title': 'ไม่มีข้อมูลตามตัวกรองที่เลือก',
+  'empty.noRegion': 'ระบบทำงานปกติ — ยังไม่ได้ติ๊ก Region ไว้เลย จึงไม่มีฐานผลิตให้แสดง',
+  'empty.narrowed': 'ระบบทำงานปกติ ตัวกรองที่ใช้อยู่ไม่ตรงกับข้อมูลใดในช่วงเวลานี้',
+  'empty.selectAll': 'เลือกทุกฐานผลิต',
+  'empty.clear': 'ล้างตัวกรอง',
+
+  'empty.panel.plants': 'ไม่มีโรงงานในฐานนี้ที่ผลิตกระบวนการ {process}',
+  'empty.panel.machines': 'ไม่มีเครื่องจักรในโรงงานนี้ที่ผลิตกระบวนการ {process}',
+  'empty.panel.clearProcess': 'แสดงทุกกระบวนการ',
+  'empty.panel.working': 'ส่วนอื่นของหน้านี้เป็นข้อมูลปัจจุบันทั้งหมด',
 
   /* --------------------------------------------------------------- map */
   'board.fleet': 'ภาพรวมเครื่องจักร',
@@ -287,7 +380,6 @@ export const th: Dict = {
   'map.bases': '{count} ฐานทั่วโลก',
   'map.sub': 'สีและรูปทรงหมุด = สถานะการรายงาน · ตัวเลข = %OA',
   'map.legend.noData': 'ไม่มีข้อมูล',
-  'map.offlineBasemap': 'แผนที่พื้นฐานออฟไลน์',
   'map.reset': 'รีเซ็ตมุมมอง',
   'map.zoomIn': 'ขยายเข้า',
   'map.zoomOut': 'ย่อออก',
@@ -315,7 +407,6 @@ export const th: Dict = {
 
   /* ------------------------------------------------------------- table */
   'table.title': 'อันดับโรงงาน',
-  'table.noRegion': 'ยังไม่ได้เลือกฐานการผลิต · เลือกได้ที่ตัวกรอง “พื้นที่”',
   'table.sub': 'เรียงตาม %OA จากต่ำไปสูง',
   'table.base': 'ฐานการผลิต',
   'table.plant': 'โรงงาน',
@@ -352,10 +443,15 @@ export const th: Dict = {
   'view.alerts': 'การหยุด',
   'trend.tab': 'แนวโน้ม %OA รวม · {range}',
   'alerts.tab': 'การหยุดและการแจ้งเตือนที่นานที่สุด',
+  'alerts.top': 'สูงสุด {n}',
+  'alerts.topAria': 'จำนวนรายการที่แสดง',
 
   /* ------------------------------------------------------------- trend */
   'trend.title': 'แนวโน้ม',
-  'trend.sub': 'ค่าเฉลี่ยรายชั่วโมงของโรงงานที่เชื่อมต่อทั้งหมด · 24 ชม. ล่าสุด',
+  'trend.sub': 'ค่าเฉลี่ยรายชั่วโมงของโรงงานที่เชื่อมต่อทั้งหมด · {span}',
+  'trend.subSite': 'ค่าเฉลี่ยรายชั่วโมงของไซต์นี้ · {span}',
+  'trend.span': '{hours} ชม. ล่าสุด',
+  'trend.spanShort': 'มีข้อมูล {hours} ชม. ล่าสุด จาก {range} ที่เลือก',
   'trend.now': 'ปัจจุบัน',
   'trend.ago24': '−24 ชม.',
   'trend.oaAvg': '%OA เฉลี่ย',
@@ -364,6 +460,8 @@ export const th: Dict = {
   'trend.peak': 'สูงสุด',
   'trend.dip': 'ต่ำสุด',
   'trend.below': 'ต่ำกว่า {threshold}',
+  'trend.offscale': '{count} ชม. หลุดสเกล',
+  'trend.ceiling': 'เพดานแกน',
   'trend.vsTarget': 'เทียบเป้า',
   'trend.showTable': 'ตาราง',
   'trend.showChart': 'กราฟ',
@@ -373,8 +471,8 @@ export const th: Dict = {
   'trend.machines': 'เครื่อง',
 
   /* ------------------------------------------------------------ alerts */
-  'alerts.title': 'เครื่องที่หยุดอยู่',
-  'alerts.sub': '5 อันดับแรกจากฐานที่รายงาน',
+  'alerts.title': '10 อันดับแรกของเครื่องที่หยุดอยู่',
+  'alerts.sub': '10 อันดับแรกจากฐานที่รายงาน',
   'alerts.none': 'ไม่มีการแจ้งเตือน',
   'alerts.owner': '{role}',
   'severity.critical': 'วิกฤต',

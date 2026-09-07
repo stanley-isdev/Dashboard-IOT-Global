@@ -5,9 +5,11 @@ import type { Deps } from './deps.ts';
 import { createInfluxClient } from './influx/client.ts';
 import authPlugin from './plugins/auth.ts';
 import globalOverviewRoutes from './routes/globalOverview.ts';
+import scopeRoutes from './routes/scope.ts';
 import healthRoutes from './routes/health.ts';
 import metaRoutes from './routes/meta.ts';
 import { createSnapshotPoller } from './services/liveSnapshot.ts';
+import { createWindowStore } from './services/windowedSnapshot.ts';
 
 /**
  * Returns an unbound Fastify instance (not listening on a port) so tests can
@@ -23,14 +25,19 @@ import { createSnapshotPoller } from './services/liveSnapshot.ts';
 export async function buildApp(env: Env): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
 
+  // One client for both readers: the poller's timer and the window store's
+  // per-request fetches share its timeout and its identifier-quoting guard.
+  const client = createInfluxClient(env);
+
   const poller = createSnapshotPoller({
-    client: createInfluxClient(env),
+    client,
     intervalMs: env.SNAPSHOT_INTERVAL_MS,
     oaIntervalMs: env.OA_REFRESH_MS,
     trendIntervalMs: env.TREND_REFRESH_MS,
     log: app.log,
   });
-  const deps: Deps = { env, poller };
+  const windows = createWindowStore({ client, ttlMs: env.WINDOW_CACHE_MS, log: app.log });
+  const deps: Deps = { env, poller, windows };
 
   await app.register(cors, {
     origin: env.CORS_ORIGIN,
@@ -42,6 +49,9 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
 
   await app.register(metaRoutes, { prefix: '/api/v1', deps });
   await app.register(globalOverviewRoutes, { prefix: '/api/v1', deps });
+  /* The two drill-downs the board links into. Same prefix, same deps - see
+     routes/scope.ts for why they take fewer parameters than the board does. */
+  await app.register(scopeRoutes, { prefix: '/api/v1', deps });
 
   app.addHook('onClose', async () => {
     poller.stop();

@@ -110,7 +110,12 @@
   place-items: center;
   padding: 0;
   background: var(--panel);
-  color: var(--ink-2);
+  /* The glyph is the brand orange - the same --accent-fill as the Export
+     button's ground - so the ± and expand controls read as the board's own
+     rather than as Leaflet chrome. It is decoration sitting on --panel, not
+     type, so it is not held to a text contrast bar; the disabled rule below
+     still swaps in --sub where a zoom limit greys the button out. */
+  color: var(--accent-fill);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-pop);
@@ -151,40 +156,40 @@
 }
 
 /*
- * The legend sits bottom-left and the attribution bottom-right, which reads as
- * safe until the map column is narrow enough that the two meet in the middle -
- * and then the legend, which is opaque and has a z-index, sits on top of an
- * attribution both OSM's ODbL and CARTO's terms require to stay legible.
+ * The legend is pinned flush to the bottom-left corner, the mirror of Leaflet's
+ * attribution flush to the bottom-right - same baseline, only the top-right
+ * corner rounded so it reads as tucked into the frame.
  *
- * So the legend is lifted clear of the attribution's line entirely rather than
- * width-capped against it: the attribution's width is a function of the tile
- * provider and the locale, and is not something this rule can know.
+ * It stays on one line (`nowrap`) and sizes to its content. The two controls
+ * share that baseline, so on a map column narrow enough that they would meet the
+ * legend - opaque and z-indexed - sits over an attribution both OSM's ODbL and
+ * CARTO's terms require to stay legible; on every column this board actually
+ * renders at they are a continent apart, and the fix if that ever changes is to
+ * lift the legend, not to clip its text.
  */
 .map-legend {
   position: absolute;
-  bottom: 1.5rem;
-  left: 0.375rem;
+  bottom: 0;
+  left: 0;
   display: flex;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   font-size: var(--fs-nano);
   color: var(--sub);
   background: var(--map-plate-solid);
   border: 1px solid var(--line);
-  padding: 0.1875rem 0.4375rem;
-  border-radius: var(--r-sm);
+  border-left: 0;
+  border-bottom: 0;
+  padding: 0.1875rem 0.5625rem;
+  border-radius: 0 var(--r-sm) 0 0;
   z-index: 500;
   box-shadow: var(--shadow-pop);
-  max-width: calc(100% - 0.75rem);
 }
 .map-legend__item {
   display: flex;
   align-items: center;
   gap: 0.25rem;
   white-space: nowrap;
-}
-.map-legend__item--quiet {
-  color: var(--status-nodata-ink);
 }
 
 /* ------------------------------------------------------------ pin layer */

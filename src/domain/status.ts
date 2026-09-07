@@ -40,6 +40,7 @@ export type StatusIconName =
   | 'circle-ellipsis'
   | 'info-circle'
   | 'alert-circle'
+  | 'dot-circle'
   | 'minus';
 
 export interface StatusToken {
@@ -124,7 +125,7 @@ const MEASURE_TOKENS: Record<MeasureKind, StatusToken> = {
   stale: token('warn', 'clock', 'site.stale'),
   no_data: token('nodata', 'circle-dashed', 'site.no_data'),
   not_connected: token('nodata', 'circle-slash', 'site.not_connected'),
-  not_applicable: token('nodata', 'minus', 'measure.not_applicable'),
+  not_applicable: token('nodata', 'circle-dashed', 'measure.not_applicable'),
 };
 
 export function measureToken(kind: MeasureKind): StatusToken {
@@ -161,14 +162,30 @@ export function machineStatusKey(status: MachineStatus): string {
 
 /* ---------------------------------------------------------------- alerts */
 
+/**
+ * Alert severity. The only caller is the "longest active stops" list.
+ *
+ * `critical` draws a ring and not the octagon it used to. The octagon is the
+ * right mark where it has to be told apart from `alert-triangle` across a
+ * corridor - see the note on it in StatusIcon - but it was buying nothing here:
+ * at the 12px this list runs at, an octagon beside a ring is a slightly lumpy
+ * circle beside a round one, so the row paid for a distinct silhouette and did
+ * not get one. It now draws the exclamation ring, which is the same mark read
+ * at the same distance without pretending to a difference it cannot show.
+ *
+ * The four still differ in outline and not in hue, which is the rule the whole
+ * registry exists to enforce: a ring, a triangle, a ring with a dot, a ring
+ * with an "i". `minor` moved off the exclamation ring to make room, onto the
+ * calmest interior in the set - which suits it better than an exclamation did.
+ */
 export function severityToken(severity: 'critical' | 'major' | 'minor' | 'info'): StatusToken {
   switch (severity) {
     case 'critical':
-      return token('crit', 'alert-octagon', 'severity.critical');
+      return token('crit', 'alert-circle', 'severity.critical');
     case 'major':
       return token('warn', 'alert-triangle', 'severity.major');
     case 'minor':
-      return token('warn', 'alert-circle', 'severity.minor');
+      return token('warn', 'dot-circle', 'severity.minor');
     case 'info':
       return token('nodata', 'info-circle', 'severity.info');
   }
