@@ -1,4 +1,4 @@
-# Machine Status V2.0 — ถอดรหัส Panel เดิมบน Grafana
+# Machine Status V2.0 - ถอดรหัส Panel เดิมบน Grafana
 
 | | |
 |---|---|
@@ -7,7 +7,7 @@
 | **Panel type** | Business Text (Handlebars template + `afterRender` JavaScript) |
 | **Datasource** | InfluxDB 3.x (IOx / DataFusion SQL) |
 | **Dashboard timezone** | `Asia/Bangkok` |
-| **บทบาทหลังมี web app** | **คงไว้** — เป็นปลายทาง drill-down ระดับ operator (DESIGN.md §1) |
+| **บทบาทหลังมี web app** | **คงไว้** - เป็นปลายทาง drill-down ระดับ operator (DESIGN.md §1) |
 | **เอกสารนี้บันทึกเมื่อ** | 2026-08-27 |
 
 > **เอกสารนี้คืออะไร:** เก็บ *source ต้นฉบับ* ของ panel นี้ (SQL + HTML template + JavaScript)
@@ -27,7 +27,7 @@ InfluxDB 3.x (IOx SQL)
   ├── production_machine_io       ← ข้อมูลการผลิต 1 row ≈ 1 shot
   └── production_machine_status   ← สถานะ realtime ต่อเครื่อง
         │
-        ▼  SQL เดียว (5 CTE + FULL JOIN) — กรองทีละ plant เท่านั้น
+        ▼  SQL เดียว (5 CTE + FULL JOIN) - กรองทีละ plant เท่านั้น
    ตาราง 1 row = 1 การ์ด
         │
         ▼  Handlebars {{#each data}}
@@ -43,7 +43,7 @@ InfluxDB 3.x (IOx SQL)
    7   live timer (setInterval 1 วิ)
 ```
 
-**จุดสำคัญที่สุด:** ตรรกะธุรกิจ **ไม่ได้อยู่ที่เดียว** — กระจายอยู่ทั้งใน SQL และใน JavaScript
+**จุดสำคัญที่สุด:** ตรรกะธุรกิจ **ไม่ได้อยู่ที่เดียว** - กระจายอยู่ทั้งใน SQL และใน JavaScript
 ที่รันบนเบราว์เซอร์ ถ้า web app ย้ายมาเฉพาะ SQL ตัวเลข Running / Stopped / Avg %OA
 **จะไม่ตรงกับบอร์ดเดิม** (ตรงกับที่ DESIGN.md §8.4 เตือนไว้เรื่อง `Order End` 2 ชั้น)
 
@@ -190,12 +190,12 @@ ORDER BY "zone" ASC, "_sort_weight" ASC, "machine" ASC, "_sort_time" DESC  -- �
 | `All_IO_Ranked` | ดึง IO 24 ชม. ของ plant/process/zone ที่เลือก · สร้าง `Group_PO` = `PO0_PO1_PO2_PO3` · จัดอันดับแถวภายใน (Group_PO × machine) ตามเวลา | ทุก shot พร้อม `rn_per_po` |
 | `Latest_Per_PO` | เก็บเฉพาะ `rn_per_po = 1` (แถวล่าสุดของแต่ละกลุ่ม PO) แล้วจัดอันดับ **กลุ่ม PO ต่อเครื่อง** → `global_machine_seq` | 1 แถว = 1 กลุ่ม PO ที่เครื่องเคยรัน · `seq = 1` คือใบสั่งที่โหลดอยู่ล่าสุด |
 | `POs_To_Show` | เก็บ `seq = 1` เสมอ **หรือ** กลุ่มที่แถวล่าสุดตกในช่วง time picker | ใบสั่งปัจจุบัน + ใบสั่งเก่าที่จะกลายเป็นการ์ด `Order End` |
-| `TotalOutput_Per_PO` | aggregate ต่อ (Group_PO × machine): `OutputActual`, `OutputperHr`, `STD_Time`, `SumCycle`, `OA_percent` | ตัวเลขผลผลิต — **ไม่ผูกกับ time picker ใช้ 24 ชม. ตายตัว** |
+| `TotalOutput_Per_PO` | aggregate ต่อ (Group_PO × machine): `OutputActual`, `OutputperHr`, `STD_Time`, `SumCycle`, `OA_percent` | ตัวเลขผลผลิต - **ไม่ผูกกับ time picker ใช้ 24 ชม. ตายตัว** |
 | `RealtimeStatus_Latest` | สถานะล่าสุดต่อเครื่องจาก `production_machine_status` | `Result`, `StatusStartTime` |
 
 **การ join ชั้นสุดท้าย**
 
-- `FULL JOIN` ระหว่างสถานะ (`R`) กับใบสั่ง (`P`) **ด้วย `machine` อย่างเดียว** — รองรับเครื่องที่มีข้อมูลฝั่งเดียว
+- `FULL JOIN` ระหว่างสถานะ (`R`) กับใบสั่ง (`P`) **ด้วย `machine` อย่างเดียว** - รองรับเครื่องที่มีข้อมูลฝั่งเดียว
 - `LEFT JOIN` ตัวเลขผลผลิต (`T`) ด้วย `(Group_PO, machine)`
 - `WHERE` ท้ายสุด: เก็บแถวที่ไม่มีใบสั่งเลย (join miss → `IS NULL`) · เก็บใบสั่งปัจจุบันเสมอ · ใบสั่งเก่าเก็บเฉพาะที่เลข PO ไม่ใช่ `'-'`
 - `Order End` **ชั้นที่ 1** เกิดตรงนี้: `global_machine_seq > 1 → 'Order End'`
@@ -217,11 +217,11 @@ AR_percent = TotalPlan > 0 ? OutputActual / TotalPlan * 100 : 0
 OutputperHr = SUM(qty) WHERE date_bin('1 hour', time) = date_bin('1 hour', now())
 ```
 
-> ✅ **`TotalPlan` ที่นี่ถูกต้อง** — มันบวก `plan_qty0..3` ของ **แถวเดียว** (แถวล่าสุดของกลุ่ม PO)
+> ✅ **`TotalPlan` ที่นี่ถูกต้อง** - มันบวก `plan_qty0..3` ของ **แถวเดียว** (แถวล่าสุดของกลุ่ม PO)
 > ไม่ใช่ `SUM()` ข้ามแถว จึงไม่ตกหลุม "plan × จำนวน shot" ที่ DESIGN.md §9.2 ข้อ 1 เตือนไว้
-> — ฝั่ง `server/` ที่ต้อง `GROUP BY` จริงจึงต้องใช้ `MAX()` เพื่อให้ได้ผลเทียบเท่า
+> - ฝั่ง `server/` ที่ต้อง `GROUP BY` จริงจึงต้องใช้ `MAX()` เพื่อให้ได้ผลเทียบเท่า
 
-> ℹ️ **`date_bin` ที่นี่ไม่บวก `+ interval '7 hours'`** ต่างจาก DESIGN.md §9.3 — แต่ผลเท่ากัน
+> ℹ️ **`date_bin` ที่นี่ไม่บวก `+ interval '7 hours'`** ต่างจาก DESIGN.md §9.3 - แต่ผลเท่ากัน
 > เพราะ bucket ขนาด 1 ชั่วโมงมีขอบตรงกันในทุก timezone ที่ offset เป็นชั่วโมงเต็ม
 > (จะต่างก็ต่อเมื่อเจอไซต์ที่ offset ลงท้าย :30 / :45 ซึ่งกลุ่มนี้ยังไม่มี)
 
@@ -230,18 +230,18 @@ OutputperHr = SUM(qty) WHERE date_bin('1 hour', time) = date_bin('1 hour', now()
 | คอลัมน์ | ใน template | ใน JS | หมายเหตุ |
 |---|---|---|---|
 | `machine` | ✅ ชื่อการ์ด · `data-uid` · href | ✅ จัดคอลัมน์ | |
-| `plant`, `zone` | ✅ href | — | |
+| `plant`, `zone` | ✅ href | - | |
 | `MachineStatusRealTime` | ✅ `data-status` + badge | ✅ เกือบทุกขั้น | |
 | `StatusStartTime` | ✅ `data-start` | ✅ live timer | cast เป็น VARCHAR → ดู **F-05** |
 | `productionOrderNo0..3` | ✅ | ✅ นับ `(+n)` | |
 | `icsno0`, `icsname0` | ✅ | ✅ ตัดข้อความ | slot 1..3 ส่งไป href เท่านั้น |
-| `vIcsName0..3` | ✅ href | — | |
+| `vIcsName0..3` | ✅ href | - | |
 | `vCreateDateTxt0..3` | ✅ `.hidden-dates` | ✅ **ตัดสิน Order End** | SQL แทน space ด้วย `%20` |
-| `plan_qty0..3` | ✅ href | — | |
+| `plan_qty0..3` | ✅ href | - | |
 | `OutputperHr`, `OutputActual` | ✅ | ✅ format | |
 | `OA_percent` | ✅ | ✅ format + สี + avg | |
 | `TotalPlan`, `AR_percent` | ✅ `data-plan`, `data-ar` | ✅ progress bar | |
-| `template` | ✅ เลือก t01/t02/t03 | — | |
+| `template` | ✅ เลือก t01/t02/t03 | - | |
 | `ModeStatus` | ❌ | ❌ | **dead column** |
 | `STD_Time`, `SumCycle` | ❌ | ❌ | **dead column** |
 | `_sort_weight`, `_sort_time` | ❌ | ❌ | ใช้ใน `ORDER BY` เท่านั้น |
@@ -280,7 +280,7 @@ OutputperHr = SUM(qty) WHERE date_bin('1 hour', time) = date_bin('1 hour', now()
     {{/each}}
 ```
 
-**`data-uid`** = `{{machine}}-{{PO0}}-{{PO1}}-{{PO2}}-{{PO3}}` — เป็นกุญแจที่ JS ใช้จับคู่
+**`data-uid`** = `{{machine}}-{{PO0}}-{{PO1}}-{{PO2}}-{{PO3}}` - เป็นกุญแจที่ JS ใช้จับคู่
 `.progress-fill` / `.progress-text` กับกฎ CSS ที่ generate ขึ้นมา
 
 ### 3.2 Drill-down URL
@@ -295,7 +295,7 @@ OutputperHr = SUM(qty) WHERE date_bin('1 hour', time) = date_bin('1 hour', now()
 | `03` | `…0581t03` |
 | อื่นๆ / ว่าง | `…0581t03` (default) |
 
-**query string ทั้ง 4 สาขาเหมือนกันทุกตัวอักษร** ต่างแค่ suffix — ส่ง parameter ~40 ตัว:
+**query string ทั้ง 4 สาขาเหมือนกันทุกตัวอักษร** ต่างแค่ suffix - ส่ง parameter ~40 ตัว:
 
 ```
 var-TargetMachine, var-TargetLamp, var-TargetZone, var-TargetMainGroup,
@@ -399,7 +399,7 @@ var-TargetQty, var-TargetStdTime, var-TargetCavity
 ```
 
 > **หมายเหตุการเก็บ:** สาขา `t03` และ `{{else}}` ถูกย่อไว้ตรงกลาง เพราะ query string
-> เหมือน `t01` ทุกตัวอักษร ต่างแค่ suffix ของ UID — ถ้าต้องการ byte-for-byte
+> เหมือน `t01` ทุกตัวอักษร ต่างแค่ suffix ของ UID - ถ้าต้องการ byte-for-byte
 > ให้ดึงจาก panel JSON ของ dashboard `adz5fll` โดยตรง
 
 </details>
@@ -413,7 +413,7 @@ var-TargetQty, var-TargetStdTime, var-TargetCavity
 ```javascript
 try {
     // ============================================================
-    // 0. ตรวจสอบกะ (Shift Logic) — อิงตาม Timezone ที่ตั้งไว้ใน Grafana Dashboard
+    // 0. ตรวจสอบกะ (Shift Logic) - อิงตาม Timezone ที่ตั้งไว้ใน Grafana Dashboard
     // ============================================================
     // Grafana จะแทนค่า ${__timezone} ด้วย 'browser' | 'utc' | ชื่อ IANA (เช่น 'Asia/Bangkok')
     // ตามที่ตั้งไว้ใน Dashboard Settings → General → Timezone
@@ -451,7 +451,7 @@ try {
     }
 
     // dateObj ต้องเป็น UTC epoch ปกติ (new Date() หรือ parse จาก string UTC เท่านั้น)
-    // ฟังก์ชันนี้จะแปลงให้ตรงกับ GRAFANA_TZ เองผ่าน Intl API — ไม่มีการบวก/ลบชั่วโมงเองอีกต่อไป
+    // ฟังก์ชันนี้จะแปลงให้ตรงกับ GRAFANA_TZ เองผ่าน Intl API - ไม่มีการบวก/ลบชั่วโมงเองอีกต่อไป
     function getProductionShiftInfo(dateObj, timeZone) {
         if (!dateObj || isNaN(dateObj.getTime())) return null;
         const { year, month, day, hour } = getZonedParts(dateObj, timeZone);
@@ -912,17 +912,17 @@ buildSummaryBar();
 
 ### 4.2 อ่านทีละขั้น
 
-#### ขั้น 0 — Order End ชั้นที่ 2 (ตรรกะสำคัญที่สุดในไฟล์นี้)
+#### ขั้น 0 - Order End ชั้นที่ 2 (ตรรกะสำคัญที่สุดในไฟล์นี้)
 
-1. หา `GRAFANA_TZ` จาก `${__timezone}` ของ dashboard — มี fallback 3 ชั้น (`browser` → tz เบราว์เซอร์, `utc` → `UTC`, ไม่แทนค่า → tz เบราว์เซอร์)
-2. `getZonedParts()` ใช้ `Intl.DateTimeFormat.formatToParts` ดึง ปี/เดือน/วัน/ชั่วโมง ตาม tz นั้น — **รองรับ DST ถูกต้อง** (DESIGN.md §9.6 ระบุว่านี่คือวิธีที่ถูก)
+1. หา `GRAFANA_TZ` จาก `${__timezone}` ของ dashboard - มี fallback 3 ชั้น (`browser` → tz เบราว์เซอร์, `utc` → `UTC`, ไม่แทนค่า → tz เบราว์เซอร์)
+2. `getZonedParts()` ใช้ `Intl.DateTimeFormat.formatToParts` ดึง ปี/เดือน/วัน/ชั่วโมง ตาม tz นั้น - **รองรับ DST ถูกต้อง** (DESIGN.md §9.6 ระบุว่านี่คือวิธีที่ถูก)
 3. `getProductionShiftInfo()` ตัดสินกะ:
    - `hour >= 8 && hour < 20` → `Morning` มิฉะนั้น `Night`
    - ถ้าเป็น `Night` และ `hour < 8` → **production date ถอยไป 1 วัน** (ผ่าน `Date.UTC` เพื่อให้ข้ามเดือน/ปีถูก)
    - คืน `{ dateString: 'YYYY-MM-DD', shift: 'Morning' | 'Night' }`
 4. วนทุกการ์ดที่สถานะเป็น `Mass Pro` / `Dandori` / `Stop` และมี PO0 จริง แล้วอ่าน `vCreateDateTxt0..3` จาก `.hidden-dates`
    - `decodeURIComponent` (คลาย `%20` ที่ SQL ใส่ไว้) → เติม `T` และ `Z` ให้เป็น ISO 8601 → `new Date()`
-   - เทียบกับกะปัจจุบัน — **ถ้ามี slot ใดตรง ถือว่ายังเป็นใบสั่งของกะนี้**
+   - เทียบกับกะปัจจุบัน - **ถ้ามี slot ใดตรง ถือว่ายังเป็นใบสั่งของกะนี้**
 5. ถ้าไม่มี slot ไหนตรงเลย → **แตกการ์ดเป็น 2 ใบ**
 
 | การ์ด | `data-status` | เนื้อหา |
@@ -930,10 +930,10 @@ buildSummaryBar();
 | **ใบเดิม** (อยู่ที่เดิม) | คงสถานะจริง (`Mass Pro`/`Stop`/…) | ล้างข้อมูลใบสั่งทิ้งหมด: PO/ICS/Desc = `-`, Output/Plan/OA = `0`, `data-ar`/`data-plan` = `0`, href ทุก param ของใบสั่งถูก set เป็น `-` |
 | **ใบโคลน** (แทรกต่อท้าย) | `Order End` | ข้อมูลใบสั่งเดิมครบ · badge เขียนว่า `Order End` · timer = `--:--:--` · `data-uid` ต่อท้าย `-oe` เพื่อไม่ให้กฎ CSS ชนกับใบเดิม |
 
-> อ่านความหมายได้ว่า: *"เครื่องยังเดินอยู่ (สถานะจริง) แต่ใบสั่งที่โหลดอยู่ไม่ใช่ของกะนี้แล้ว —
+> อ่านความหมายได้ว่า: *"เครื่องยังเดินอยู่ (สถานะจริง) แต่ใบสั่งที่โหลดอยู่ไม่ใช่ของกะนี้แล้ว -
 > ใบเก่าที่จบไปแสดงแยกไว้อีกใบ"*
 
-#### ขั้น 1–3 — format
+#### ขั้น 1–3 - format
 
 | ขั้น | ทำอะไร |
 |---|---|
@@ -941,30 +941,30 @@ buildSummaryBar();
 | 2 | `.fmt-oa` → `toFixed(1) + '%'` + ระบายสี **≥95 เขียว `#059669` · ≥80 ส้ม `#D97706` · ต่ำกว่า แดง `#DC2626`** |
 | 3 | `.desc-text` ตัดที่ 10 ตัวอักษร + `...` (ข้อความเต็มยังอยู่ใน `title`) |
 
-#### ขั้น 4 — Progress bar
+#### ขั้น 4 - Progress bar
 
 ไม่ใช้ inline style แต่ **generate `<style id="grafana-progress-styles">` ทั้งก้อน** แล้วเลือกเป้าหมายด้วย
 `[data-uid="…"]`:
 
-- `width` = `min(AR%, 100)` — บาร์ตันที่ 100% แต่ **ข้อความแสดงค่าจริงที่เกิน 100% ได้**
+- `width` = `min(AR%, 100)` - บาร์ตันที่ 100% แต่ **ข้อความแสดงค่าจริงที่เกิน 100% ได้**
 - `arPercent >= 100 && plan > 0` → gradient เขียว + ข้อความสีเขียว
 - นอกนั้น → gradient น้ำเงิน + ข้อความสี `#1e293b`
 - ข้อความใส่ผ่าน `::after { content: "…" }` ไม่ใช่ DOM text
-- `transition: width 1.5s cubic-bezier(...)` — เอฟเฟกต์วิ่งของบาร์
+- `transition: width 1.5s cubic-bezier(...)` - เอฟเฟกต์วิ่งของบาร์
 
-#### ขั้น 5 — `(+n)`
+#### ขั้น 5 - `(+n)`
 
 ถ้ามี `data-po1..3` ที่ไม่ว่างและไม่ใช่ `-` → ต่อท้ายเลขใบสั่งแรกด้วย `(+n)` สีเทา
 (ตรงกับที่ DESIGN.md §9.2 ข้อ 6 / D-27 บันทึกไว้)
 
-#### ขั้น 6 — จัดคอลัมน์ตามเครื่อง
+#### ขั้น 6 - จัดคอลัมน์ตามเครื่อง
 
 - จัดกลุ่มการ์ดตาม `.machine-name` แล้วสร้าง `.machine-column` ต่อเครื่อง
 - ลำดับคอลัมน์ = ลำดับที่เจอเครื่องครั้งแรก (มาจาก `ORDER BY` ของ SQL: zone → weight → machine)
 - ในแต่ละคอลัมน์ **การ์ด `Order End` ถูกดันไปท้ายเสมอ**
 - ใช้ flag `data-grouped="true"` กันทำซ้ำ
 
-#### ขั้น 6.5–6.6 — Exec summary bar + filter
+#### ขั้น 6.5–6.6 - Exec summary bar + filter
 
 **การนับ**
 
@@ -981,14 +981,14 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 
 **Legend & filter**
 
-- legend สร้างจากสถานะที่ **พบจริง** ไม่ใช่ list ตายตัว — สถานะที่ไม่รู้จักได้ class `legend-chip-fallback`
+- legend สร้างจากสถานะที่ **พบจริง** ไม่ใช่ list ตายตัว - สถานะที่ไม่รู้จักได้ class `legend-chip-fallback`
 - ลำดับที่กำหนดไว้: `Mass Pro`(1) `Dandori`(2) `Stop`(3) `No Plan`(4) `Order End`(5) `4M Change`(6) `Offline`(7) `Alarm`(8) → นอกนั้นเรียงตามตัวอักษร
 - คลิก chip = toggle ซ่อน/แสดง เก็บสถานะไว้ที่ `window.grafanaDashboardHiddenStatuses` (`Set`)
 - ซ่อนด้วย CSS `.card-link:has(.card-box[data-status="…"]) { display: none }` ใน `<style id="grafana-filter-styles">`
   → **`applyHiddenStatusStyles()` ถูกเรียกตั้งแต่ต้นสคริปต์ เพื่อให้กฎมีผลก่อนการ์ดใหม่ถูกแทรก (กันกระพริบตอน auto-refresh)**
 - `collapseEmptyColumns()` ยุบคอลัมน์ที่ไม่เหลือการ์ดที่มองเห็น
 
-#### ขั้น 7 — Live timer
+#### ขั้น 7 - Live timer
 
 - `setInterval` 1 วินาที · เก็บ handle ไว้ที่ `window.grafanaLiveTimer` และ `clearInterval` ก่อนตั้งใหม่ทุกครั้ง (กัน timer ซ้อนตอน re-render)
 - สถานะ `Order End` / `Offline` หรือไม่มี `data-start` → แสดง `--:--:--`
@@ -997,18 +997,18 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 
 ---
 
-## 5. อะไรคำนวณที่ไหน — ตารางสรุป
+## 5. อะไรคำนวณที่ไหน - ตารางสรุป
 
 | ค่า | SQL | JavaScript | ต้องย้ายไป backend |
 |---|:--:|:--:|---|
 | สถานะล่าสุดต่อเครื่อง | ✅ | | Q-01 |
 | `Order End` ชั้น 1 (`seq > 1`) | ✅ | | Q-02 |
-| **`Order End` ชั้น 2 (เทียบกะ)** | | ✅ | **Q-02 — ยังไม่ทำ** |
+| **`Order End` ชั้น 2 (เทียบกะ)** | | ✅ | **Q-02 - ยังไม่ทำ** |
 | **แตกการ์ดเป็น 2 ใบ** | | ✅ | ต้องตัดสินใจว่า contract จะแทนด้วยอะไร |
 | `%OA` ต่อ PO × machine | ✅ | | ✅ `server/src/domain/oa.ts` |
 | `%AR` ต่อการ์ด | ✅ | | ✅ `achievementFrom()` |
 | `OutputActual`, `Output/Hr` | ✅ | | |
-| นับ Running / Stopped / Total | | ✅ | **Q-02 — ยังไม่ทำ** |
+| นับ Running / Stopped / Total | | ✅ | **Q-02 - ยังไม่ทำ** |
 | **Avg %OA (simple average)** | | ✅ | D-20 · `server/src/domain/oa.ts` |
 | format ตัวเลข / สี threshold | | ✅ | เป็นเรื่อง presentation → อยู่ที่ frontend ได้ |
 | จัดคอลัมน์ / filter / timer | | ✅ | presentation |
@@ -1023,25 +1023,25 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 | **F-02** | **`{{QtyColor}}` ไม่มีอยู่จริง** | ใช้เป็น class ของ OUTPUT ACTUAL แต่ไม่มีใน `SELECT` → class ว่างเปล่าตลอด | ใหม่ |
 | **F-03** | **time picker แทบไม่มีผลกับตัวเลข** | `$__timeFrom/$__timeTo` ใช้ใน `POs_To_Show` เท่านั้น · `TotalOutput_Per_PO` และ `RealtimeStatus_Latest` ใช้ `now() - INTERVAL '1 days'` ตายตัว → **เลื่อน time picker แล้ว Output/%OA ไม่เปลี่ยน** เปลี่ยนแค่ว่ามีการ์ด `Order End` เก่ากี่ใบ | DESIGN.md §10 "Time window hardcode" |
 | **F-04** | **`AR_percent` คืน `0` เมื่อ `TotalPlan = 0`** | ขัดกับ rule R2 "ไม่มีข้อมูล ≠ ศูนย์" · THS 6338 ส่ง `plan_qty = 0` ทุกแถว → บอร์ดขึ้น 0% ทั้งที่ควรขึ้น "ไม่มีแผน" | DESIGN.md §9.2 ข้อ 2 |
-| **F-05** | **`StatusStartTime` ไม่ถูกบังคับเป็น UTC** | โค้ดขั้น 0 ระมัดระวังมากกับ `vCreateDateTxt` (เติม `Z` เอง) แต่ `data-start` ของ timer ส่งเข้า `new Date(startStr)` ตรงๆ · ถ้า `CAST(... AS VARCHAR)` ให้ string ที่ไม่มี `Z`/offset เบราว์เซอร์จะตีความเป็น **local time** → ที่ไทยจะเพี้ยน 7 ชม. และ `Math.max(0, …)` จะทำให้ timer ค้างที่ `00:00:00` · **ต้องตรวจ output จริงของ cast ก่อนสรุป** | ใหม่ — ต้องยืนยัน |
+| **F-05** | **`StatusStartTime` ไม่ถูกบังคับเป็น UTC** | โค้ดขั้น 0 ระมัดระวังมากกับ `vCreateDateTxt` (เติม `Z` เอง) แต่ `data-start` ของ timer ส่งเข้า `new Date(startStr)` ตรงๆ · ถ้า `CAST(... AS VARCHAR)` ให้ string ที่ไม่มี `Z`/offset เบราว์เซอร์จะตีความเป็น **local time** → ที่ไทยจะเพี้ยน 7 ชม. และ `Math.max(0, …)` จะทำให้ timer ค้างที่ `00:00:00` · **ต้องตรวจ output จริงของ cast ก่อนสรุป** | ใหม่ - ต้องยืนยัน |
 | **F-06** | **Avg %OA มี bias สูงเกินจริง** | เงื่อนไข `oaVal > 0` ตัดเครื่องที่ %OA เป็น 0 จริงๆ ออกจากตัวหาร → ค่าเฉลี่ยสูงกว่าความจริง · และเป็น simple average ต่อการ์ด ไม่ถ่วงน้ำหนักด้วยชิ้น/เวลา | DESIGN.md D-20 |
 | **F-07** | **`Offline` มีใน legend แต่ไม่มีใครสร้าง** | `knownStyles` และ timer รู้จัก `Offline` แต่ไม่มีโค้ดส่วนไหนตั้งค่านี้ → เครื่องที่ telemetry หลุดค้างสถานะเดิมตลอด | DESIGN.md §8.4, T-11 |
-| **F-08** | **`Alarm` โผล่ใน legend แต่ไม่มีใน enum ของ DESIGN.md** | `knownStyles` มี `'Alarm'` (order 8) — ต้องยืนยันว่า `production_machine_status.Result` ส่งค่านี้จริงไหม แล้วเติมเข้า enum | ใหม่ |
+| **F-08** | **`Alarm` โผล่ใน legend แต่ไม่มีใน enum ของ DESIGN.md** | `knownStyles` มี `'Alarm'` (order 8) - ต้องยืนยันว่า `production_machine_status.Result` ส่งค่านี้จริงไหม แล้วเติมเข้า enum | ใหม่ |
 | **F-09** | **threshold ไม่สอดคล้องกัน** | `SumCycle` ใช้ `std_time + 20` แต่ `OA_percent` ใช้ `std_time + 100` (และ `SumCycle` ไม่ถูกใช้เลย) | DESIGN.md D-22 |
-| **F-10** | **`MIN` vs `MAX` std_time** | `OA_percent` ใช้ `MIN(std_time)` แต่คอลัมน์ `STD_Time` ใช้ `MAX(std_time)` — ถ้า std เปลี่ยนกลาง PO ผลจะเพี้ยน | DESIGN.md §9.1 ข้อ 4 |
+| **F-10** | **`MIN` vs `MAX` std_time** | `OA_percent` ใช้ `MIN(std_time)` แต่คอลัมน์ `STD_Time` ใช้ `MAX(std_time)` - ถ้า std เปลี่ยนกลาง PO ผลจะเพี้ยน | DESIGN.md §9.1 ข้อ 4 |
 | **F-11** | **dead column 4 ตัว** | `ModeStatus`, `STD_Time`, `SumCycle` คำนวณแล้วไม่มีใครใช้ · `_sort_weight`/`_sort_time` ใช้แค่ `ORDER BY` แต่ยังถูกส่งลง client | ใหม่ |
 | **F-12** | **`FULL JOIN` ด้วย `machine` อย่างเดียว** | ปลอดภัยเพราะ query กรอง 1 plant · **แต่ query ระดับ global ต้อง join ด้วย `(codeCompany, plant, machine)`** ไม่งั้นเครื่องชื่อซ้ำข้ามโรงงานจะปนกัน | DESIGN.md §10 |
-| **F-13** | **กะ hardcode 08:00–20:00 สองกะ** | อยู่ใน `getProductionShiftInfo()` — ใช้กับ STJ ที่มี 3 กะ และกะ B ที่จบ 22:15 ไม่ได้ | DESIGN.md §9.5, D-23…D-26 |
-| **F-14** | **SQL variable interpolate ตรงๆ** | `'${Lamp_var}'`, `${Zone_var:singlequote}` ต่อ string เข้า SQL — ใน Grafana รับได้ แต่ **web app ต้อง parameterize** | ใหม่ |
-| **F-15** | **HTML/CSS สร้างจาก string ที่มาจาก DB** | `legendHTML` เอาค่าสถานะไปต่อเป็น HTML · `cssRules` เอา `machine`/`PO` ไปต่อเป็น CSS โดย escape แค่ `"` และ `\` — React จะแก้ให้เองแต่ควรรู้ไว้ | ใหม่ |
+| **F-13** | **กะ hardcode 08:00–20:00 สองกะ** | อยู่ใน `getProductionShiftInfo()` - ใช้กับ STJ ที่มี 3 กะ และกะ B ที่จบ 22:15 ไม่ได้ | DESIGN.md §9.5, D-23…D-26 |
+| **F-14** | **SQL variable interpolate ตรงๆ** | `'${Lamp_var}'`, `${Zone_var:singlequote}` ต่อ string เข้า SQL - ใน Grafana รับได้ แต่ **web app ต้อง parameterize** | ใหม่ |
+| **F-15** | **HTML/CSS สร้างจาก string ที่มาจาก DB** | `legendHTML` เอาค่าสถานะไปต่อเป็น HTML · `cssRules` เอา `machine`/`PO` ไปต่อเป็น CSS โดย escape แค่ `"` และ `\` - React จะแก้ให้เองแต่ควรรู้ไว้ | ใหม่ |
 | **F-16** | **ต้องใช้ CSS `:has()`** | filter ทั้งระบบพึ่ง `:has()` → เบราว์เซอร์เก่าใช้ไม่ได้ | ใหม่ |
-| **F-17** | **`hardcode machine exclusion` ไม่ปรากฏใน query นี้** | DESIGN.md §10 บันทึกว่ามี `machine != 'lA1','lA2','D2','D3','D4','P1l4'` ฝังใน SQL — **query ที่ได้มาชุดนี้ไม่มี** → อาจอยู่ใน panel อื่นหรือถูกถอดออกแล้ว ต้องตรวจอีกรอบ | DESIGN.md §10 |
+| **F-17** | **`hardcode machine exclusion` ไม่ปรากฏใน query นี้** | DESIGN.md §10 บันทึกว่ามี `machine != 'lA1','lA2','D2','D3','D4','P1l4'` ฝังใน SQL - **query ที่ได้มาชุดนี้ไม่มี** → อาจอยู่ใน panel อื่นหรือถูกถอดออกแล้ว ต้องตรวจอีกรอบ | DESIGN.md §10 |
 
 ---
 
 ## 7. สิ่งที่ web app ต้องทำต่อ
 
-> **อัปเดต 2026-08-27 — ข้อ 1, 3, 4 ทำแล้ว** เอกสารนี้ถูกใช้ reconcile ตัวเลข THS
+> **อัปเดต 2026-08-27 - ข้อ 1, 3, 4 ทำแล้ว** เอกสารนี้ถูกใช้ reconcile ตัวเลข THS
 > กับบอร์ดจริง ผลคือ Total 19 → **29** · %OA 75.2% → **80.9%** รายละเอียดครบใน
 > `docs/BACKEND-HANDOVER.md` §4.8
 >
@@ -1052,20 +1052,20 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 > | `Order End` ชั้น 2 (เทียบกะ) | `server/src/domain/orderShift.ts` |
 > | เลิกให้ freshness label ล้าง census ของ plant | `server/src/services/globalOverviewService.ts` |
 >
-> **ห้ามใส่ตัวกรอง `process`** — ลองแล้วและถอดออก บอร์ดกรอง `${process_var}` ทีละ process
+> **ห้ามใส่ตัวกรอง `process`** - ลองแล้วและถอดออก บอร์ดกรอง `${process_var}` ทีละ process
 > แต่ exec board ต้องนับทุกเครื่องในไซต์ · 6332 มี `Injection` 26 + `Surface` 2 (`BP6`, `HC2`)
 > ถ้ากรองจะได้ THS = 27 ทั้งที่หน้างานมี 29 (เหตุผลเต็มใน `server/src/config/policy.ts`)
 
-1. **ย้าย `Order End` ชั้นที่ 2 ไป backend** — ตัดสินกะด้วย IANA timezone ต่อ company (ไม่ใช่ fixed offset)
+1. **ย้าย `Order End` ชั้นที่ 2 ไป backend** - ตัดสินกะด้วย IANA timezone ต่อ company (ไม่ใช่ fixed offset)
    แล้วเทียบ `vCreateDateTxt` ทุก slot กับกะปัจจุบัน ผลลัพธ์ต้องออกมาใน contract ไม่ใช่คำนวณที่ browser
-2. **ตัดสินใจว่า contract จะแทน "การ์ดที่แตกเป็น 2 ใบ" อย่างไร** — ตัวเลือกที่ตรงไปตรงมาคือ
+2. **ตัดสินใจว่า contract จะแทน "การ์ดที่แตกเป็น 2 ใบ" อย่างไร** - ตัวเลือกที่ตรงไปตรงมาคือ
    ให้เครื่องหนึ่งมี `currentOrder: null` + `lastEndedOrder: {...}` แทนการส่ง 2 record
-3. **นิยาม "Total Machines" ใหม่** — บอร์ดเดิมนับ *การ์ด* (derive จากข้อมูลที่วิ่ง) จึงพลาดเครื่องที่ offline
+3. **นิยาม "Total Machines" ใหม่** - บอร์ดเดิมนับ *การ์ด* (derive จากข้อมูลที่วิ่ง) จึงพลาดเครื่องที่ offline
    → ต้องมี master list (Q-08)
 4. **`%AR` ที่ `TotalPlan = 0` ต้องเป็น `null`** ไม่ใช่ `0` และ UI ต้องแสดง "ไม่มีแผน"
-5. **drill-down ส่งแค่ key** (`company, plant, machine, PO`) ให้ dashboard ปลายทาง query เอง — แทน 40 parameter
+5. **drill-down ส่งแค่ key** (`company, plant, machine, PO`) ให้ dashboard ปลายทาง query เอง - แทน 40 parameter
 6. **เก็บ timestamp เป็น ISO 8601 พร้อม `Z` ใน JSON** อย่าให้ frontend ต้องเดา/ซ่อม format
-   (และเลิกใช้ trick `REPLACE(' ', '%20')` — encode ที่ชั้น URL เท่านั้น)
+   (และเลิกใช้ trick `REPLACE(' ', '%20')` - encode ที่ชั้น URL เท่านั้น)
 7. **ตรวจ F-05 กับข้อมูลจริง** ก่อนย้าย timer มา React
 
 ---
@@ -1074,15 +1074,15 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 
 | ส่วน | สถานะ |
 |---|---|
-| **CSS ของ panel** | ❌ ยังไม่มี — class ที่โค้ดอ้างถึงแต่ยังไม่รู้หน้าตา: `.card-box[data-status]`, `.machine-column`, `.legend-chip` (+ `mass-pro` `dandori` `stop` `no-plan` `order-end` `four-m` `offline` `alarm` `legend-chip-fallback` `inactive`), `.exec-stats` / `.stat-item` / `.stat-divider`, `.highlight-blue`, `.no-data` |
-| **Panel JSON เต็ม** | ❌ — ยังไม่รู้ค่า refresh interval, datasource UID ที่ panel นี้ใช้จริง (มี 3 UID ปนกันในระบบ ตาม D-17), นิยาม variable `Lamp_var` / `process_var` / `Zone_var` |
+| **CSS ของ panel** | ❌ ยังไม่มี - class ที่โค้ดอ้างถึงแต่ยังไม่รู้หน้าตา: `.card-box[data-status]`, `.machine-column`, `.legend-chip` (+ `mass-pro` `dandori` `stop` `no-plan` `order-end` `four-m` `offline` `alarm` `legend-chip-fallback` `inactive`), `.exec-stats` / `.stat-item` / `.stat-divider`, `.highlight-blue`, `.no-data` |
+| **Panel JSON เต็ม** | ❌ - ยังไม่รู้ค่า refresh interval, datasource UID ที่ panel นี้ใช้จริง (มี 3 UID ปนกันในระบบ ตาม D-17), นิยาม variable `Lamp_var` / `process_var` / `Zone_var` |
 | **สาขา `t03` / `{{else}}` แบบ byte-for-byte** | ⚠️ ย่อไว้ (เนื้อหาเหมือน `t01` ต่างแค่ suffix) |
-| **Dashboard `adz5fli` (Global V1.0)** | ❌ ยังไม่ได้ถอด — DESIGN.md §1 ระบุว่าตัวนี้จะถูกแทนที่ด้วย web app |
+| **Dashboard `adz5fli` (Global V1.0)** | ❌ ยังไม่ได้ถอด - DESIGN.md §1 ระบุว่าตัวนี้จะถูกแทนที่ด้วย web app |
 
 ---
 
 ## 9. อ้างอิง
 
-- `docs/DESIGN.md` — §8 schema · §9 สูตร · §10 query ที่ต้องเขียนใหม่ · §12 open decisions
-- `docs/BACKEND-HANDOVER.md` — สถานะงาน backend (Phase 3)
-- `server/src/domain/oa.ts`, `server/src/domain/trend.ts` — สูตรที่ port มาแล้ว
+- `docs/DESIGN.md` - §8 schema · §9 สูตร · §10 query ที่ต้องเขียนใหม่ · §12 open decisions
+- `docs/BACKEND-HANDOVER.md` - สถานะงาน backend (Phase 3)
+- `server/src/domain/oa.ts`, `server/src/domain/trend.ts` - สูตรที่ port มาแล้ว

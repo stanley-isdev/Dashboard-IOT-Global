@@ -494,7 +494,7 @@ export const en = {
   'state.try': 'Try:',
   'state.reload': 'Reload',
   'state.retryNow': 'Retry now',
-  'state.retrying': 'Reconnecting — attempt {n} of {total}',
+  'state.retrying': 'Reconnecting - attempt {n} of {total}',
   'state.retryAuto': 'The board keeps trying on its own.',
   /* Said plainly, because with refresh off nothing will clear this screen and a
      reader who expects it to recover would sit in front of it. */
@@ -557,7 +557,7 @@ export const en = {
    * the body says is that the system is fine.
    */
   'empty.title': 'No data matches the current filters',
-  'empty.noRegion': 'Everything is working — no Region is ticked, so there is no base to show.',
+  'empty.noRegion': 'Everything is working - no Region is ticked, so there is no base to show.',
   'empty.narrowed': 'Everything is working. The filters in force match nothing in this window.',
   'empty.selectAll': 'Select every base',
   'empty.clear': 'Clear the filters',

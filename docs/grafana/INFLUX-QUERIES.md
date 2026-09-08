@@ -1,4 +1,4 @@
-# คิวรี่ InfluxDB ด้วยมือ — คู่มือสั้น
+# คิวรี่ InfluxDB ด้วยมือ - คู่มือสั้น
 
 เอกสารนี้คือชุดคำสั่งสำหรับ**ตรวจฐานข้อมูลเอง** เวลาตัวเลขบนแดชบอร์ดกับบอร์ด Grafana
 ไม่ตรงกัน · schema เต็มอยู่ที่ `docs/DESIGN.md` §8 · ที่มาของสูตรอยู่ที่ §9
@@ -45,7 +45,7 @@ WHERE "time" >= now() - INTERVAL '24 hours'
 
 ## 3. คิวรี่ที่ใช้บ่อย
 
-### 3.1 มีเครื่องอะไรบ้างใน plant นี้ — คิวรี่สำคัญที่สุด
+### 3.1 มีเครื่องอะไรบ้างใน plant นี้ - คิวรี่สำคัญที่สุด
 
 ใช้เทียบว่าฐานข้อมูลเรากับบอร์ด Grafana เห็นเครื่องชุดเดียวกันไหม
 
@@ -75,7 +75,7 @@ WHERE "time" >= now() - INTERVAL '24 hours'
 ORDER BY plant
 ```
 
-### 3.4 สถานะล่าสุดของแต่ละเครื่อง — ตัวเดียวกับที่แดชบอร์ดใช้นับ
+### 3.4 สถานะล่าสุดของแต่ละเครื่อง - ตัวเดียวกับที่แดชบอร์ดใช้นับ
 
 ```sql
 SELECT machine, process, result, last_seen FROM (
@@ -93,7 +93,7 @@ ORDER BY machine
 
 ตัด `AND "Result" IN (...)` ออก ถ้าอยากเห็นแถวล่าสุดจริงๆ รวม `Warning`/`Alarm`/`Pending`
 
-### 3.5 นับสถานะ — ได้ TOTAL / RUNNING / STOP
+### 3.5 นับสถานะ - ได้ TOTAL / RUNNING / STOP
 
 ```sql
 SELECT result, COUNT(*) AS machines FROM (
@@ -125,9 +125,9 @@ ORDER BY "time" DESC
 LIMIT 20
 ```
 
-`HC2` เคยอ่านได้ว่า `Warning ← Mass Pro ← Warning ← Mass Pro` สลับทุกแถว — เครื่องเดินอยู่ แค่ยกธงเตือน
+`HC2` เคยอ่านได้ว่า `Warning ← Mass Pro ← Warning ← Mass Pro` สลับทุกแถว - เครื่องเดินอยู่ แค่ยกธงเตือน
 
-### 3.7 %OA รายเครื่อง — สูตรเดียวกับบอร์ด (DESIGN.md §9.1)
+### 3.7 %OA รายเครื่อง - สูตรเดียวกับบอร์ด (DESIGN.md §9.1)
 
 ```sql
 SELECT "machine" AS machine,
@@ -178,7 +178,7 @@ ORDER BY column_name
 
 ## 4. เทียบกับ datasource ของบอร์ด Grafana
 
-ตรงนี้คือประเด็นที่ค้างอยู่ (D-17) — บอร์ดเห็นเครื่องที่ฐานข้อมูลเราไม่มี
+ตรงนี้คือประเด็นที่ค้างอยู่ (D-17) - บอร์ดเห็นเครื่องที่ฐานข้อมูลเราไม่มี
 
 **ขั้นตอน**
 
@@ -187,7 +187,7 @@ ORDER BY column_name
 3. Grafana → **Connections → Data sources** → หา datasource ที่ UID ตรงกัน → ดู **URL** กับ **Database**
 4. เทียบกับ `INFLUX_URL` / `INFLUX_DATABASE` ใน `server/.env`
 
-**หรือทางลัด** — เปิด **Explore** ใน Grafana เลือก datasource ของบอร์ด แล้ววางคิวรี่ข้อ 3.1
+**หรือทางลัด** - เปิด **Explore** ใน Grafana เลือก datasource ของบอร์ด แล้ววางคิวรี่ข้อ 3.1
 ถ้าผลออกมามี `P1TC1` แปลว่าคนละฐานข้อมูลกับเราแน่นอน
 
 **สิ่งที่รู้แล้ว ณ 2026-08-27**
@@ -199,14 +199,14 @@ ORDER BY column_name
 | Injection ที่ 6332 | 26 เครื่อง | **29 เครื่อง** |
 | plant ที่มี | 6051, 6332, 6338 | ? |
 
-> ⚠️ ชื่อฐานข้อมูลของเราลงท้ายด้วย **`_test`** — น่าสงสัยมากว่าบอร์ดชี้ไปฐาน production
+> ⚠️ ชื่อฐานข้อมูลของเราลงท้ายด้วย **`_test`** - น่าสงสัยมากว่าบอร์ดชี้ไปฐาน production
 > คนละตัว ตรวจข้อ 4 ก่อนไปหาสาเหตุอื่น
 
 ---
 
 ## 5. อ้างอิง
 
-- `docs/grafana/MACHINE-STATUS-V2.md` — source ของ panel เดิม + คำอธิบายทีละบรรทัด
+- `docs/grafana/MACHINE-STATUS-V2.md` - source ของ panel เดิม + คำอธิบายทีละบรรทัด
 - `docs/DESIGN.md` §8 (schema) · §9 (สูตร)
 - `docs/BACKEND-HANDOVER.md` §4.2 (กับดัก InfluxDB) · §4.8 (การ reconcile กับบอร์ด)
-- `server/src/influx/queries.ts` — คิวรี่จริงที่ backend ใช้
+- `server/src/influx/queries.ts` - คิวรี่จริงที่ backend ใช้
