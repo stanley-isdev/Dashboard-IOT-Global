@@ -49,8 +49,9 @@
   /* Nested plant rows and the inactive half of a segmented control. */
   --panel-2: #f7f8fa;
   /*
-   * The base drawer's four tiles: --panel-2 with most of the step taken back
-   * out, about a third of the way from white rather than the whole way.
+   * The base drawer's four tiles: part of --panel-2's step taken back out,
+   * landing about three-fifths of the way from --panel rather than the whole
+   * way. 1.036:1 against the panel, where --panel-2 is 1.063:1.
    *
    * --panel-2 is drawn for a surface the eye is meant to read *past* - a nested
    * plant row under a base row, the half of a segmented control that is not
@@ -818,9 +819,16 @@ html[lang='th']:root[data-density='tv'] {
   --band: #101a2c;
   --band-line: #223049;
   --panel-2: #16223a;
-  /* The drawer's tiles. Same fraction of the panel-to-panel-2 step as the light
-     theme takes, in the other direction: a lift off --panel small enough that
-     four of them read as cards rather than as four wells cut into the panel. */
+  /* The drawer's tiles: a lift off --panel small enough that four of them read
+     as cards rather than as four wells cut into the panel.
+
+     About a third of this theme's --panel-to---panel-2 step, where the light
+     theme takes three-fifths of its own. Matched on how it looks rather than on
+     the arithmetic, and the arithmetic is why they differ: this theme's own
+     panel-to-panel-2 step is the bigger of the two to the eye (1.098:1 against
+     1.063:1), so a third of it lands where three-fifths of light's does -
+     1.033:1 here, 1.036:1 there. Copying the fraction across would have made
+     the dark tiles visibly deeper than the light ones. */
   --tile-fill: #121d31;
   /* The sticky ranking header - the lightest text surface, so every ink below is
      measured against it. */
