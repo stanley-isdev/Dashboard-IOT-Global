@@ -31,7 +31,7 @@ The commands below use the current deployment's values. Substitute your own.
 | | |
 | --- | --- |
 | Checkout | `C:\dev\Dashboard_IOT_Global\Dashboard-IOT-Global` |
-| Dashboard URL | `http://10.200.129.66:8080` |
+| Dashboard URL | `http://10.200.129.66:3001` |
 | Service name | `DashboardIotApi` |
 | Grafana on the same host (do not touch) | `http://10.200.129.66:3000` |
 
@@ -127,9 +127,9 @@ notepad server\.env
 
 | Key | Value for the worked example | Why |
 | --- | --- | --- |
-| `PORT` | `8080` | The port the whole dashboard answers on - page and API together. This is the port people type. |
+| `PORT` | `3001` | The port the whole dashboard answers on - page and API together. This is the port people type. |
 | `STATIC_DIR` | `C:\dev\Dashboard_IOT_Global\Dashboard-IOT-Global\dist` | **Absolute path.** The service runs with `server\` as its working directory, so a relative path resolves somewhere you did not mean. Blank means API-only, and every page 404s. |
-| `CORS_ORIGIN` | `http://10.200.129.66:8080` | Never exercised in this topology - the browser is same-origin - but it must name **one** origin. `*` is not a wider setting, it is a broken one: the server registers CORS with `credentials: true`, and browsers reject `Allow-Origin: *` paired with credentials. |
+| `CORS_ORIGIN` | `http://10.200.129.66:3001` | Never exercised in this topology - the browser is same-origin - but it must name **one** origin. `*` is not a wider setting, it is a broken one: the server registers CORS with `credentials: true`, and browsers reject `Allow-Origin: *` paired with credentials. |
 | `INFLUX_URL` | `http://10.200.129.61:8181` | **The port is mandatory** - InfluxDB 3 answers on 8181 and nothing else. No trailing slash. |
 | `INFLUX_DATABASE`, `INFLUX_TOKEN` | from the InfluxDB instance | Leave every InfluxDB key blank and the server still boots: `/healthz` and `/api/v1/meta` answer, the poller idles, and every source reports `down`. That is a useful first smoke test. |
 
@@ -199,8 +199,8 @@ Verify - after giving it a few seconds, for the reason under Redeploying:
 ```powershell
 Start-Sleep -Seconds 10
 Get-Service DashboardIotApi
-Invoke-RestMethod http://127.0.0.1:8080/healthz      # -> status = ok
-Invoke-RestMethod http://127.0.0.1:8080/api/v1/meta  # -> sources, each with its real state
+Invoke-RestMethod http://127.0.0.1:3001/healthz      # -> status = ok
+Invoke-RestMethod http://127.0.0.1:3001/api/v1/meta  # -> sources, each with its real state
 ```
 
 `/api/v1/meta` is the honest one: it reports each source's actual state, so a
@@ -222,7 +222,7 @@ Only if clients are on other machines:
 
 ```powershell
 New-NetFirewallRule -DisplayName "Dashboard IoT Global" `
-  -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
+  -Direction Inbound -Protocol TCP -LocalPort 3001 -Action Allow
 ```
 
 One port, because there is only one process. Note there is **no authentication**
@@ -237,13 +237,13 @@ rule scoped to the plant network.
 From the server:
 
 ```powershell
-Invoke-WebRequest http://localhost:8080/            # 200, index.html
-Invoke-RestMethod  http://localhost:8080/api/v1/meta
-(Invoke-WebRequest http://localhost:8080/config/runtime-config.json).Headers['Cache-Control']
+Invoke-WebRequest http://localhost:3001/            # 200, index.html
+Invoke-RestMethod  http://localhost:3001/api/v1/meta
+(Invoke-WebRequest http://localhost:3001/config/runtime-config.json).Headers['Cache-Control']
 #   ^ must say no-cache
 ```
 
-From a client machine, browse to `http://10.200.129.66:8080/`, then confirm a
+From a client machine, browse to `http://10.200.129.66:3001/`, then confirm a
 deep link survives a refresh (e.g. `/companies/<code>`). That exercises the SPA
 fallback - the thing that only ever breaks on reload.
 
@@ -292,7 +292,7 @@ queries. Wait for it instead:
 $deadline = (Get-Date).AddSeconds(60)
 do {
   Start-Sleep -Seconds 2
-  $up = try { (Invoke-RestMethod http://127.0.0.1:8080/healthz -TimeoutSec 3).status -eq 'ok' } catch { $false }
+  $up = try { (Invoke-RestMethod http://127.0.0.1:3001/healthz -TimeoutSec 3).status -eq 'ok' } catch { $false }
 } until ($up -or (Get-Date) -gt $deadline)
 if ($up) { 'up' } else { 'not answering - read logs\api-out.log, then logs\api-err.log' }
 ```
