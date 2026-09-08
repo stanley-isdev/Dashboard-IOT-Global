@@ -64,7 +64,19 @@ Copy-Item $env:TEMP\nssm\nssm-2.24\win64\nssm.exe C:\tools\nssm\ -Force
 C:\tools\nssm\nssm.exe version
 ```
 
-> Grafana's Windows installer ships its own copy of NSSM, and you will find it
+> If the download is blocked, there is already a copy on the host: Grafana's
+> Windows installer ships one, and copying it to `C:\tools\nssm\` is a fine way
+> to get it - same tool, and once copied it is a file of ours that nothing else
+> maintains.
+>
+> ```powershell
+> $src = Get-ChildItem "C:\Program Files\GrafanaLabs" -Filter nssm.exe -Recurse |
+>        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+> New-Item -ItemType Directory -Force C:\tools\nssm | Out-Null
+> Copy-Item $src.FullName C:\tools\nssm\nssm.exe -Force
+> ```
+>
+> What must not happen is the opposite: Grafana's copy lives
 > at `C:\Program Files\GrafanaLabs\svc-<version>\nssm.exe`. **Do not point the
 > service at that one.** The version is in the path, so the next Grafana upgrade
 > moves it and takes this dashboard down - a failure whose cause is nowhere near
@@ -197,8 +209,8 @@ Invoke-RestMethod http://127.0.0.1:8080/api/v1/meta  # -> sources, each with its
 Day to day:
 
 ```powershell
-C:\tools\nssm\nssm.exe restart DashboardIotApi
-C:\tools\nssm\nssm.exe stop DashboardIotApi
+Restart-Service DashboardIotApi
+Stop-Service DashboardIotApi
 Get-Content logs\api-err.log -Tail 50 -Wait
 ```
 
@@ -250,12 +262,24 @@ with `'tsc' is not recognized` and the checkout needs a second `npm ci` to
 become whole again.
 
 ```powershell
-C:\tools\nssm\nssm.exe stop DashboardIotApi
+Stop-Service DashboardIotApi
 git pull
 npm ci
 npm run build
-C:\tools\nssm\nssm.exe start DashboardIotApi
+Start-Service DashboardIotApi
 ```
+
+NSSM registers an ordinary Windows service, so the ordinary cmdlets drive it -
+`Get-Service`, `Start-Service`, `Stop-Service`, `Restart-Service`, and
+services.msc. `Stop-Service` goes through the SCM to nssm.exe, which runs the
+`AppStopMethodConsole` sequence configured at install: Ctrl-C to node, up to 15
+seconds for `index.ts` to close Fastify and stop the poller. The proof is a
+`"signal":"SIGINT","msg":"shutting down"` line in `logs\api-out.log`.
+
+`nssm.exe` itself is only needed to *configure* the service - which executable,
+which arguments, where the logs go, what happens on a crash - and
+`scripts/install-service.ps1` does all of that, so nothing here has to type an
+nssm command.
 
 **`start` returns before the port answers**, so do not verify with a bare
 request - it will refuse the connection and look like a failed deploy.
@@ -277,9 +301,10 @@ The dashboard is down between the stop and the start - about a minute. There is
 no way around that with one process, and a wall of screens shows its own
 reconnect state while it lasts.
 
-`nssm` by its full path because `C:\tools\nssm` is not on PATH. Put it there if
-you would rather type `nssm` (a new shell picks it up, the current one does
-not):
+On the rare occasion you do need `nssm.exe` directly, call it by its full path -
+`C:\tools\nssm` is not on PATH, and the bare command fails with
+CommandNotFound. Put it on PATH if you would rather not (a new shell picks it
+up, the current one does not):
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', $env:Path + ';C:\tools\nssm', 'Machine')
@@ -307,6 +332,6 @@ changed, re-run the install script instead of starting by hand.
 | Every source `down` in `/api/v1/meta` | `INFLUX_URL` missing its `:8181` port, or credentials blank. |
 | `npm ci` fails `EPERM ... esbuild.exe` | The service is running and holds esbuild.exe through tsx. Stop it and re-run. |
 | `'tsc' is not recognized` right after that | The failed `npm ci` had already deleted part of node_modules. Stop the service, run `npm ci` again, and it completes. |
-| `nssm` is not recognized | It is at `C:\tools\nssm\nssm.exe` and that folder is not on PATH. See Redeploying. |
-| Connection refused right after `nssm start` | Too early. The port binds a few seconds after the service starts. Poll `/healthz` rather than asking once; `logs\api-out.log` ends with a "Server listening" line when it is genuinely up. |
+| `nssm` is not recognized | Day-to-day work does not need it: `Get-Service` / `Start-Service` / `Stop-Service` / `Restart-Service` drive this service like any other. To reconfigure it, call `C:\tools\nssm\nssm.exe` by its full path. |
+| Connection refused right after `Start-Service` | Too early. The port binds a few seconds after the service starts. Poll `/healthz` rather than asking once; `logs\api-out.log` ends with a "Server listening" line when it is genuinely up. |
 | Dashboard died right after a Grafana upgrade | The service was pointed at Grafana's bundled `nssm.exe`. Re-run the install script with `C:\tools\nssm\nssm.exe`. |
