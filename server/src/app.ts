@@ -4,6 +4,7 @@ import type { Env } from './config/env.ts';
 import type { Deps } from './deps.ts';
 import { createInfluxClient } from './influx/client.ts';
 import authPlugin from './plugins/auth.ts';
+import staticSitePlugin from './plugins/staticSite.ts';
 import globalOverviewRoutes from './routes/globalOverview.ts';
 import scopeRoutes from './routes/scope.ts';
 import healthRoutes from './routes/health.ts';
@@ -52,6 +53,14 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
   /* The two drill-downs the board links into. Same prefix, same deps - see
      routes/scope.ts for why they take fewer parameters than the board does. */
   await app.register(scopeRoutes, { prefix: '/api/v1', deps });
+
+  /* Last, and only when configured: everything the API did not claim. The
+     frontend's apiBaseUrl is a same-origin path, and this is what makes the
+     origin one. Absent STATIC_DIR the server is API-only, which is what the
+     `.inject()` tests below run against. */
+  if (env.STATIC_DIR) {
+    await app.register(staticSitePlugin, { root: env.STATIC_DIR });
+  }
 
   app.addHook('onClose', async () => {
     poller.stop();

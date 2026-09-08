@@ -1,6 +1,21 @@
 import { z } from 'zod';
 
 /**
+ * Treats `KEY=` as "not set".
+ *
+ * A .env line with nothing after the `=` gives an EMPTY STRING, not an absent
+ * key, and every optional field below is the kind a deployment leaves blank
+ * rather than deletes - .env.example ships them that way and says so. Without
+ * this, `INFLUX_URL=` failed `.url()` and the server refused to boot, which is
+ * the exact opposite of the documented behaviour ("leaving these blank is
+ * supported - /meta and /healthz still work and every source reports down").
+ *
+ * Applied only to optional fields. A blank CORS_ORIGIN or PORT should still be
+ * the loud failure it already is.
+ */
+const blankAsAbsent = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+
+/**
  * Unlike the frontend's forgiving `runtimeConfig` (which falls back to mock
  * data and surfaces a banner on bad config), the backend must never boot on
  * malformed config - a server silently misconfigured against the wrong
@@ -10,12 +25,26 @@ const zEnv = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   CORS_ORIGIN: z.string().min(1),
 
+  /**
+   * Absolute path to the built frontend - the `dist/` that `npm run build`
+   * writes - served from this same process and this same port.
+   *
+   * Optional, and absent means API-only. That is what every test in this suite
+   * runs, and what a deployment that puts a reverse proxy in front of the
+   * frontend would run; see plugins/staticSite.ts.
+   *
+   * Not validated here beyond being a non-empty string, because the check that
+   * matters is whether the directory exists, and @fastify/static already makes
+   * that a boot failure rather than a server that answers every page with 404.
+   */
+  STATIC_DIR: z.preprocess(blankAsAbsent, z.string().min(1).optional()),
+
   // Still optional: /meta and /healthz are pure master data and must keep
   // working (and staying testable) without credentials. When these are absent
   // the snapshot poller idles and every source honestly reports `down`.
-  INFLUX_URL: z.string().url().optional(),
-  INFLUX_DATABASE: z.string().optional(),
-  INFLUX_TOKEN: z.string().optional(),
+  INFLUX_URL: z.preprocess(blankAsAbsent, z.string().url().optional()),
+  INFLUX_DATABASE: z.preprocess(blankAsAbsent, z.string().optional()),
+  INFLUX_TOKEN: z.preprocess(blankAsAbsent, z.string().optional()),
 
   /**
    * The fleet's reference zone - where the time picker's calendar days are
@@ -82,10 +111,10 @@ const zEnv = z.object({
    */
   TREND_REFRESH_MS: z.coerce.number().int().min(1_000).default(30_000),
 
-  MSSQL_SERVER: z.string().optional(),
-  MSSQL_DATABASE: z.string().optional(),
-  MSSQL_USER: z.string().optional(),
-  MSSQL_PASSWORD: z.string().optional(),
+  MSSQL_SERVER: z.preprocess(blankAsAbsent, z.string().optional()),
+  MSSQL_DATABASE: z.preprocess(blankAsAbsent, z.string().optional()),
+  MSSQL_USER: z.preprocess(blankAsAbsent, z.string().optional()),
+  MSSQL_PASSWORD: z.preprocess(blankAsAbsent, z.string().optional()),
 });
 
 export type Env = z.infer<typeof zEnv>;
