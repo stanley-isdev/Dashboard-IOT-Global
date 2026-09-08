@@ -164,3 +164,108 @@
   color: var(--text);
   white-space: nowrap;
 }
+
+/* ---- Thai tone marks, while the board is being photographed ---- */
+
+/*
+ * The same defect as the one fixed at the foot of components.css, in a renderer
+ * that needs the opposite fix.
+ *
+ * html2canvas-pro does not photograph the board. It walks the DOM, reads the
+ * computed styles and re-implements CSS over a canvas, so which properties it
+ * honours is its own business and not the browser's:
+ *
+ *   - Its ellipsis is written against `overflow: hidden` specifically. A slot
+ *     left as the screen's `overflow: clip` is truncated at the box edge with
+ *     no ellipsis drawn, and the file loses the one mark that says a caption
+ *     was cut.
+ *   - It ignores `overflow-clip-margin` entirely. The screen's bleed buys the
+ *     file nothing, so on its own it would trade a clipped tone mark for a
+ *     missing ellipsis and fix neither.
+ *   - It does clip to the *padding* box, like the browser.
+ *
+ * That last one is the way in. Put `overflow: hidden` back so the ellipsis
+ * returns, and buy the marks their room by growing the padding box instead of
+ * the clip margin.
+ *
+ * `padding-block` and a `margin-block` that cancels it exactly. Layout consumes
+ * the margin box, and the margin box does not change: 0.5em of padding on each
+ * edge, 0.5em of negative margin on each edge. The border box grows, which is
+ * all the clip looks at, and every outer measurement - flex free space, grid
+ * track, the height of the card above the map - is the number it was. The
+ * capture has to be the board, pixel for pixel, or the file stops being a
+ * picture of what was on screen.
+ *
+ * 0.5em is the same figure as the screen's clip margin, measured the same way:
+ * Thai ink runs 0.44em above its box and 0.12em below.
+ *
+ * Three slots carry vertical metrics of their own and are restored below,
+ * because `padding-block`/`margin-block` shorthands would otherwise overwrite
+ * them. Everything else has none, which is checked rather than assumed.
+ *
+ * One entry in the list can never match during a capture: `.regionmenu__label`
+ * sits inside `.regionmenu`, which is `display: none` above. It is here anyway
+ * so this list and the screen's stay one list - the day that menu is left in
+ * the picture, the marks are already handled.
+ *
+ * `.drawer__plant-label` is not a second such case, though the `display: none`
+ * block above can read like it is. What that block hides is `.drawer-scrim`,
+ * the backdrop; `.drawer` itself is a separate element and is not hidden, so a
+ * capture taken with the drawer open photographs its labels. That entry earns
+ * its place the ordinary way.
+ */
+:root[data-exporting]
+  :is(
+    .kpi__label,
+    .kpi__delta,
+    .kpi__foot,
+    .statuschips,
+    .filter__val,
+    .regionmenu__label,
+    .rank-table__sub,
+    .rank-id__country,
+    .plant-id__label,
+    .alert-row__machine,
+    .alert-row__loc,
+    .drawer__plant-label,
+    .calendar__weekday
+  ) {
+  overflow: hidden;
+  padding-block: 0.5em;
+  margin-block: -0.5em;
+}
+
+/*
+ * The foot is pinned to the bottom of its card by `margin-top: auto`, which the
+ * rule above would overwrite with -0.5em and drop the caption onto the figure.
+ * So the foot keeps its auto margin, and the 0.5em it gains at the top is taken
+ * off the element in front of it instead.
+ *
+ * Not left to the auto margin to absorb, which was the first thing tried and is
+ * wrong: an auto margin only gives back space it has, and the tallest card in a
+ * stretched row has none. That card would have grown 5px and taken the other
+ * five and the map with it.
+ *
+ * The figure is measured in `--fs-nano` rather than `em` because it is spent on
+ * a sibling, and 0.5em there would be half of a 28px hero number instead of
+ * half of the caption's 10px. `--fs-nano` is the foot's own size and follows
+ * the density switch with it.
+ */
+:root[data-exporting] .kpi__foot {
+  margin-top: auto;
+}
+:root[data-exporting] .kpi > *:has(+ .kpi__foot) {
+  margin-bottom: calc(-0.5 * var(--fs-nano));
+}
+
+/* 2px of separation from the machine name above it, which the shorthand would
+   have replaced with the bleed's -0.5em. Both, not either. */
+:root[data-exporting] .alert-row__loc {
+  margin-top: calc(0.125rem - 0.5em);
+}
+
+/* The only slot with padding of its own: 4px that sizes the calendar's weekday
+   strip. The bleed is added to it rather than over it. */
+:root[data-exporting] .calendar__weekday {
+  padding-block: calc(0.25rem + 0.5em);
+}

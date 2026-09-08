@@ -5938,3 +5938,73 @@ a.chip {
 /* The interval in force is said by the filled disc alone, as it is in the
    filter menus - no wash and no weight, for the reason recorded on
    .regionmenu__opt. The disc's own rules are shared with .regionmenu__check. */
+
+/* ============================ Thai tone marks and the boxes that clip them */
+
+/*
+ * Every single-line slot on this board is `overflow: hidden` so its tail can
+ * ellipsis rather than push the layout around. That clip is a *paint* clip at
+ * the padding box, and a Thai line does not fit inside its own padding box.
+ *
+ * Sarabun declares 0.90em of ascent. A two-level stack - a base letter, an
+ * upper vowel, a tone mark sitting on top of that vowel - inks to about 1.05em,
+ * and the below-vowels and the tails of ญ and ฐ hang past the declared descent
+ * the same way. Measured against this stylesheet with the shipped font files,
+ * the ink runs 0.44em above the box and 0.12em below it at the tightest leading
+ * the board uses (`line-height: 1.15` on .kpi__value), and is still 0.17em
+ * above it at --lh-body. So the clip was landing in the middle of the marks.
+ *
+ * What the reader got: "จริง 381 ชิ้น" drawn as "จริง 381 ชิน" on the
+ * %Achievement card, and "เครื่องจักรทั้งหมด" losing the mai ek over เครื่อง
+ * outright. Those are different words, printed on an executive board, with
+ * nothing on screen to say a mark had gone missing. It read as a font problem
+ * and was a box problem.
+ *
+ * `overflow: clip` clips at the padding box *expanded by
+ * `overflow-clip-margin`*. Nothing about the layout moves: same box, same line
+ * box, same ellipsis, same measurements everywhere around it. Only the paint
+ * clip steps back. 0.5em clears the worst stack measured above with room for a
+ * heavier weight.
+ *
+ * Not more leading instead: the line-height would have to go to roughly 1.8 to
+ * contain the same ink, on a board whose entire layout is fixed to one
+ * viewport. This costs nothing.
+ *
+ * `overflow: hidden` stays on the line above it on purpose. A browser too old
+ * for `overflow: clip` (pre-2022) drops the two declarations it cannot parse
+ * and keeps exactly today's behaviour, rather than losing the ellipsis.
+ *
+ * The margin applies on all four sides. Horizontally it costs nothing: these
+ * slots end in an ellipsis drawn at the box edge, so there is no ink out there
+ * to let through. `.statuschips` is the one that hard-cuts instead of
+ * ellipsising, and its own note above says that clip is a guard the row's width
+ * never actually reaches.
+ *
+ * Not scoped to `html[lang='th']`. A base name, a country or a plant label is
+ * Thai on the English board too, and a rule that only holds in one locale is a
+ * rule that will be wrong the first time someone reuses the class.
+ *
+ * Last in the file on purpose. Every selector below is one class, the same
+ * weight as the block rule it is overriding, so source order is what decides
+ * it. A new rule added after this one that sets `overflow` on any of these
+ * classes puts the marks back under the knife; add it above instead.
+ */
+:is(
+  .kpi__label,
+  .kpi__delta,
+  .kpi__foot,
+  .statuschips,
+  .filter__val,
+  .regionmenu__label,
+  .rank-table__sub,
+  .rank-id__country,
+  .plant-id__label,
+  .alert-row__machine,
+  .alert-row__loc,
+  .drawer__plant-label,
+  .calendar__weekday
+) {
+  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: 0.5em;
+}
