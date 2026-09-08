@@ -84,6 +84,33 @@ Assert-Path $envFile   'server/.env'      'Copy server/.env.example to server/.e
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
+# --- What server/.env is actually asking for ----------------------------------
+#
+# Read rather than trusted: STATIC_DIR pointing at a folder nobody has built is
+# a service that starts, answers /api/v1 and 404s every page - the failure that
+# looks like a broken deploy and is a missing `npm run build`.
+
+$envValues = @{}
+foreach ($line in Get-Content -LiteralPath $envFile) {
+    if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
+    $pair = $line -split '=', 2
+    $envValues[$pair[0].Trim()] = $pair[1].Trim()
+}
+
+$port = if ($envValues['PORT']) { $envValues['PORT'] } else { '4000' }
+$staticDir = $envValues['STATIC_DIR']
+
+if ([string]::IsNullOrWhiteSpace($staticDir)) {
+    Write-Warning "STATIC_DIR is blank in server\.env - the service will serve the API only and every page will 404. Set it to the absolute path of dist\ unless a reverse proxy is serving the frontend."
+} else {
+    Assert-Path $staticDir 'STATIC_DIR' 'Set it to an absolute path - the service runs with server\ as its working directory, so a relative one resolves somewhere else.'
+    Assert-Path (Join-Path $staticDir 'index.html') 'dist\index.html' 'The folder exists but has not been built. Run `npm run build` at the repo root.'
+}
+
+if ($envValues['CORS_ORIGIN'] -eq '*') {
+    Write-Warning "CORS_ORIGIN is '*', which browsers reject alongside the credentials this API sends. Harmless while the page and the API share an origin; a silent failure the day they do not."
+}
+
 # --- Register ----------------------------------------------------------------
 
 # Quoted: the checkout may sit under a path with spaces.
@@ -104,7 +131,7 @@ $settings = @(
     @('AppDirectory',      $serverDir),
     @('AppParameters',     $appParameters),
     @('DisplayName',       $DisplayName),
-    @('Description',       'Fastify API for the global IoT dashboard. Serves /api/v1 on the port in server/.env; IIS reverse-proxies to it.'),
+    @('Description',       'Global IoT dashboard. Serves the built frontend and /api/v1 on the port in server/.env.'),
     @('Start',             'SERVICE_AUTO_START'),
     # Ctrl-C first: index.ts installs a SIGINT handler that closes Fastify and
     # stops the snapshot poller. Killing the process instead leaves the InfluxDB
@@ -129,5 +156,6 @@ if ($LASTEXITCODE -ne 0) { throw "nssm start failed (exit $LASTEXITCODE). Check 
 
 Write-Host ''
 Write-Host "Started. Verify with:" -ForegroundColor Green
-Write-Host "  Invoke-RestMethod http://127.0.0.1:4000/healthz"
+Write-Host "  Invoke-RestMethod http://127.0.0.1:$port/healthz"
+Write-Host "  Invoke-WebRequest http://127.0.0.1:$port/"
 Write-Host "  Get-Content '$LogDir\api-err.log' -Tail 20"
