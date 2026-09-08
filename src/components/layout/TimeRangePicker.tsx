@@ -310,26 +310,22 @@ export function TimeRangePicker() {
         ref={trigger}
         type="button"
         /*
-         * Three states, not two, because the date capsule is a different size
-         * of thing from the scope capsules beside it.
+         * Two states, like every other capsule in the row.
          *
-         * `.filter--on` tints the whole capsule, and that is right for
-         * "Injection" or "Lamp 2" - a short word that has to be legible across
-         * a room. A date range is a dozen characters ("3 Sep – 30 Sep 2026"),
-         * so the same treatment paints a band of brand colour several times the
-         * width of anything else in the row, and the eye reads the widest thing
-         * on the toolbar as the loudest. The signal is kept and the mass is
-         * not: an orange calendar icon and an orange hairline on the row's own
-         * ground.
+         * There were three: a date range is a dozen characters ("3 Sep – 30 Sep
+         * 2026") against "Injection" or "Lamp 2", and while `.filter--on`
+         * filled the capsule solid that width difference mattered - the same
+         * treatment painted a band of brand orange across the toolbar wider
+         * than every other control combined. This picker carried its own
+         * quieter variant for that case.
          *
-         * A quick range other than the default still tints, because that IS a
-         * short label and the rule it belongs to is unchanged.
+         * `.filter--on` is now an outline and an ink on the row's own ground,
+         * which costs the same area at any width, so the exception has nothing
+         * left to avoid and is gone. `off` is true whenever `absoluteApplied`
+         * is, so the dates case is still flagged - by the one rule the whole
+         * row uses.
          */
-        className={[
-          'filter',
-          absoluteApplied ? 'timepicker__trigger--dates' : off ? 'filter--on' : '',
-          'timepicker__trigger tap',
-        ]
+        className={['filter', off ? 'filter--on' : '', 'timepicker__trigger tap']
           .filter(Boolean)
           .join(' ')}
         aria-haspopup="dialog"

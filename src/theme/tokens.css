@@ -308,10 +308,16 @@
    *                         graphic owes.
    *   --accent-ink          orange as type. 4.90:1 on the worst surface here,
    *                         8.08:1 in the kiosk block below.
-   *   --accent-tint         the ground under --accent-ink on a control that is
-   *                         on. A real text surface, so check-contrast measures
-   *                         every ink in this file against it.
-   *   --accent-tint-strong  the same, one step down, for that control's hover.
+   *   --accent-tint         the wash a control takes under the pointer. A real
+   *                         text surface, so check-contrast measures every ink
+   *                         in this file against it.
+   *   --accent-tint-strong  the same, one step down.
+   *
+   * The filter capsules draw their on-state out of --accent-ink and
+   * --accent-mark and nothing else: orange type inside an orange outline, on
+   * the row's own ground. Asked for in those terms - no fill, no tint, just the
+   * ink and the line - after the filled and the pastel-ground versions had both
+   * been seen on the board. See .filter--on in components.css.
    *
    * `--on-accent` is deliberately not back. It was the white that sat on the
    * artboard's orange at 2.4:1 and was this board's one documented AA failure;
@@ -428,46 +434,6 @@
   /* The hairline around a tinted control. Decorative: the tint carries the
      state and the ink carries the word, so this only has to close the shape. */
   --accent-line: #f5cba3;
-
-  /*
-   * ---- orange as a pastel ground ----
-   *
-   * What a filter capsule wears while it is holding a scope, and the one place
-   * on the board that steps back from --accent-fill.
-   *
-   *   --accent-pastel         the ground of a filter that is on.
-   *   --accent-pastel-strong  its hover, and the ground of the capsule whose
-   *                           menu is open. Deeper, the same direction the fill
-   *                           pair moves, so both registers hover the same way.
-   *   --accent-on-pastel      the ink on both. Orange as type again, which is
-   *                           available here for the reason it was not on the
-   *                           fill: these grounds are pale enough to carry it.
-   *
-   * Why the step back, when the block above argues for filling solid. That
-   * argument was made about *a* control and it still holds for the ones it was
-   * made about - Export, the board tab in front, the alert count - each of which
-   * is one filled shape with white space around it. The filter row is up to five
-   * capsules in a line, and five saturated oranges across the top of the board
-   * stopped reading as "these are scoping your numbers" and started reading as
-   * an alarm. That was raised directly, in those words, by the person the board
-   * is for; this is the answer.
-   *
-   * It is not a return to the pale tint the fill replaced. --accent-tint is a 4%
-   * wash, invisible at arm's length, and that is the failure the fill was
-   * introduced to fix. These sit at roughly 14% and 20% of the hue: far enough
-   * up to be picked out of a row of white capsules across a room, far enough
-   * down to carry a real ink rather than a waived white one. Both are text
-   * surfaces, so check-contrast measures the pair - 5.74:1 and 5.43:1 here, and
-   * the tv block deepens the ink to clear AAA on both.
-   *
-   * Note what this does NOT change. --accent-fill and its white label stay
-   * exactly where they were, waiver included, on every control that was already
-   * using them. The board still has one brand orange; the filter row now says
-   * its piece one register quieter.
-   */
-  --accent-pastel: #fde3c8;
-  --accent-pastel-strong: #fbdcbb;
-  --accent-on-pastel: #8a4606;
 
   /*
    * The %OA trend series.
@@ -751,12 +717,6 @@ html[lang='th'] {
      hover tint - the deepest of the five, because it is the one carrying a
      word rather than closing a shape. */
   --accent-ink: #7e4006;
-  /* The pastel capsule's ink at AAA: 7.62:1 on --accent-pastel and 7.20:1 on
-     its hover. The two grounds themselves get no rows, and unlike the fill
-     below that is a saving rather than a decision - deepening the ink is enough
-     because this pair has a real AA to promote, which is exactly what the fill
-     underneath does not. */
-  --accent-on-pastel: #6e3805;
   /*
    * --accent-fill and --accent-fill-strong get no rows here, and with a white
    * label back on them that is now a decision rather than a saving.
@@ -962,19 +922,6 @@ html[lang='th']:root[data-density='tv'] {
   --accent-fill: #ffb366;
   --accent-fill-strong: #f2a94a;
   --accent-on-fill: #0a1020;
-
-  /*
-   * The pastel filter capsule, inverted the same way the fill above is and for
-   * the same reason: there is no pale orange on a near-black board, so the
-   * ground goes warm-dark and the ink goes light. Deeper than --accent-tint,
-   * which is this theme's 4% wash and has the same arm's-length problem its
-   * light counterpart does.
-   *
-   * 9.18:1 and 7.99:1, so the dark tv block needs no row for the ink.
-   */
-  --accent-pastel: #3a2a16;
-  --accent-pastel-strong: #46331b;
-  --accent-on-pastel: #ffc98a;
 
   /* The %OA trend series, lightened for the dark ground the way an ink is.
      8.13:1 on --panel, 6.78:1 on the lightest surface. */

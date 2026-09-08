@@ -270,46 +270,11 @@ const DARK_FILL = {
 // trade but an invisible label, so the dark board keeps the pair that passes.
 const DARK_FILL_TV = DARK_FILL;
 
-// ---------------------------------------------------------------------------
-// The pastel control.
-//
-// The filter capsules, and only those: the ground a scope capsule takes while
-// it is holding one, plus the deeper step it takes when its menu is open or the
-// pointer is on it. The saturated FILL tables above still describe Export, the
-// board tab in front and the alert count, which did not move.
-//
-// Measured as a text pair for the same reason the fill is - --accent-on-pastel
-// is the label and these two grounds are the only things it is ever set on -
-// and held to the ordinary minimums, with no waiver on either row. That is the
-// point of the pair rather than an accident of it: the fill's white label is
-// waived at 2.51:1 because no ink passes on the brand orange undimmed, and
-// dropping the ground to a pastel is what buys a label that simply passes. If
-// an edit here ever needs a waiver to go green, the edit is wrong.
-// ---------------------------------------------------------------------------
-
-const LIGHT_PASTEL = {
-  'accent-on-pastel': '#8A4606',
-  pastel: '#FDE3C8',
-  pastelStrong: '#FBDCBB',
-};
-
-// Two steps deeper for AAA, which is available here and is not on the fill:
-// this pair has a passing AA to promote. 7.62:1 and 7.20:1.
-const LIGHT_PASTEL_TV = {
-  'accent-on-pastel': '#6E3805',
-  pastel: '#FDE3C8',
-  pastelStrong: '#FBDCBB',
-};
-
-// Inverted, like DARK_FILL: a warm near-black ground under the light orange.
-const DARK_PASTEL = {
-  'accent-on-pastel': '#FFC98A',
-  pastel: '#3A2A16',
-  pastelStrong: '#46331B',
-};
-
-// Unchanged from DARK_PASTEL - 9.18:1 and 7.99:1 already clear AAA.
-const DARK_PASTEL_TV = DARK_PASTEL;
+// The filter capsules need no table of their own. Their on-state is
+// --accent-ink inside an --accent-mark outline on the row's own ground, and
+// both of those tokens are already measured against every surface by the ink
+// and mark groups above - which is the point of drawing a state out of the
+// palette that exists rather than adding grounds to it.
 
 const LIGHT_TINT = {
   good: '#E3F5EE',
@@ -337,8 +302,6 @@ const THEMES = [
     tint: LIGHT_TINT,
     fill: LIGHT_FILL,
     fillTv: LIGHT_FILL_TV,
-    pastel: LIGHT_PASTEL,
-    pastelTv: LIGHT_PASTEL_TV,
   },
   {
     name: 'dark',
@@ -349,8 +312,6 @@ const THEMES = [
     tint: DARK_TINT,
     fill: DARK_FILL,
     fillTv: DARK_FILL_TV,
-    pastel: DARK_PASTEL,
-    pastelTv: DARK_PASTEL_TV,
   },
 ];
 
@@ -420,17 +381,6 @@ const checkFill = (label, fill, min) => {
   row('accent-on-fill', ink, 'fill:hover', contrast(ink, fill.fillStrong), min, fill.waived);
 };
 
-// The label on the pastel control, on both of its grounds. Same shape as
-// checkFill and deliberately a separate function rather than a parameter on it:
-// the two take different minimums at kiosk density and one of them carries a
-// waiver the other must never inherit.
-const checkPastel = (label, pastel, min) => {
-  console.log(`\n${label}`);
-  const ink = pastel['accent-on-pastel'];
-  row('accent-on-pastel', ink, 'accent-pastel', contrast(ink, pastel.pastel), min);
-  row('accent-on-pastel', ink, 'pastel:open', contrast(ink, pastel.pastelStrong), min);
-};
-
 const RULE = '='.repeat(74);
 
 for (const theme of THEMES) {
@@ -466,12 +416,6 @@ for (const theme of THEMES) {
     TEXT_MIN,
   );
   checkFill('Filled control (kiosk/TV) - AAA 7:1', theme.fillTv, KIOSK_MIN);
-  checkPastel(
-    'Pastel control (desktop) - the filter capsules, on their own grounds, AA 4.5:1',
-    theme.pastel,
-    TEXT_MIN,
-  );
-  checkPastel('Pastel control (kiosk/TV) - AAA 7:1', theme.pastelTv, KIOSK_MIN);
 }
 
 console.log(

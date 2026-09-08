@@ -207,8 +207,9 @@ export function RegionFilter() {
 
   const everything = tree.all.length > 0 && picked.size === tree.all.length;
   /*
-   * Whether the capsule is holding a scope, which is what draws it in the brand
-   * pastel (see .filter--on). Deliberately not `!everything`: with master data
+   * Whether the capsule is holding a scope, which is what outlines and inks it
+   * in the brand orange (see .filter--on). Deliberately not `!everything`: with
+   * master data
    * still in flight the tree is empty, `everything` is false and the control is
    * disabled, so the bare negation would paint a control nobody can press in
    * the colour that means "this is narrowing your numbers".

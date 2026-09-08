@@ -143,7 +143,8 @@ export function ZoneFilter() {
   };
 
   const everything = universe.tags.length > 0 && picked.size === universe.tags.length;
-  /* Whether the capsule is holding a scope, which draws it in the brand pastel.
+  /* Whether the capsule is holding a scope, which outlines and inks it in the
+     brand orange.
      Same rule, and the same reason for the length guard, as the Lamp control. */
   const narrowed = universe.tags.length > 0 && !everything;
   /* Two keys because `t` does plain substitution, and a menu row reading

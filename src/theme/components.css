@@ -676,103 +676,120 @@ button.filter {
  * control the open menu belongs to is obvious while the menu covers the board.
  */
 /*
- * On is the brand orange as a pastel ground, with a deep orange label on it.
+ * On is orange type inside an orange outline. No fill, no tint - the capsule
+ * keeps the row's own ground.
  *
- * Three values have held this state and the middle one is worth knowing about.
- * It began as a 4% tint under a dark label, which is what made the board's
- * orange read as brown - at that lightness the ink has to clear 4.5:1 on a
- * near-white ground, which caps it around L 35% whatever the hue. That was
- * fixed by filling the capsule solid with --accent-fill and reversing a white
- * label out of it, and as one control that was right.
+ * Three treatments have held this state and it is worth knowing why this one
+ * is the third. It began as a 4% wash under a dark label, and the objection to
+ * that was the label, not the wash: an ink on a near-white ground has to clear
+ * 4.5:1, which caps it around L 35% at any hue, so the board's brand colour was
+ * being represented on screen by something that read as brown. The answer taken
+ * then was to fill the capsule solid with --accent-fill and reverse a white
+ * label out of it, which fixed the brown and cost a waived 2.51:1 label.
  *
- * As a row it was not. This row carries up to five capsules side by side, and
- * with three or four of them scoping the board the top of the screen became a
- * band of saturated orange that reads as an alarm rather than as state. So the
- * ground drops to --accent-pastel: still unmistakably the brand hue, still
- * picked out of a row of white capsules from across a room, but at a lightness
- * a deep orange ink can sit on - which also retires the waived white label on
- * this control. See tokens.css for the pair and its measurements.
+ * As a row that fill was too much. Up to five capsules sit here, and with three
+ * or four of them scoping the board the top of the screen became a band of
+ * saturated orange that reads as an alarm rather than as state - said in those
+ * words by the person the board is for, first as "too dark", then as "just the
+ * text colour and the line". A pastel ground was the intermediate answer and
+ * was rejected the same way: quieter, still a ground.
  *
- * What has not changed is that the state is never carried by the colour alone:
- * the capsule prints the scope it is holding in its value half, which is what a
- * colourblind reader and a screen reader both get.
+ * So the state is carried by the two marks that cost the row no area at all.
+ * --accent-mark draws the outline: it is the token for brand orange as a mark
+ * that carries meaning, measured at 3:1 on every surface, which is exactly the
+ * bar a 1px edge standing in for a state has to clear. --accent-ink draws the
+ * type, and this is the pairing the palette was built for - it is why an ink
+ * token exists separately from a fill one.
  *
- * Nor has the fill gone anywhere. Export at the end of this row, the board tab
- * in front and the alert count are all still solid --accent-fill; each of those
- * is one filled shape with white space around it, which is the case the fill
- * was argued for and still wins.
+ * The brown that started all of this does not come back, because the thing that
+ * made it read as brown was a large area of it. A 13px word and a hairline are
+ * not an area; they are the two places a deep orange is the *right* value.
+ *
+ * The state is still never carried by colour alone: the capsule prints the
+ * scope it is holding in its value half, which is what a colourblind reader and
+ * a screen reader both get.
+ *
+ * None of this touches --accent-fill. Export at the end of this row, the board
+ * tab in front and the alert count are all still solid orange; each of those is
+ * one filled shape with white space around it, which is the case the fill was
+ * argued for and still wins. The filter row is the case it lost.
  */
 .filter--on {
-  background: var(--accent-pastel);
-  /* The hairline is back, where the solid fill had it transparent. A pastel
-     ground does not describe its own edge against the white band the way a
-     saturated one did, and at this lightness --accent-line closes the shape
-     instead of reading as an outline drawn on top of it. */
-  border-color: var(--accent-line);
+  /* The ground is inherited from .filter and deliberately not restated: an
+     on-capsule and an off-capsule are the same white, and the whole point of
+     this version is that nothing behind the type changes. */
+  border-color: var(--accent-mark);
 }
 .filter--on .filter__key {
-  color: var(--accent-on-pastel);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 /*
- * One ink for both halves, and deliberately not a dimmer one for the value.
+ * One ink for both halves, and deliberately not a grey for the value.
  *
- * The obvious move on a pale ground is --ink-2 or --sub for the value half, the
- * way an untinted capsule does it. It is not taken: this is a 13px string
- * naming the scope in force - the part a colourblind reader and a screen reader
- * both rely on - and a grey on a warm ground reads as disabled rather than as
- * secondary. Both halves take --accent-on-pastel and the hierarchy between the
- * key and its value is carried by weight alone, which is what the filled state
- * settled on too, for its own reasons.
+ * An off-capsule sets its value in --sub, and inheriting that here was the
+ * obvious thing to do - the key is the loud half, the value qualifies it. It is
+ * not taken: this string names the scope in force, which is the part a
+ * colourblind reader and a screen reader both rely on, and a grey word next to
+ * an orange one reads as the grey one being switched off. Both halves take
+ * --accent-ink and the hierarchy between them is carried by weight alone.
  */
 .filter--on .filter__val,
 .filter--on .filter__caret {
-  color: var(--accent-on-pastel);
+  color: var(--accent-ink);
 }
 /*
  * The control the open menu belongs to, whether or not it is holding a scope:
  * the menu covers a third of the board, so which capsule it came out of has to
  * be unmistakable.
  *
- * --accent-pastel-strong under a --accent-mark hairline: the on-state one step
- * deeper, plus an edge. Open does outrank on here, and it can now, because the
- * two are a step apart inside one quiet register rather than two saturated
- * oranges side by side at the right-hand end of the row - which was the
- * objection that once collapsed this pair back onto a single value.
+ * The same outline and the same ink as the on-state, with the edge one step
+ * deeper: --accent-ink rather than --accent-mark. Deeper in the light theme and
+ * *lighter* in the dark one, since that is which way those two tokens sit in
+ * each - the same inversion the fill pair makes, for the same reason.
  *
- * The hairline is doing as much of the work as the ground. One step of
- * lightness between two pastels is a real distinction up close and a weak one
- * from a stand; the darker edge is visible at both distances. An open capsule
- * is in any case identified mostly by the panel hanging off it.
+ * One step of a hairline is not much, and it does not have to be. An open
+ * capsule has a panel the width of a menu hanging off its bottom edge; what
+ * this rule has to do is make sure the capsule itself does not look untouched
+ * while that panel is up, and an outline plus orange type does that. The
+ * treatments that shouted - a solid fill, then a tinted ground - were both
+ * removed from this row by name, and re-introducing one here on the argument
+ * that open outranks on would put back the exact thing that was asked for twice
+ * to be taken away.
+ *
+ * No box-shadow, and that is a constraint rather than a preference: the global
+ * :focus-visible rule in base.css draws the keyboard ring as a box-shadow at
+ * (0,1,0), and this selector is (0,2,0). A ring declared here would win, and a
+ * keyboard user would lose their focus indicator on every open menu.
  */
 .filter[aria-expanded='true'] {
-  background: var(--accent-pastel-strong);
-  border-color: var(--accent-mark);
+  border-color: var(--accent-ink);
 }
 .filter[aria-expanded='true'] .filter__key {
-  color: var(--accent-on-pastel);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 .filter[aria-expanded='true'] .filter__caret {
-  color: var(--accent-on-pastel);
+  color: var(--accent-ink);
 }
 /*
- * Hover on a pastel capsule is the open state's ground - one step deeper, with
- * the same darker hairline. A capsule that is on and under the pointer
- * therefore previews what clicking it will look like, which is the right thing
- * for a control whose click opens a menu.
+ * Hover deepens the outline to the open state's, so a capsule under the pointer
+ * previews what clicking it will look like. It keeps the 4% --accent-tint the
+ * plain hover above paints: that wash is a pointer affordance every capsule in
+ * the row has, present only while the pointer is on it, and it is not the fill
+ * this state had removed from it - which is a resting colour.
  *
- * Both selectors are needed and neither is redundant. The plain
- * button.filter:hover above paints the 4% --accent-tint, and at (0,2,1) it
- * outranks the flat [aria-expanded='true'] ground at (0,2,0) - so without the
- * second selector here, pointing at an open capsule dropped it back to a wash
- * while its ink stayed set for a pastel ground.
+ * Both selectors are needed and neither is redundant. button.filter:hover above
+ * is (0,2,1) and would otherwise win the border against .filter--on at (0,1,0)
+ * and .filter[aria-expanded='true'] at (0,2,0), dropping an on or open capsule
+ * to the pale --accent-line the moment it is pointed at - which is the one
+ * moment the reader is looking straight at it.
  */
 @media (hover: hover) {
   button.filter--on:hover,
   button.filter[aria-expanded='true']:hover {
-    background: var(--accent-pastel-strong);
-    border-color: var(--accent-mark);
+    background: var(--accent-tint);
+    border-color: var(--accent-ink);
   }
 }
 
@@ -1200,11 +1217,10 @@ button.filter {
   white-space: nowrap;
 }
 /*
- * Everything on the capsule comes up with it once the ground is orange, so the
- * control reads as one state rather than as a dark label with grey furniture
- * beside it. --accent-on-pastel, the ink the two pastel grounds are measured
- * against - not --accent-ink, which is measured on the 4% tint and lands under
- * AA on these.
+ * Everything on the capsule turns with it, so the control reads as one state
+ * rather than as an orange label with grey furniture beside it. --accent-ink,
+ * the same token the key and the caret take: this capsule's ground is the
+ * row's, which is one of the surfaces that ink is measured on.
  *
  * The window itself has to be listed here, and that is the whole point of the
  * rule. The other four capsules put their text in .filter__key/.filter__val,
@@ -1224,74 +1240,27 @@ button.filter {
 .filter[aria-expanded='true'] .timepicker__val,
 .filter[aria-expanded='true'] .timepicker__icon,
 .filter[aria-expanded='true'] .timepicker__zone {
-  color: var(--accent-on-pastel);
+  color: var(--accent-ink);
 }
 
 /*
  * ---- the capsule holding a pair of DATES ----
  *
- * The one place on this row where the brand orange is a hairline and a glyph
- * rather than a ground, and the exception is about size, not about taste.
+ * It had a variant of its own here, `.timepicker__trigger--dates`, and it has
+ * been retired rather than restyled. The variant existed for one reason: while
+ * `.filter--on` filled solid, a date range - "3 Sep – 30 Sep 2026", two or
+ * three times the width of "Injection" - put a band of saturated orange across
+ * the toolbar wider than every other control combined, and the eye reads the
+ * widest mark on a row as the loudest one. So the dates capsule kept the row's
+ * ground and carried its state in an orange glyph and an orange hairline
+ * instead.
  *
- * `.filter--on` grounds the whole capsule because the scope capsules say
- * "Injection" or "Lamp 2" - three-to-nine characters that have to be legible
- * from across a room, where a 4% tint is not (see the note on `.filter--on`
- * above; that reasoning stands and this does not reopen it). A date range is
- * "3 Sep – 30 Sep 2026", two or three times that width, and grounding it puts a
- * band of brand colour in the toolbar wider than every other control combined.
- * At that size the eye reads the widest mark on the row as the loudest one,
- * whatever its saturation, and the capsule stops saying "this control is
- * scoping the board".
- *
- * So the state signal moves rather than disappearing: an orange calendar glyph,
- * an orange hairline, and the row's own ground and ink between them. The capsule
- * also prints the dates themselves, which is the part a colourblind reader and
- * a screen reader get either way - the fill was never carrying the state alone.
- *
- * Declared after the two blocks it overrides and at a higher specificity than
- * both (`.filter.timepicker__trigger--dates`, 0-3-0, over `.filter--on` and
- * `.filter[aria-expanded]` at 0-2-0), so neither ordering nor a later edit to
- * those can quietly re-fill it.
+ * That is now what `.filter--on` does for every capsule in the row, so the
+ * exception describes the rule and the rule is enough. The picker sets
+ * `.filter--on` in the dates case like any other, the width objection cannot
+ * arise - an outline costs the same area at any width - and one fewer treatment
+ * has to be kept in step with the others.
  */
-.filter.timepicker__trigger--dates {
-  background: var(--panel);
-  border-color: var(--accent-line);
-  color: var(--text);
-}
-.filter.timepicker__trigger--dates .timepicker__val {
-  color: var(--text);
-  font-weight: 600;
-}
-/* `--accent-ink`, the orange that is allowed to be type: the glyph sits on the
-   panel ground where `--accent-fill` would measure well under 4.5:1. */
-.filter.timepicker__trigger--dates .timepicker__icon {
-  color: var(--accent-ink);
-}
-.filter.timepicker__trigger--dates .timepicker__zone,
-.filter.timepicker__trigger--dates .filter__caret {
-  color: var(--sub);
-}
-/*
- * Open, and hover, stay inside the same quiet register.
- *
- * The filter row's rule is that the control an open panel belongs to must be
- * unmistakable while that panel covers a third of the board - but taking the
- * full pastel ground the moment it is clicked would undo the whole point above,
- * and flash the band this variant exists to avoid every time the panel is
- * opened. The 4% tint plus the deeper hairline is the same distinction one
- * register down, and the panel hanging off the capsule is doing most of that
- * work anyway.
- */
-.filter.timepicker__trigger--dates[aria-expanded='true'] {
-  background: var(--accent-tint);
-  border-color: var(--accent-ink);
-}
-@media (hover: hover) {
-  button.filter.timepicker__trigger--dates:hover {
-    background: var(--accent-tint);
-    border-color: var(--accent-ink);
-  }
-}
 
 .timepanel {
   position: absolute;

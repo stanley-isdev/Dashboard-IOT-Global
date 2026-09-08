@@ -91,8 +91,8 @@ export function ProcessFilter() {
 
   const label = (p: Process | 'all') => (p === 'all' ? t('filter.all') : p);
 
-  /* Whether the capsule is holding a process, which draws it in the brand
-     pastel. This one needs no guard: 'all' is both the default and what the
+  /* Whether the capsule is holding a process, which outlines and inks it in
+     the brand orange. This one needs no guard: 'all' is both the default and what the
      parameter reads while the control is still disabled. */
   const narrowed = filters.process !== 'all';
 
