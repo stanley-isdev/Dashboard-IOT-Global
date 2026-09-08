@@ -2761,8 +2761,17 @@ button.filter {
  * stay on one line, because it shares that line with the label and a wrap there
  * would push the head to two rows. Here it has the figure's height to spend, so
  * "Target 95%" sets as two centred lines rather than shrinking the figure or
- * ellipsising itself - which is also what lets Thai's longer "เป้าหมาย 95%"
- * render in full at the same width.
+ * ellipsising itself.
+ *
+ * Two lines is the budget, not a guideline: the figure row's min-height holds
+ * ~37px, two 10px lines at 1.25 plus this padding come to ~29px, and a third
+ * line is ~12px the row does not have. It grows, and the six cards are grid
+ * siblings that stretch together, so one card's third line is 12px off the map
+ * on all six. That is what Thai's "เป้าหมาย 95%" did here - ICU breaks Thai on
+ * syllables, so เป้า | หมาย is a legal break and the word came apart in a 45px
+ * pill. Fixed in the string, not here: the strip reads 'kpi.targetShort'
+ * ("เป้า 95%"), which is two unbreakable runs in both languages. Anything put
+ * in this slot has the same two-line budget to fit.
  *
  * It stays at --fs-nano, the same size as the pills on RUNNING and STOP.
  *

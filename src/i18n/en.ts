@@ -234,6 +234,24 @@ export const en = {
   // non-zero, so it is the strip's one piece of across-the-room signalling.
   'kpi.attention.badge': 'Alert',
   'kpi.target': 'Target {target}%',
+  /*
+   * The same qualifier as the pill beside the figure, where it has about 45px
+   * and sets as two centred lines.
+   *
+   * English needs no shorter wording, so this is 'kpi.target' verbatim and the
+   * key exists for Thai. "Target" and "95%" are two unbreakable runs and wrap
+   * to the two lines the figure row was drawn to hold; Thai's "เป้าหมาย" is one
+   * word to a reader and two to the line breaker (ICU breaks Thai on
+   * syllables, so เป้า | หมาย is a legal break), which made three lines, grew
+   * the figure row past its min-height and, because the six cards are grid
+   * siblings that stretch to a common height, pushed the whole strip down in
+   * Thai only. "เป้า" is what the plants say anyway.
+   *
+   * Split from 'kpi.target' rather than shortened in place: the drawer tile
+   * caption that also reads it has a full card width and no reason to lose the
+   * word. Mirrors 'kpi.achievement.planShort', split off for the same slot.
+   */
+  'kpi.targetShort': 'Target {target}%',
   /* Both captions are measured to the narrowest card they appear on: 161px at
      TV density, which is sixteen characters at 18px. The old running caption was
      forty-eight and ellipsised to "Mass Pro + Dandori · 4M Chang…" even at the

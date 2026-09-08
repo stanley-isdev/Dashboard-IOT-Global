@@ -275,8 +275,13 @@ export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview 
          * Tone follows the tier, the same as the rail and the delta. The three
          * were one decision: an amber rail under a neutral target would put the
          * contradiction inside a single card.
+         *
+         * `targetShort`, not `target`: the pill's two-line budget is the figure
+         * row's height, and Thai's "เป้าหมาย" breaks mid-word into a third line
+         * that grows every card in the strip. The full wording stays on the
+         * drawer tile, which has the width for it. See the key's own note.
          */
-        meta={t('kpi.target', { target: data.target_oa })}
+        meta={t('kpi.targetShort', { target: data.target_oa })}
         metaTone={oaTone}
         metaAt="figure"
         delta={oaGap === null ? undefined : t('kpi.oa.gap', { delta: formatSigned(oaGap, lang) })}
