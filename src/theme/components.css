@@ -5502,13 +5502,20 @@ a.chip {
  *
  * .kpi--feature is white on the board's --bg and separated by a shadow. Here the
  * ground is the panel's own white, so a white card on it is a shadow and nothing
- * else. --panel-2 on --panel is the same one step of value the other way round -
- * #f7f8fa on #fff against the strip's #fff on #f4f6f9 - so the card reads as the
- * same object with the figure and the ground swapped, which is what a surface
- * one layer up should look like.
+ * else. A step of value the other way round - the card lighter than the board,
+ * the tile darker than the panel - is what makes it read as the same object with
+ * the figure and the ground swapped, which is what a surface one layer up should
+ * look like.
+ *
+ * --tile-fill and not --panel-2, which is what this was and is a step sized for
+ * a surface the eye reads past rather than one it reads. The note on that token
+ * carries the reasoning; the short version is that four tiles at --panel-2 in
+ * the brightest part of the panel read as wells cut into it, and the smallest
+ * step that still separates reads as four cards. It is a fill and not a border
+ * for the reason the next rule records.
  */
 .drawer__tiles .kpi {
-  background: var(--panel-2);
+  background: var(--tile-fill);
 }
 /*
  * The strip drops its hairline because the shadow and the fill are already two

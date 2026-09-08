@@ -48,6 +48,25 @@
   --band-line: #e6e9ee;
   /* Nested plant rows and the inactive half of a segmented control. */
   --panel-2: #f7f8fa;
+  /*
+   * The base drawer's four tiles: --panel-2 with most of the step taken back
+   * out, about a third of the way from white rather than the whole way.
+   *
+   * --panel-2 is drawn for a surface the eye is meant to read *past* - a nested
+   * plant row under a base row, the half of a segmented control that is not
+   * selected - where the fill's job is to say "not this one". A tile is the
+   * opposite: it is the thing being read, four of them stacked two-up in the
+   * brightest part of the panel, and at --panel-2 they carried enough grey to
+   * read as inset wells rather than as the same raised card the KPI strip
+   * behind the drawer is made of.
+   *
+   * So it keeps a step - the tile still has to separate from the panel's white
+   * without a border, and at 0 it is the shadow-only card that separates from
+   * nothing - but the smallest step that still lands as one. Lighter than every
+   * other surface in the set, so --panel-3 goes on setting the binding ink
+   * constraint and check-contrast needs no row for it.
+   */
+  --tile-fill: #fafbfc;
   /* The sticky ranking header. A real text surface - the column labels sit on
      it - so check-contrast measures against it too. */
   --panel-3: #f2f4f7;
@@ -799,6 +818,10 @@ html[lang='th']:root[data-density='tv'] {
   --band: #101a2c;
   --band-line: #223049;
   --panel-2: #16223a;
+  /* The drawer's tiles. Same fraction of the panel-to-panel-2 step as the light
+     theme takes, in the other direction: a lift off --panel small enough that
+     four of them read as cards rather than as four wells cut into the panel. */
+  --tile-fill: #121d31;
   /* The sticky ranking header - the lightest text surface, so every ink below is
      measured against it. */
   --panel-3: #1c2942;
