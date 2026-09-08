@@ -11,7 +11,8 @@
     "start": "tsx --env-file=.env src/index.ts",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "probe:window": "tsx --env-file=.env scripts/probe-window.ts"
   },
   "dependencies": {
     "@dashboard/contract": "*",
