@@ -93,8 +93,12 @@ their `main: ./src/index.ts`. Omitting dev dependencies produces a tree that
 installs cleanly and then cannot boot.
 
 If `npm ci` fails with `EPERM ... unlink ... esbuild.exe`, something is holding
-a file it needs to delete - almost always a server left running in a terminal.
-Find it and stop only what belongs to this project:
+a file it needs to delete. On a server that already has the service installed,
+that something is almost always the service itself - stop it first, and see
+Redeploying below, which is written around exactly this. Before the first
+install it is usually a server left running in a terminal. Either way, find it
+and stop only what belongs to this project; other things on this host run node
+too:
 
 ```powershell
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Select-Object ProcessId, CommandLine | Format-List
@@ -192,8 +196,8 @@ Invoke-RestMethod http://127.0.0.1:8080/api/v1/meta  # -> sources, each with its
 Day to day:
 
 ```powershell
-nssm restart DashboardIotApi
-nssm stop DashboardIotApi
+C:\tools\nssm\nssm.exe restart DashboardIotApi
+C:\tools\nssm\nssm.exe stop DashboardIotApi
 Get-Content logs\api-err.log -Tail 50 -Wait
 ```
 
@@ -234,17 +238,42 @@ fallback - the thing that only ever breaks on reload.
 
 ## Redeploying after a code change
 
+**Stop the service first.** It is not optional and it is not about a clean
+shutdown: the service runs the TypeScript through `tsx`, `tsx` is built on
+esbuild, and the running process therefore holds
+`node_modules\@esbuild\win32-x64\esbuild.exe` open for as long as it lives.
+`npm ci` begins by deleting `node_modules`, so with the service up it fails
+`EPERM ... unlink ... esbuild.exe` **after** it has already removed part of the
+tree - which is worse than not starting, because the next command then fails
+with `'tsc' is not recognized` and the checkout needs a second `npm ci` to
+become whole again.
+
 ```powershell
+C:\tools\nssm\nssm.exe stop DashboardIotApi
 git pull
 npm ci
 npm run build
-nssm restart DashboardIotApi
+C:\tools\nssm\nssm.exe start DashboardIotApi
+Invoke-RestMethod http://127.0.0.1:8080/healthz
 ```
 
-`dist/` is read off disk on every request, so a frontend-only change is live as
-soon as the build finishes - the restart is for the backend. Restarting anyway
-costs a second and removes the question. If `scripts/install-service.ps1` or
-`server/.env` changed, re-run the install script instead of `nssm restart`.
+The dashboard is down between the stop and the start - about a minute. There is
+no way around that with one process, and a wall of screens shows its own
+reconnect state while it lasts.
+
+`nssm` by its full path because `C:\tools\nssm` is not on PATH. Put it there if
+you would rather type `nssm` (a new shell picks it up, the current one does
+not):
+
+```powershell
+[Environment]::SetEnvironmentVariable('Path', $env:Path + ';C:\tools\nssm', 'Machine')
+```
+
+If only `public/`, `src/` or another frontend file changed, `npm ci` has nothing
+to do and the whole dance is unnecessary - `git pull; npm run build` is enough,
+and the new files are live on the next request without a restart. The stop is
+for `npm ci` specifically. If `scripts/install-service.ps1` or `server/.env`
+changed, re-run the install script instead of starting by hand.
 
 ---
 
@@ -260,5 +289,7 @@ costs a second and removes the question. If `scripts/install-service.ps1` or
 | A hashed asset 404s and the page is blank | `index.html` and `assets/` went out of step. Rebuild; do not copy `dist/` folders between machines. |
 | Changed `apiBaseUrl`, nothing happened | Edited in `dist/` and then overwritten by a rebuild. Edit `public/config/runtime-config.json`. |
 | Every source `down` in `/api/v1/meta` | `INFLUX_URL` missing its `:8181` port, or credentials blank. |
-| `npm ci` fails `EPERM ... esbuild.exe` | A node process is holding the file. See step 1. |
+| `npm ci` fails `EPERM ... esbuild.exe` | The service is running and holds esbuild.exe through tsx. Stop it and re-run. |
+| `'tsc' is not recognized` right after that | The failed `npm ci` had already deleted part of node_modules. Stop the service, run `npm ci` again, and it completes. |
+| `nssm` is not recognized | It is at `C:\tools\nssm\nssm.exe` and that folder is not on PATH. See Redeploying. |
 | Dashboard died right after a Grafana upgrade | The service was pointed at Grafana's bundled `nssm.exe`. Re-run the install script with `C:\tools\nssm\nssm.exe`. |
