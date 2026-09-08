@@ -182,9 +182,10 @@ version, that `npm ci` has run, that `server/.env` exists, and that `STATIC_DIR`
 names a folder that has actually been built, before registering anything. Then
 it configures auto-start, restart-on-crash, and rotating logs under `logs\`.
 
-Verify:
+Verify - after giving it a few seconds, for the reason under Redeploying:
 
 ```powershell
+Start-Sleep -Seconds 10
 Get-Service DashboardIotApi
 Invoke-RestMethod http://127.0.0.1:8080/healthz      # -> status = ok
 Invoke-RestMethod http://127.0.0.1:8080/api/v1/meta  # -> sources, each with its real state
@@ -254,7 +255,22 @@ git pull
 npm ci
 npm run build
 C:\tools\nssm\nssm.exe start DashboardIotApi
-Invoke-RestMethod http://127.0.0.1:8080/healthz
+```
+
+**`start` returns before the port answers**, so do not verify with a bare
+request - it will refuse the connection and look like a failed deploy.
+`tsx` transpiles the server on every boot, and `buildApp` awaits the first
+InfluxDB snapshot before it binds. Measured 2-4 s with no credentials
+configured; longer against a live instance, where the first poll runs the real
+queries. Wait for it instead:
+
+```powershell
+$deadline = (Get-Date).AddSeconds(60)
+do {
+  Start-Sleep -Seconds 2
+  $up = try { (Invoke-RestMethod http://127.0.0.1:8080/healthz -TimeoutSec 3).status -eq 'ok' } catch { $false }
+} until ($up -or (Get-Date) -gt $deadline)
+if ($up) { 'up' } else { 'not answering - read logs\api-out.log, then logs\api-err.log' }
 ```
 
 The dashboard is down between the stop and the start - about a minute. There is
@@ -292,4 +308,5 @@ changed, re-run the install script instead of starting by hand.
 | `npm ci` fails `EPERM ... esbuild.exe` | The service is running and holds esbuild.exe through tsx. Stop it and re-run. |
 | `'tsc' is not recognized` right after that | The failed `npm ci` had already deleted part of node_modules. Stop the service, run `npm ci` again, and it completes. |
 | `nssm` is not recognized | It is at `C:\tools\nssm\nssm.exe` and that folder is not on PATH. See Redeploying. |
+| Connection refused right after `nssm start` | Too early. The port binds a few seconds after the service starts. Poll `/healthz` rather than asking once; `logs\api-out.log` ends with a "Server listening" line when it is genuinely up. |
 | Dashboard died right after a Grafana upgrade | The service was pointed at Grafana's bundled `nssm.exe`. Re-run the install script with `C:\tools\nssm\nssm.exe`. |
