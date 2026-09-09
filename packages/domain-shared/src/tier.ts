@@ -4,7 +4,8 @@ import type { Tier, TierPolicy } from '@dashboard/contract';
  * Ported from src/domain/tier.ts. D-16 exists because the same %OA was
  * coloured by two different rules: the web mockup used `TARGET-5 / TARGET-20`
  * (90/75 at target 95) while the Grafana panels hardcode 95/80. One served
- * value, computed here from the server-owned policy, replaces both.
+ * value, computed here from the server-owned policy, replaces both - and since
+ * 2026-09-08 the value it serves is the panel's 95/80.
  */
 export function deriveTier(value: number | null, policy: TierPolicy): Tier {
   if (value === null) return 'unknown';
@@ -13,7 +14,7 @@ export function deriveTier(value: number | null, policy: TierPolicy): Tier {
   return 'critical';
 }
 
-/** Human-readable bounds for the map legend, e.g. `>= 90`, `75-89`, `< 75`. */
+/** Human-readable bounds for the map legend, e.g. `>= 95`, `80-94`, `< 80`. */
 export function tierBounds(policy: TierPolicy): { tier: Tier; label: string }[] {
   return [
     { tier: 'good', label: `≥ ${policy.good_at}` },

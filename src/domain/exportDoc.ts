@@ -79,14 +79,13 @@ function scopeSuffix(range: string, process: string): string {
  * drill-downs where the base and the lamp *are* the page.
  */
 export function overviewExportDoc(data: GlobalOverview): ExportDoc {
-  const { range, process, region, plant, zone } = data.filters_applied;
+  const { range, process, region, plant } = data.filters_applied;
   return {
     name: exportName(
       [
         'fleet',
         region === 'all' ? null : region,
         plant === 'all' ? null : plant,
-        zone === 'all' ? null : zone,
         scopeSuffix(range, process),
       ],
       data.meta.generated_at,

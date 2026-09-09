@@ -160,6 +160,46 @@
   --status-nodata-ink: #5c616b;
   --status-other-ink: #574b93;
 
+  /*
+   * ---- %OA ink: the one figure that does not wear the status inks ----
+   *
+   * Set by the design owner on 2026-09-08 to the exact values the operators'
+   * `Machine Status V2.0` panel paints its own %OA with, so that the number on
+   * the wall and the number on this board are the same colour as well as the
+   * same tier. They are Tailwind's emerald/amber/red 600, which is what that
+   * panel was built from - see docs/grafana/MACHINE-STATUS-V2.md.
+   *
+   * Three tokens rather than an edit to --status-*-ink, because only the tier
+   * moves onto them. RUNNING, STOP, the Run/Stop pills, the alert rows and the
+   * banners keep the inks above: those are statuses, not readings against a
+   * target, and repainting them would drag the whole board along behind one
+   * card. src/domain/status.ts is where the tier tokens pick these up, and it is
+   * the only place that should.
+   *
+   * **None of the three clears AA as text, and that is a decision rather than
+   * an oversight.** Against the 4.5:1 a word owes, on the ranking header that
+   * binds every other ink on this board: green 3.42:1, amber 2.89:1, red 4.38:1.
+   * The red passes on pure white and nowhere else; the amber is under even the
+   * 3:1 a non-text mark owes. check-contrast.mjs measures all three on every run
+   * and prints them WAIVE with the reason attached - read the waiver note in
+   * that file before reaching for a fourth. The mitigation is the one
+   * src/domain/status.ts already mandates: every tier carries a glyph and a word
+   * as well as a hue. The ranking's %OA column is the exception the client asked
+   * for, and so it is the place this waiver costs the most.
+   *
+   * One value per token, not four: the dark and kiosk blocks below deliberately
+   * do not override these. "The panel's colours" is the whole instruction, and a
+   * dark-theme variant would by definition be a different green. Worth knowing
+   * which way the three move when they get there - the dark board flips the
+   * problem rather than fixing it. Green and amber come up (3.86 and 4.56 on the
+   * binding surface) and the red drops to 3.01, so the tier that most needs to
+   * be read is the one that reads worst. If that has to be fixed it is three
+   * lines in the [data-theme='dark'] block, and check-contrast.mjs will say so.
+   */
+  --oa-good-ink: #059669;
+  --oa-warn-ink: #d97706;
+  --oa-crit-ink: #dc2626;
+
   /* ---- status: tint backgrounds for the Run/Stop pills and badges ---- */
   --status-good-tint: #e3f5ee;
   --status-warn-tint: #fbf0dd;

@@ -305,7 +305,7 @@ export function KpiCard({
      *
      * The pill is not decoration, it is a claim: this figure came off the
      * current payload and will tick when the next one lands. A served
-     * threshold - 75, 90 - does not tick, so giving it the same treatment
+     * threshold - 80, 95 - does not tick, so giving it the same treatment
      * teaches the reader that the marking means nothing.
      */
     ...(infoFixed ?? {}),

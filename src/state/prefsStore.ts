@@ -76,7 +76,7 @@ interface PrefsState {
 export const usePrefs = create<PrefsState>()(
   persist(
     (set) => ({
-      lang: 'en',
+      lang: 'th',
       theme: 'light',
       kiosk: false,
       timeMode: 'site_local',

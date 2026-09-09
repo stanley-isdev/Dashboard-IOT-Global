@@ -83,6 +83,19 @@ describe('loadRuntimeConfig', () => {
     expect(problem).toMatch(/refreshMs/);
   });
 
+  /**
+   * `FILE` is deliberately a file written before `windowedRequestTimeoutMs`
+   * existed - which is what every already-deployed runtime-config.json is. A
+   * version bump must not turn one of those into a config problem and drop the
+   * whole board to FALLBACK_CONFIG over a field nobody has heard of yet.
+   */
+  it('fills in a field the deployed file has never heard of', async () => {
+    serve(FILE);
+    const { config, problem } = await loadRuntimeConfig();
+    expect(problem).toBeNull();
+    expect(config.windowedRequestTimeoutMs).toBe(FALLBACK_CONFIG.windowedRequestTimeoutMs);
+  });
+
   it('never reports a problem it has not got', async () => {
     serve(FILE);
     const { problem } = await loadRuntimeConfig();

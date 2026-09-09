@@ -125,11 +125,17 @@ export type Tier = z.infer<typeof zTier>;
 /**
  * The colour rule, shipped from the API instead of hardcoded in the front end.
  *
- * This is what actually closes D-16. Today the web app mockup uses
+ * This is what actually closes D-16. The web app mockup used
  * `TARGET_OA-5 / TARGET_OA-20` (90/75 at target 95) while the Grafana panels
- * hardcode 95/80, so the same plant can be amber on one screen and green on
+ * hardcode 95/80, so the same plant could be amber on one screen and green on
  * another. Two constants in two codebases is the bug; one served value that
  * both read is the fix.
+ *
+ * Which of the two numbers won is a separate question from the shape, and it
+ * was settled on 2026-09-08 in favour of the panel's - the served policy now
+ * carries 95/80. This schema is indifferent to that, which is the point of it:
+ * the bands travel in the payload, so moving them again is a one-line change in
+ * server/src/config/policy.ts and nothing here or in the front end.
  */
 export const zTierPolicy = z.object({
   id: z.string(),
@@ -388,12 +394,62 @@ export const zPolicyBlock = z.object({
 
 /* ----------------------------------------------------------- site basics */
 
+/**
+ * Why a site has no telemetry - `null` whenever it is reporting.
+ *
+ * The board could always say a site was `not_connected`; it could never say
+ * WHY, and the two silences that look identical on screen demand opposite
+ * responses. SEH has no data because its gateways are still being fitted -
+ * expected, on schedule, nothing to do. STJ has no data while master data
+ * insists it is `live` - which is not a rollout state at all, it is an open
+ * defect somewhere between the plant and this backend (D-17), and it sat
+ * unnoticed for weeks precisely because the screen had no way to say so.
+ *
+ * `since` and `days` exist so an absence AGES VISIBLY. A note alone goes stale
+ * silently - it reads the same on day one and day ninety - whereas "unexplained
+ * for 14 days" is a number that gets uncomfortable on its own and eventually
+ * makes someone ask. That is the whole mechanism by which this stops being
+ * forgotten a second time.
+ */
+export const zAbsence = z.object({
+  /**
+   * An explanation a human can add, or `null` - and `null` is the normal case.
+   *
+   * **The reading itself does not come from here.** A site with this object
+   * attached has no telemetry, full stop, and that is a database fact the UI
+   * states directly ("no telemetry received"). This field is only for what the
+   * database cannot know: that SEH's gateways are mid-installation, that VNS
+   * has no date scheduled. Where nobody knows more than the query does, it
+   * stays `null` and the reader is told exactly what was observed.
+   *
+   * There is deliberately no date and no day count. Every earlier attempt at
+   * one had to be invented - none of these sites ever had data to stop, so
+   * there is no moment for a count to run from - and an invented date becomes a
+   * confident figure on screen that nothing supports.
+   */
+  reason: z.string().nullable(),
+  /** Who can resolve it - a team, not an individual. `null` when unassigned. */
+  owner: z.string().nullable(),
+  /**
+   * True when master data claims this site is `live` yet nothing has ever
+   * reached us - config and observation contradicting each other.
+   *
+   * Distinct from a planned absence: nobody needs to chase SEH's installation,
+   * and somebody urgently needs to chase this. The UI is expected to treat it
+   * as a fault rather than as a rollout stage.
+   */
+  contradicts_config: z.boolean(),
+});
+export type Absence = z.infer<typeof zAbsence>;
+
 /** Identity and reporting state shared by company / plant / zone rows. */
 export const zSiteCore = z.object({
   status: zSiteStatus,
   data_readiness: zDataReadiness,
   last_seen: zIsoUtc.nullable(),
   grafana_url: z.string().nullable(),
+  /** See zAbsence. `null` for any site that is reporting. */
+  absence: zAbsence.nullable(),
 });
 
 export const zCompanyIdentity = z.object({

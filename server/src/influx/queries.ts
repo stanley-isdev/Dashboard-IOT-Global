@@ -24,8 +24,43 @@ import { ident, literal } from './client.ts';
  * 200 ms, and single-day windows answer back to the retention edge.
  *
  * 71 keeps a margin under the 72 h boundary that still worked.
+ *
+ * **Re-measured 2026-09-08, and 71 is not a safe width - only a usually-safe
+ * one.** The cap counts FILES, and the file count for a given width is not
+ * constant: Core never compacts, so the newest days are held in many small
+ * files and the same 71 h that answers over mid-August is rejected over the
+ * start of September. Walking 11 Aug - 8 Sep as ten 71 h chunks:
+ *
+ * ```
+ *   chunk 0..6, 8, 9                        OK   (36 -> 73 rows each)
+ *   chunk 7   31 Aug 20:00 .. 3 Sep 19:00   HTTP 500: would scan 432 Parquet
+ *                                           files, exceeding the file limit
+ * ```
+ *
+ * One rejected chunk used to cost the whole board (`fetchWindow` threw, the
+ * route emptied the census), so every window reaching over that stretch - any
+ * pick wider than ~4 days - came back as zeros behind the amber banner. So 71
+ * is now the width of the FIRST attempt only, and a rejected chunk is retried
+ * at `NARROW_WINDOW_HOURS` rather than losing the window. See `fetchWindow`.
  */
 export const MAX_WINDOW_HOURS = 71;
+
+/**
+ * The width a rejected chunk is retried at.
+ *
+ * 24 h, because that is the widest re-attempt measured to hold over the whole
+ * retention depth: on 2026-09-08 all 28 single-day chunks of 11 Aug - 8 Sep
+ * answered (0 rejections, slowest 1,058 ms), where the same window in 71 h
+ * chunks lost one and in 12 h chunks cost 56 queries for no further gain.
+ *
+ * Retrying narrow rather than chunking narrow in the first place is what keeps
+ * the common windows fast: a 3-day pick still costs one query per family, and
+ * only the stretch that is actually too dense pays for the split. Measured
+ * end-to-end over the full 28 days - the worst case there is - 71 h chunks with
+ * narrow retries took ~10 s and 39 queries against ~19 s and 84 for chunking
+ * everything at 24 h.
+ */
+export const NARROW_WINDOW_HOURS = 24;
 
 /**
  * How far back the instance still holds data, in days - the calendar's `min`.
@@ -306,6 +341,88 @@ function latestMachineStatusWhere(whereTime: string): string {
     `    AND ${ident('Result')} IN (${SUBSTANTIVE_STATUSES.map(literal).join(', ')})`,
     ') t WHERE rn = 1',
   ].join('\n');
+}
+
+/**
+ * Q-09: has this plant EVER reached us - an existence probe, not an aggregate,
+ * over ONE slice of the horizon.
+ *
+ * The question `latestMachineStatusSql` cannot answer. Its window is
+ * `HOT_WINDOW_HOURS` wide, so a plant missing from it is `lastSeen: null`
+ * whether it is on a shutdown week or has never sent a row (config/policy.ts's
+ * EVER_SEEN carries why that distinction is worth a query).
+ *
+ * **`ORDER BY time DESC LIMIT 1`, deliberately not `MAX(time)` or `COUNT(*)`.**
+ * All three answer the question, but the aggregates have to read every row in
+ * the slice before returning anything, while this one stops at the first row it
+ * finds. Combined with `everSeenWindows` handing slices out newest-first, that
+ * asymmetry is what makes a reporting plant nearly free: it hits on the first
+ * slice and the walk ends there.
+ *
+ * **One slice per call, not one horizon per call** - see `everSeenWindows`.
+ *
+ * No `Result` predicate, unlike Q-01. Q-01 filters to SUBSTANTIVE_STATUSES
+ * because it has to pick a row that means something to show on a tile; here any
+ * row at all is the answer, and narrowing could only turn "we heard from this
+ * plant" into a false "never" for a site whose whole history is statuses we do
+ * not model.
+ *
+ * One plant per call rather than `GROUP BY plant`: the caller only ever asks
+ * about plants it has not already seen (a set that shrinks to nothing as sites
+ * come online), and a grouped query would pay for the whole estate to re-answer
+ * a question already settled for most of it.
+ */
+export function plantEverSeenInSql(plant: string, w: Window): string {
+  return [
+    `SELECT ${ident('time')} AS last_seen`,
+    '  FROM production_machine_status',
+    ` WHERE ${ident('plant')} = ${literal(plant)}`,
+    `   AND ${betweenClause(w)}`,
+    ` ORDER BY ${ident('time')} DESC`,
+    ' LIMIT 1',
+  ].join('\n');
+}
+
+/**
+ * The slices Q-09 walks, **newest first**, covering `horizonDays` back from now.
+ *
+ * Newest-first is not cosmetic: the probe short-circuits on its first hit, so
+ * this ordering is what turns a live plant's answer into a single 74 ms query
+ * instead of a 30-slice crawl.
+ *
+ * Slicing at all is forced by the instance. InfluxDB 3 Core caps the Parquet
+ * files one query may scan, and measured on 2026-09-08 the boundary for a
+ * now-anchored single-plant probe sits between 72 and 84 hours: 72 h answers in
+ * 76 ms, 84 h is refused with `HTTP 500 ... would scan 432 Parquet files`. Row
+ * age is not what costs - a one-day window 30 days back answers in 305 ms - so
+ * the horizon is unreachable as one read and routine as thirty narrow ones.
+ *
+ * `sliceHours` is a margin, not a proven-safe width. The cap counts files, and
+ * BACKEND-HANDOVER §4.2's re-measurement on the same day found a 71 h chunk
+ * refused while its nine neighbours answered, because Core never compacts and
+ * the file count for a fixed width grows as the window nears now. Callers must
+ * therefore treat any slice as refusable; `probeEverSeen` aborts a whole walk
+ * rather than read a partial one as a negative.
+ *
+ * `chunkWindow` already encodes the same constraint for windowed fetches; this
+ * reuses it rather than inventing a second chunker with the same reason behind
+ * it.
+ */
+export function everSeenWindows(nowMs: number, horizonDays: number, sliceHours: number): Window[] {
+  if (!Number.isInteger(horizonDays) || horizonDays <= 0) {
+    throw new Error(`horizonDays must be a positive integer, got ${horizonDays}`);
+  }
+  if (!Number.isInteger(sliceHours) || sliceHours <= 0) {
+    throw new Error(`sliceHours must be a positive integer, got ${sliceHours}`);
+  }
+  const to = new Date(nowMs).toISOString();
+  const from = new Date(nowMs - horizonDays * 24 * HOUR_MS).toISOString();
+  return chunkWindow({ from, to }, sliceHours).reverse();
+}
+
+/** One row of Q-09 - present means the plant reported inside that slice. */
+export interface PlantEverSeenRow {
+  last_seen: string | number | null;
 }
 
 /**

@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import type { Env } from './config/env.ts';
+import { COMPANIES } from './config/masterData.ts';
 import type { Deps } from './deps.ts';
 import { createInfluxClient } from './influx/client.ts';
 import authPlugin from './plugins/auth.ts';
@@ -35,6 +36,9 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
     intervalMs: env.SNAPSHOT_INTERVAL_MS,
     oaIntervalMs: env.OA_REFRESH_MS,
     trendIntervalMs: env.TREND_REFRESH_MS,
+    // Every plant in master data, not just the `live` companies': whether a
+    // site has ever reported is exactly what we must not take from config.
+    plantCodes: COMPANIES.flatMap((c) => c.plants.map((p) => p.code)),
     log: app.log,
   });
   const windows = createWindowStore({ client, ttlMs: env.WINDOW_CACHE_MS, log: app.log });

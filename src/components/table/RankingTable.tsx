@@ -12,6 +12,7 @@ import {
   formatInt,
   formatWeekdayDate,
 } from '../../i18n/format';
+import { useDisplayZone } from '../../state/useDisplayZone';
 import { useLinkWithFilters } from '../../state/useFilters';
 import { GrafanaLink } from '../common/GrafanaLink';
 import { Flag } from '../primitives/Flag';
@@ -27,10 +28,16 @@ import { DEFAULT_SORT, nextSort, sortRows, type SortCol, type SortState } from '
  *
  * The Date/Time column is the one that earns its width - nine bases across seven
  * timezones genuinely span three calendar days at any given moment, and without
- * the local date beside the local clock a reader has no way to know whether
- * STJ's figures are from the same day as Ayutthaya's. The shift code shares that
- * cell rather than taking a column of its own, because "D" is two pixels of
- * information and the artboard is right to fold it in.
+ * the date beside the clock a reader has no way to know whether STJ's figures
+ * are from the same day as Ayutthaya's. The shift code shares that cell rather
+ * than taking a column of its own, because "D" is two pixels of information and
+ * the artboard is right to fold it in.
+ *
+ * WHICH clock those cells are on is the reader's choice, not this file's: in
+ * site-local mode they are nine clocks and the column reads as written above,
+ * and in HQ mode they collapse to one and the column becomes a check that all
+ * nine bases are being read as of the same moment. The shift code does not move
+ * either way. See src/state/useDisplayZone.ts.
  *
  * Five structural decisions carry most of the value here.
  *
@@ -63,6 +70,14 @@ import { DEFAULT_SORT, nextSort, sortRows, type SortCol, type SortState } from '
  */
 export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
   const { t, lang } = useI18n();
+  /*
+   * Which clock the Date/Time and Last-seen cells are printed on. Resolved per
+   * row rather than once for the table: in site-local mode these nine cells are
+   * nine different clocks, which is the column's whole reason for existing, and
+   * in HQ mode they collapse to one. A hook cannot be called in the row loop,
+   * so this is the resolver and not the zone.
+   */
+  const displayZone = useDisplayZone();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   /*
    * Open by default. All nine bases belong on the board - a panel listing three
@@ -537,7 +552,7 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
           {plant.last_seen === null ? (
             <span className="quiet">-</span>
           ) : (
-            formatClockSeconds(plant.last_seen, company.timezone, lang)
+            formatClockSeconds(plant.last_seen, displayZone(company.timezone), lang)
           )}
         </td>
 
@@ -625,13 +640,20 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
     );
   }
 
-  /** The site's own date over its own clock and shift code, ticking. */
+  /**
+   * The site's date over its clock and shift code, ticking.
+   *
+   * "Its clock" is the site's in site-local mode and the reference zone in HQ
+   * mode - the shift CODE beside it never moves either way, because which shift
+   * a base is running is a fact about that base and not about the reader.
+   */
   function LocalDateTime({ company, nowMs: at }: { company: CompanySummary; nowMs: number }) {
     const iso = new Date(at).toISOString();
+    const zone = displayZone(company.timezone);
     return (
       <span className="localtime">
         <span className="localtime__date">
-          {formatWeekdayDate(iso, company.timezone, lang)}
+          {formatWeekdayDate(iso, zone, lang)}
         </span>
         <span className="localtime__clock">
           {company.shift ? (
@@ -648,7 +670,7 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
                   label: company.shift.label,
                   index: company.shift.index,
                   of: company.shift.of,
-                  time: formatClockSeconds(iso, company.timezone, lang),
+                  time: formatClockSeconds(iso, zone, lang),
                 })}
               >
                 {company.shift.code}
@@ -656,7 +678,7 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
               {' · '}
             </>
           ) : null}
-          {formatClockSeconds(iso, company.timezone, lang)}
+          {formatClockSeconds(iso, zone, lang)}
         </span>
       </span>
     );

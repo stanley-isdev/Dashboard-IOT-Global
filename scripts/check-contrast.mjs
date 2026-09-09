@@ -239,6 +239,50 @@ const DARK_INK_TV = {
 const WAIVER_WHITE_ON_ORANGE =
   'white on the brand orange, accepted by design decision - see tokens.css';
 
+// ---------------------------------------------------------------------------
+// The %OA inks.
+//
+// Not part of the status palette and measured apart from it, because they are
+// the one group on this board that was chosen by matching something rather than
+// by measuring it. The operators' `Machine Status V2.0` panel paints its own %OA
+// in Tailwind's emerald/amber/red 600, and on 2026-09-08 the design owner asked
+// for the figure here to be the same colour as the figure on the wall.
+//
+// ---- the second waiver ----
+//
+// The note over WAIVER_WHITE_ON_ORANGE says not to add one of these without the
+// same conversation. This is that conversation's outcome, and it is a larger
+// debt than the first: three tokens rather than one, and they land on *readings*
+// - the KPI figure, the ranking's %OA column, the plant rows in the drawer -
+// rather than on a label whose word is also its own shape.
+//
+// What was quoted before it was taken, on the ranking header that binds every
+// other ink in this file: green 3.42:1, amber 2.89:1, red 4.38:1, against 4.5:1.
+// The amber does not clear even the 3:1 owed to a non-text mark. The dark theme
+// does not rescue it so much as rotate it - there the red is the worst of the
+// three at 3.01:1, which is the tier a reader most needs to catch.
+//
+// One value per token in both themes and both densities, matching tokens.css:
+// "the panel's colours" was the instruction, and a per-theme variant would be a
+// different colour. The kiosk rows are therefore the same hexes held to 7:1 and
+// are not printed separately - the desktop rows below already record the debt,
+// and eighty-odd more WAIVE lines would bury the one waiver that predates this.
+//
+// These rows are measured on every run for the reason the rest of the file is:
+// so that a later "let's just brighten the green" is a visible change to a
+// recorded number, not a silent one.
+// ---------------------------------------------------------------------------
+
+const WAIVER_PANEL_OA =
+  "the Machine Status V2.0 panel's own %OA colours, accepted by design decision - see tokens.css";
+
+// Both themes read the same three values. Deliberate - see above.
+const OA_INK = {
+  'oa-good-ink': '#059669',
+  'oa-warn-ink': '#D97706',
+  'oa-crit-ink': '#DC2626',
+};
+
 const LIGHT_FILL = {
   'accent-on-fill': '#FFFFFF',
   fill: '#F5871F',
@@ -340,11 +384,11 @@ const waived = [];
  * A row that passes prints PASS whether or not a waiver was offered. A waiver
  * on a passing pair is dead weight and reads as though the pair were broken.
  */
-const row = (name, hex, surface, value, min, waiver) => {
+const row = (name, hex, surface, value, min, waiver, collect = true) => {
   const ok = value >= min;
   const flag = ok ? 'PASS' : waiver ? 'WAIVE' : 'FAIL';
   if (!ok && !waiver) failed++;
-  if (!ok && waiver) {
+  if (!ok && waiver && collect) {
     waived.push(`${name} on ${surface}: ${value.toFixed(2)}:1 (min ${min}) - ${waiver}`);
   }
   console.log(
@@ -358,6 +402,38 @@ const checkGroup = (label, tokens, surfaces, min) => {
   for (const [name, hex] of Object.entries(tokens)) {
     for (const [sName, sHex] of Object.entries(surfaces)) {
       row(name, hex, sName, contrast(hex, sHex), min);
+    }
+  }
+};
+
+/*
+ * A waived group: every surface printed, one summary line filed.
+ *
+ * checkGroup files a line per pair, which is right when a waiver is the rare
+ * exception it was written to be. Three tokens across seven surfaces is not that
+ * shape - it would file twenty-one near-identical lines and push the white-on-
+ * orange waiver off the end of the summary. So the rows still print in full and
+ * the debt is recorded once per token, at the worst surface it was measured on,
+ * which is the number anyone deciding whether to keep it would ask for. The
+ * theme goes on that line: a token that reads the same hex in both still
+ * measures differently in each, and a bare token name would file two lines that
+ * look like duplicates.
+ */
+const checkWaivedGroup = (label, tokens, surfaces, min, waiver, theme) => {
+  console.log(`
+${label}`);
+  for (const [name, hex] of Object.entries(tokens)) {
+    let worst = null;
+    for (const [sName, sHex] of Object.entries(surfaces)) {
+      const value = contrast(hex, sHex);
+      row(name, hex, sName, value, min, waiver, false);
+      if (worst === null || value < worst.value) worst = { sName, value };
+    }
+    if (worst.value < min) {
+      waived.push(
+        `${name} (${theme}) on ${worst.sName}, worst of ${Object.keys(surfaces).length}: ` +
+          `${worst.value.toFixed(2)}:1 (min ${min}) - ${waiver}`,
+      );
     }
   }
 };
@@ -396,6 +472,14 @@ for (const theme of THEMES) {
     theme.ink,
     theme.surfaces,
     TEXT_MIN,
+  );
+  checkWaivedGroup(
+    "The %OA inks - text, AA 4.5:1, waived to match the operators' panel",
+    OA_INK,
+    theme.surfaces,
+    TEXT_MIN,
+    WAIVER_PANEL_OA,
+    theme.name,
   );
   checkGroup('Ink tokens (kiosk/TV) - must clear AAA 7:1', theme.inkTv, theme.surfaces, KIOSK_MIN);
   checkPills(

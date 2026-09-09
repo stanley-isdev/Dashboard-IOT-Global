@@ -280,6 +280,43 @@ this is **not** a timeout and not a volume limit - it fails before it scans.
 > Still worth a host-log look if anyone gets access: whether the 432-file limit
 > is configurable, and whether compaction would raise the effective window.
 
+> **RE-MEASURED 2026-09-08: 71 h is a usually-safe width, not a safe one.**
+> The entry above reads as though ≤71 h always answers. It does not, because
+> the cap counts **files** and Core never compacts - the newest days are held in
+> many small files, so the file count for a fixed width grows as the window
+> approaches now. Walking 11 Aug - 8 Sep as ten 71 h chunks:
+>
+> | Chunk | Result |
+> |---|---|
+> | 0-6, 8, 9 | OK - 36 → 73 rows each |
+> | 7 (31 Aug 20:00 - 3 Sep 19:00) | **HTTP 500**, 432-file message |
+>
+> Two things followed from it, and the first was the actual defect:
+>
+> 1. **One rejected chunk cost the whole board.** `fetchWindow` threw on the
+>    first rejection and the route emptied the census, so every pick reaching
+>    over that stretch - anything wider than about four days - came back as
+>    nine offline sites and a row of zeros behind the amber banner, while nine
+>    of its ten chunks had answered. A rejected chunk is now retried as ≤24 h
+>    slices, and a slice that is still refused becomes a `WindowGap`: its hours
+>    are named in an envelope warning and left out, the rest of the window is
+>    served. 24 h is the retry width because all 28 single-day chunks of that
+>    same month answered (0 rejections, slowest 1,058 ms).
+> 2. **Wider windows are slow, and cannot be made fast by parallelising.**
+>    11 Aug - 8 Sep now costs 39 queries and ~13 s. Firing them concurrently
+>    does not just risk the 500 recorded in windowedSnapshot.ts - the instance
+>    answers **HTTP 200 with fewer rows**: six reads in flight returned 828
+>    status rows where the same 28 chunks run one at a time returned 1,510, no
+>    error on any of them, falling to 392 rows at twelve in flight. Nothing
+>    downstream can detect that, so the sequential rule is load-bearing. The
+>    client instead waits longer for these windows only -
+>    `windowedRequestTimeoutMs` in `runtime-config.json`, 45 s, against the 10 s
+>    the default board keeps.
+>
+> Both of these are worked around rather than fixed. The fix is at the
+> instance: raise `--query-file-limit`, or move off Core to something that
+> compacts.
+
 **Consequence for Q-01:** Phase 2's planned "wide internal scan window
 (e.g. 3 days)" sits exactly on the boundary. Use **71 hours, not 72**, until
 the cause is understood.
@@ -881,11 +918,49 @@ costs). Machine staleness at THS: 6 under 15 min, 13 at 15-60 min, 2 at 1-2 h,
 **(b) TOTAL was RUNNING + STOP; the board's is everything except `Order End`.**
 See the superseded box in §4.5(f).
 
-**(c) `Order End` layer 2 is implemented** - `server/src/domain/orderShift.ts`.
-See the superseded box in §4.5(c) for why it was thought impossible. It is worth
-being precise about what it does: it removes a machine from the **%OA average**
-and touches no count. At THS it dropped `I5` and `IC5`, both on orders created
-20:06 Bangkok the previous night shift, moving Avg %OA 75.2% → 81.0%.
+**(c) `Order End` layer 2 is implemented, and since 2026-09-08 it EXCLUDES
+NOTHING** - `server/src/domain/orderShift.ts`. See the superseded box in §4.5(c)
+for why it was thought impossible.
+
+As first built it removed a machine from the **%OA average** and touched no
+count. At THS it dropped `I5` and `IC5`, both on orders created 20:06 Bangkok
+the previous night shift, moving Avg %OA 75.2% → 81.0% - the board's figure, and
+the last gap to it.
+
+**Reversed by the design owner on 2026-09-08: the rule may classify, but it may
+not declare an order finished and take the machine's figures out on that
+inference. An order ends when its PO slots clear.**
+
+What forced it was ASI 6051, which runs a single order across days. Measured
+there on 2026-09-08, 17:45 Bangkok:
+
+| | ASI 6051 | THS 6332 |
+|---|---|---|
+| machines reporting (24 h) | 42 | 28 |
+| carrying an order | 7 | 16 |
+| computable %OA | 7, mean **75.0%** | 16 |
+| ruled `ended` by layer 2 | **7 of 7** | 4 of 16 |
+| %OA on the card, before the change | **blank** | 90.1% |
+
+Every ASI order carried `vCreateDateTxt` = `2026/09/07 09:5x` - the previous
+morning - while the machines' newest rows were seconds old. The inference behind
+layer 2 ("created before this shift, therefore finished") is a fact about THS's
+order-per-shift habit, not about the fleet, and at ASI it blanked a whole plant
+that was running normally.
+
+Consequences, all deliberate:
+
+- **This board can now read BELOW the production board**, by exactly the
+  carried-over machines. THS reports 75.2% where that board says 81.0%.
+- `orderShiftWarnings` names those machines on every payload, per plant, so the
+  difference is stated rather than discovered by subtraction.
+- **The window gate is gone too.** Layer 2 used to be switched off past
+  `OA_WINDOW_HOURS` because a multi-shift window has no single shift to judge
+  against; with the verdict no longer subtracting anything, every width answers
+  alike and there was nothing left to gate. The width caveat itself stays on the
+  envelope.
+- The only remaining exit from the %OA denominator is `ProductionOrderN` = `-`,
+  which is the gateway saying the order is over rather than us guessing.
 
 **(d) A `process` filter was added and then REVERTED - do not re-add it.** The
 board filters by `${process_var}`, so copying that looked obviously right. It

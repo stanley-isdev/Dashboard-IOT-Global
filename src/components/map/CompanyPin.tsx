@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import type { CompanySummary } from '../../api/contract';
+import { absenceTooltip, quietCaption } from '../../domain/absence';
 import { toMeasure } from '../../domain/measure';
 import { isReporting, siteToken, tierToken } from '../../domain/status';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -51,9 +52,15 @@ import { MeasureValue } from '../primitives/MeasureValue';
  * The third line is where they differ, and it has to differ. A quiet card has
  * no running count to show, and the obvious filler - repeating `map.notConnected`
  * under a MeasureValue that has already rendered "⊘ Not connected" - printed the
- * same sentence twice in a three-line card. It carries the readiness state
- * instead: installing, planned. That is the one thing about a dark base anybody
- * actually wants to know.
+ * same sentence twice in a three-line card.
+ *
+ * It carried the readiness state instead - installing, planned - until that was
+ * found to be the wrong source. `readiness` is master data's claim, so STJ,
+ * which is `live` and has never sent a row, drew a blank card captioned
+ * **"Live"**: config deciding what the reader sees and getting it wrong, the
+ * same defect as the `no_data` status this change set out to fix. The line now
+ * comes from `absence`, which is derived from what actually arrived - see
+ * `domain/absence.ts`, where it is a pure function so a test can hold it there.
  */
 /*
  * Memoised, because the layer above it re-renders on things a pin has no stake
@@ -88,8 +95,41 @@ export const CompanyPin = memo(function CompanyPin({
      rows with, so the pulsing dots and the strip's figure can never disagree. */
   const alert = reporting && company.kpi.oa_tier === 'critical';
 
+  /*
+   * What a pin with no numbers says instead, and what hovering it explains.
+   *
+   * The server sends `absence` for any site that is genuinely unreachable, and
+   * its presence alone is the signal - the caption states what the query
+   * established, "no telemetry received", without needing anything from config.
+   * The hover adds what config knows on top, where there is room for a
+   * sentence: whether the claim in master data contradicts the data, and, for
+   * the sites where a human knows more than the query, why and whose.
+   */
+  const caption = quietCaption(company.status, t);
+  const absenceTitle = absenceTooltip(
+    company.absence,
+    { code: company.code, statusLabel: t(site.labelKey as TKey) },
+    t,
+  );
+
   return (
-    <div className={`pin${selected ? ' pin--selected' : ''}`} data-pin={company.code}>
+    /*
+     * `data-quiet` carries the *kind* of silence down to the CSS, and is absent
+     * on a base that is reporting.
+     *
+     * One attribute on the root rather than a modifier per piece, because all
+     * three pieces answer to it: the dot, the leader and the card. Its two
+     * values are the site statuses themselves - a base that has never sent a
+     * row is drawn as a dashed, unelevated card, and one that is merely quiet
+     * across the chosen window keeps a solid frame and takes the blue accent.
+     * See the block under .pin__card in leaflet-overrides.css for the drawing
+     * and src/domain/status.ts for why the two are not the same state.
+     */
+    <div
+      className={`pin${selected ? ' pin--selected' : ''}`}
+      data-quiet={reporting ? undefined : company.status}
+      data-pin={company.code}
+    >
       {/* Leader line. Width and rotation are written by the layout pass. */}
       <span className="pin__line" aria-hidden="true" />
 
@@ -130,7 +170,7 @@ export const CompanyPin = memo(function CompanyPin({
        */}
       <button
         type="button"
-        className={`pin__card${reporting ? '' : ' pin__card--quiet'}`}
+        className="pin__card"
         data-tier={reporting ? company.kpi.oa_tier : 'none'}
         onClick={() => toggle(company.code)}
         aria-haspopup="dialog"
@@ -140,7 +180,10 @@ export const CompanyPin = memo(function CompanyPin({
           country: company.country_code,
           status: t(site.labelKey as TKey),
         })}
-        title={t('drawer.open', { company: company.code })}
+        /* An unreachable base explains itself on hover; every other base keeps
+           the plain "open this" hint, because its numbers are already on the
+           card and a tooltip repeating them is noise. */
+        title={absenceTitle ?? t('drawer.open', { company: company.code })}
       >
         <span className="pin__oa">
           <MeasureValue
@@ -163,7 +206,22 @@ export const CompanyPin = memo(function CompanyPin({
               {company.shift ? ` · ${company.shift.code}` : ''}
             </>
           ) : (
-            t(`readiness.${company.data_readiness}` as TKey)
+            /*
+             * The observation, and there is no fallback to the rollout stage -
+             * `readiness` no longer reaches this card at all.
+             *
+             * It used to print `readiness.{data_readiness}`, which captioned
+             * STJ's figureless pin **"Live"**: master data calls it live and
+             * always will, so a reader saw "connected, and blank". Keying on
+             * `absence` fixed STJ but left `no_data` on the same broken path -
+             * a company on a shutdown week is not `isReporting`, so it took
+             * this branch with no absence to draw from and fell through to
+             * "Live" again.
+             *
+             * `quietCaption` is exhaustive over the two non-reporting states,
+             * so the `??` that used to sit here had nowhere left to go.
+             */
+            caption
           )}
         </span>
       </button>

@@ -302,13 +302,19 @@ export function RegionFilter() {
                   >
                     <span className="regionmenu__code">{co.code}</span>
                     <span className="regionmenu__label">{co.label}</span>
-                    {/* One label for every base that is not live. Which stage of
-                        commissioning it is at - installing, planned, not recorded -
-                        is a fact about the rollout, not about the board, and a reader
-                        scanning this menu for numbers only needs to know there are
-                        none here yet. The stage itself still shows on the base drawer
-                        and the map pin. */}
-                    {co.data_readiness === 'live' ? null : (
+                    {/* One label for every base with no numbers behind it. Which
+                        stage of commissioning it is at - installing, planned, not
+                        recorded - is a fact about the rollout, not about the board,
+                        and a reader scanning this menu for numbers only needs to
+                        know there are none here yet. The stage itself still shows
+                        on the base drawer and the map pin.
+
+                        The second half of the test is what STJ needed: it is
+                        `live` in master data and has still never sent a row, so a
+                        tag driven by `data_readiness` alone left it looking like a
+                        base with numbers to see. Config's claim is not enough on
+                        its own here either. */}
+                    {co.data_readiness === 'live' && co.plants.some((p) => p.ever_reported) ? null : (
                       <span className="regionmenu__tag">{t('site.not_connected')}</span>
                     )}
                   </Option>

@@ -28,8 +28,7 @@ import { useFilters, useFilterSearch } from '../../state/useFilters';
  * ## Why the choices narrow with the region above
  *
  * The list is the lamps of the companies Region has left on the board, not
- * every lamp in the group - the same rule ZoneFilter applies one level further
- * down, for the same reason. Scoped to Thailand this menu was still reading
+ * every lamp in the group. Scoped to Thailand this menu was still reading
  * "All - 6 lamps" with Japan's `STJ-1` ticked under it: a control naming a
  * scope the numbers behind it do not have, which is the mistake
  * ProcessFilter.tsx documents.
@@ -314,6 +313,17 @@ interface Tree {
  * can never disagree about what is in scope.
  *
  * A company with no plants in master data is not a group anybody can pick.
+ *
+ * Neither is a plant that has never reported. THS's 6337 and 6321 sit in master
+ * data with 8 and 2 machines and have never sent a row, so picking either could
+ * only ever produce an empty board - a dead end dressed as a choice, and the
+ * same two plants the board itself now leaves off.
+ *
+ * `ever_reported` is an observation the server makes, not a hidden-plants list
+ * somebody maintains, so this reverses itself: the first row either plant sends
+ * puts it back in this menu with no edit and no deploy. A plant that HAS
+ * reported and gone quiet is never filtered here - that is an outage, and it
+ * has to stay pickable.
  */
 function buildTree(meta: Meta | null, lang: string, region: string): Tree {
   if (!meta) return { companies: [], all: [] };
@@ -323,7 +333,9 @@ function buildTree(meta: Meta | null, lang: string, region: string): Tree {
     .map((co) => ({
       code: co.code,
       label: (lang === 'th' && co.name_th ? co.name_th : co.name) || co.code,
-      plants: co.plants.map((p) => ({ code: p.code, label: p.label })),
+      plants: co.plants
+        .filter((p) => p.ever_reported)
+        .map((p) => ({ code: p.code, label: p.label })),
     }))
     .filter((c) => c.plants.length > 0);
   return { companies, all: companies.flatMap((c) => c.plants.map((p) => p.code)) };

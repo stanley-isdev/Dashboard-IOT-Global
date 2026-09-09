@@ -94,9 +94,20 @@ export function ExportButton() {
           generatedLabel: t('export.generated'),
           exportedLabel: t('export.exported'),
           generatedAt: doc.generatedAt,
-          /* The reference zone, not the reader's. Every clock on the board
-             already resolves against it, and a header in a different zone to
-             the picture under it is a file that contradicts itself. */
+          /*
+           * The reference zone, in both time modes.
+           *
+           * This stamps when the FILE was made, which is a fact about the
+           * export and not about any one base - so there is no site clock for
+           * site-local mode to resolve it against, and it takes the same
+           * fallback every fleet-wide timestamp on the board takes. See
+           * src/state/useDisplayZone.ts for the rule.
+           *
+           * It is not silent about it either: `timeZoneLabel` prints the offset
+           * beside the stamp, so a header on GMT+07 over a picture of nine
+           * local clocks says which of the two it is rather than leaving the
+           * reader to assume they match.
+           */
           timeZone: cfg.referenceTimezone,
           timeZoneLabel: `GMT${zoneOffsetShort(cfg.referenceTimezone)}`,
           lang,

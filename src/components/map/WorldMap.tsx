@@ -174,11 +174,30 @@ export const WorldMap = memo(function WorldMap({
           </span>
           {t('kpi.oa.short')} &lt; {warn}
         </span>
+        {/*
+         * Two entries for the two silences, not one for both - and both in the
+         * same grey, so the glyph is what the reader is being keyed to here.
+         *
+         * They were a single "No data" swatch, which is the thing that made the
+         * six grey pins unreadable: a base that has never sent a row and a base
+         * that is simply quiet across the chosen range are different facts with
+         * different consequences, and the key folded them into one word. The
+         * empty-window entry goes first because it is the state a range change
+         * can move a base into and out of; the absent link below it is a
+         * standing fact about the site. See src/domain/status.ts for why neither
+         * of them gets a colour of its own.
+         */}
+        <span className="map-legend__item">
+          <span className="glyph" style={{ color: siteToken('no_data').inkVar }}>
+            <StatusIcon name={siteToken('no_data').icon} />
+          </span>
+          {t('map.legend.noData')}
+        </span>
         <span className="map-legend__item">
           <span className="glyph" style={{ color: siteToken('not_connected').inkVar }}>
             <StatusIcon name={siteToken('not_connected').icon} />
           </span>
-          {t('map.legend.noData')}
+          {t('map.legend.notConnected')}
         </span>
       </div>
     </div>

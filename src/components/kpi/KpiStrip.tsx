@@ -120,10 +120,10 @@ export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview 
    * The two gaps the strip stops making the reader work out.
    *
    * Both are subtractions a director was doing in their head off a screen that
-   * had every input for them: %OA against a target that is 95 and not 100, and
-   * actual against plan in six figures. Neither is derived from anything the
-   * card does not already show, which is the test for whether a number belongs
-   * on a card this size.
+   * had every input for them: %OA against the group target, and actual against
+   * plan in six figures. Neither is derived from anything the card does not
+   * already show, which is the test for whether a number belongs on a card this
+   * size.
    *
    * Each is null the moment either side of it is, because R2 means a missing
    * value arrives as null and not as zero - and a gap computed against a
@@ -223,8 +223,11 @@ export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview 
        * The figure was deliberately black until 2026-09-03, on the argument that
        * a percentage is not a status until it is compared to its target, and
        * that the card around it should carry the comparison instead. The design
-       * owner has reversed that: green at or above 90, amber from 75 to 89, red
-       * below 75, on the figure itself.
+       * owner has reversed that: green at or above 95, amber from 80 to 94, red
+       * below 80, on the figure itself - and since 2026-09-08 in the operators'
+       * own emerald/amber/red rather than the board's status inks, so that the
+       * exec screen and the panel on the wall are the same colour as well as the
+       * same tier. See --oa-*-ink in tokens.css.
        *
        * The argument it loses to is that this card sat in a row where RUNNING is
        * green and STOP is red at every value, so a black %OA did not read as
@@ -257,6 +260,19 @@ export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview 
         measure={toMeasure(totals.oa_pct, online)}
         coverage={coverage}
         coverageNote="off"
+        /*
+         * `tier` as well as `tone`, and the pair is not redundant.
+         *
+         * `tone` is what shades the card - and `oaTone` is TIER_TONE of this same
+         * tier, so it resolves identically either way. What `tier` adds is the
+         * card's `data-tier` attribute, and that is the hook the %OA inks hang
+         * off: this is the only card on the strip whose figure is a tier, so it
+         * is the only one that takes the panel's emerald/amber/red rather than
+         * the board's status inks. RUNNING is green because it counts running
+         * machines, not because anything tiered it, and it keeps the green it
+         * had. See --oa-*-ink in tokens.css.
+         */
+        tier={totals.oa_tier}
         tone={oaTone}
         /*
          * The target, beside the figure rather than in the corner.
@@ -272,9 +288,17 @@ export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview 
          * does not, and the foot stays put, so the bottom line of all six cards
          * still reads across as one line.
          *
-         * Tone follows the tier, the same as the rail and the delta. The three
-         * were one decision: an amber rail under a neutral target would put the
-         * contradiction inside a single card.
+         * Neutral rather than toned, which is a reversal: the tone used to
+         * follow the tier here, on the argument that a red rail over a grey
+         * target contradicted itself inside one card. It does not. The target is
+         * the denominator this figure is read against - the same role "แผน
+         * 60,220" plays on %Achievement, which has been neutral all along - and a
+         * fixed 100 that never moves has nothing to be red about. Tinting it red
+         * said the target was failing, when the figure is the thing failing.
+         *
+         * So the judgement lives on the rail, the figure and the delta, all
+         * three of which still follow the tier. The two pills on the strip that
+         * state a yardstick now match each other on --chip-fill-muted.
          *
          * `targetShort`, not `target`: the pill's two-line budget is the figure
          * row's height, and Thai's "เป้าหมาย" breaks mid-word into a third line
@@ -282,7 +306,6 @@ export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview 
          * drawer tile, which has the width for it. See the key's own note.
          */
         meta={t('kpi.targetShort', { target: data.target_oa })}
-        metaTone={oaTone}
         metaAt="figure"
         delta={oaGap === null ? undefined : t('kpi.oa.gap', { delta: formatSigned(oaGap, lang) })}
         deltaTone={oaTone}
@@ -410,7 +433,7 @@ export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview 
         infoFixed={{
           good: data.tier_policy.good_at,
           warn: data.tier_policy.warn_at,
-          // The top of the middle band, so the panel can print "75 to 89"
+          // The top of the middle band, so the panel can print "80 to 94"
           // instead of making the reader work it out from two subtractions.
           warnTop: data.tier_policy.good_at - 1,
         }}

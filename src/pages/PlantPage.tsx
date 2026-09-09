@@ -12,6 +12,7 @@ import { toMeasure } from '../domain/measure';
 import { BUCKET_ORDER, bucketToken, siteToken } from '../domain/status';
 import { useI18n } from '../i18n/I18nProvider';
 import { formatInt } from '../i18n/format';
+import { useDisplayZone } from '../state/useDisplayZone';
 import { useFilters } from '../state/useFilters';
 import { usePublishExport } from '../state/exportStore';
 import { plantExportDoc } from '../domain/exportDoc';
@@ -30,6 +31,7 @@ export function PlantPage() {
   const { companyCode = '', plantCode = '' } = useParams();
   const { t, lang } = useI18n();
   const cfg = useConfig();
+  const displayZone = useDisplayZone();
   const [filters, setFilters] = useFilters();
 
   const query = usePlant(companyCode, plantCode, {
@@ -105,7 +107,12 @@ export function PlantPage() {
               <span className="chip" style={{ color: token.inkVar }}>
                 <StatusGlyph token={token} showLabel />
               </span>
-              <ShiftChip shift={data.shift} timezone={company.timezone} nowMs={now} variant="header" />
+              <ShiftChip
+                shift={data.shift}
+                timeZone={displayZone(company.timezone)}
+                nowMs={now}
+                variant="header"
+              />
               <GrafanaLink url={plant.grafana_url} />
             </div>
           </div>
@@ -176,12 +183,10 @@ export function PlantPage() {
            * Process and nothing else, and that is checked rather than assumed:
            * PlantQuery in DashboardApi.ts carries `range`, `process` and
            * `shift`, so those are the only parameters that reach this payload.
-           * Region, Lamp and Zone are all in the filter row above and none of
-           * them is sent here - zone is applied on the global-overview route
-           * only, per zoneMatcher's own note - so naming any of them in this
-           * message would send the reader to clear a control that is not the
-           * cause. THS 6332 runs Injection and Surface, so asking it for
-           * Assembly is the way in.
+           * Region and Lamp are both in the filter row above and neither is
+           * sent here, so naming either in this message would send the reader
+           * to clear a control that is not the cause. THS 6332 runs Injection
+           * and Surface, so asking it for Assembly is the way in.
            */}
           {data.machines.length === 0 && filters.process !== 'all' ? (
             <PanelEmpty

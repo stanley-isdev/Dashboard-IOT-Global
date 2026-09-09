@@ -1,15 +1,24 @@
 import type { MachineStatus } from '@dashboard/contract';
 import { zMachineStatus } from '@dashboard/contract';
+import {
+  EVER_SEEN,
+  EVER_SEEN_PROBE_INTERVAL_MS,
+  EVER_SEEN_RECHECK_INTERVAL_MS,
+} from '../config/policy.ts';
 import { foldMachineOa, type MachineOa } from '../domain/oa.ts';
+import type { EverSeen } from '../domain/siteStatus.ts';
 import { foldMachineHours, type MachineHourOa } from '../domain/trend.ts';
 import type { InfluxClient } from '../influx/client.ts';
 import {
+  everSeenWindows,
   latestMachineStatusSql,
   machineHourOaSql,
   machineOaSql,
+  plantEverSeenInSql,
   type LatestMachineStatusRow,
   type MachineHourOaRow,
   type MachineOaRow,
+  type PlantEverSeenRow,
 } from '../influx/queries.ts';
 import { influxTimeToIsoUtc } from '../influx/time.ts';
 
@@ -70,6 +79,24 @@ export interface PlantLiveness {
   machineCount: number;
 }
 
+/**
+ * A slice of a windowed fetch that no query could read - see `fetchWindow`.
+ *
+ * Recorded rather than thrown because the alternative is worse: one dense
+ * stretch of the picked window used to cost the reader every other day in it.
+ * A gap makes the response say which hours are missing, so the numbers can be
+ * served AND read for what they are - "27 of these 28 days" - instead of the
+ * board choosing between a lie and a blank.
+ */
+export interface WindowGap {
+  /** Inclusive start of the unreadable slice, UTC. */
+  from: string;
+  /** Exclusive end, UTC. */
+  to: string;
+  /** What InfluxDB said, for the envelope warning. */
+  error: string;
+}
+
 export interface LiveSnapshot {
   /** When the last poll attempt finished, success or not. */
   fetchedAt: string;
@@ -81,6 +108,22 @@ export interface LiveSnapshot {
   plants: Record<string, PlantLiveness>;
   /** Q-01's output, grouped by plant code. */
   machines: Record<string, MachineObservation[]>;
+
+  /**
+   * Q-09's output: per plant code, whether its telemetry has EVER reached this
+   * backend - over a horizon far wider than `plants` above can see.
+   *
+   * Separate from `plants` because it answers a different question on a
+   * different clock. `plants` is this window: who is reporting right now, reread
+   * every couple of seconds. This is all of history: who has ever reported,
+   * settled once and then left alone (config/policy.ts's EVER_SEEN_PROBE_INTERVAL_MS
+   * explains why an hour is generous rather than lax).
+   *
+   * A plant missing from this map is `'unknown'` to every reader - which is what
+   * a poller constructed without `plantCodes` produces, and what every plant
+   * looks like until the first probe lands.
+   */
+  everSeen: Record<string, EverSeen>;
   /**
    * Raw `Result` values the contract's enum does not cover, as
    * `"PLANT/MACHINE: value"`. Such a machine is left OUT of the observed set
@@ -110,6 +153,23 @@ export interface LiveSnapshot {
   trendLastSuccessAt: string | null;
   trendOk: boolean;
   trendError: string | null;
+
+  /*
+   * The two below are set by windowed fetches only (windowedSnapshot.ts) and
+   * left undefined by the poller, whose window is one query wide and has
+   * nothing to split or lose. Optional rather than defaulted so a reader can
+   * tell "no gaps" from "not that kind of fetch" - the poller's own failures
+   * are already carried by `ok`/`error`.
+   */
+
+  /** Sub-windows of the picked window that no query could read. */
+  gaps?: WindowGap[];
+  /**
+   * How many queries the window actually cost, per query family - the chunk
+   * count plus whatever the narrow retries added. Travels to the payload's
+   * `window.chunks`, which would otherwise advertise the pre-retry plan.
+   */
+  chunksQueried?: number;
 }
 
 export interface MiniLogger {
@@ -146,6 +206,7 @@ function emptySnapshot(configured: boolean): LiveSnapshot {
       : 'InfluxDB is not configured (INFLUX_URL / INFLUX_DATABASE / INFLUX_TOKEN)',
     plants: {},
     machines: {},
+    everSeen: {},
     unknownStatuses: [],
     oa: [],
     oaLastSuccessAt: null,
@@ -197,6 +258,25 @@ export function createSnapshotPoller(opts: {
   trendIntervalMs?: number;
   oaWindowHours?: number;
   trendPoints?: number;
+
+  /**
+   * The plant codes to answer `everSeen` for - master data's, supplied by the
+   * caller rather than imported here so this service stays free of the company
+   * table (app.ts owns that wiring).
+   *
+   * Omitted means "do not probe", which is what every `.inject()` test wants:
+   * no plant codes, no Q-09 traffic, and every reader sees `'unknown'`.
+   */
+  plantCodes?: readonly string[];
+
+  /** Overridable for tests; see EVER_SEEN_PROBE_INTERVAL_MS for why an hour. */
+  everSeenIntervalMs?: number;
+
+  /**
+   * How long a completed `'no'` stands before it is walked again. Overridable
+   * for tests; see EVER_SEEN_RECHECK_INTERVAL_MS for why a day.
+   */
+  everSeenRecheckMs?: number;
   log?: MiniLogger;
 }): SnapshotPoller {
   const {
@@ -207,6 +287,9 @@ export function createSnapshotPoller(opts: {
     trendIntervalMs = 30_000,
     oaWindowHours,
     trendPoints,
+    plantCodes = [],
+    everSeenIntervalMs = EVER_SEEN_PROBE_INTERVAL_MS,
+    everSeenRecheckMs = EVER_SEEN_RECHECK_INTERVAL_MS,
     log,
   } = opts;
 
@@ -215,6 +298,124 @@ export function createSnapshotPoller(opts: {
   let snapshot = emptySnapshot(client.configured);
   let oaAttemptedAtMs: number | null = null;
   let trendAttemptedAtMs: number | null = null;
+
+  /*
+   * The ever-seen ledger, held here rather than rebuilt per poll BECAUSE it is
+   * monotonic: a `'yes'` is a fact about all of history that no later tick can
+   * withdraw, so re-deriving it every two seconds would be re-asking a settled
+   * question. It is also what makes the probe's cost fall to zero over time -
+   * `pending` shrinks as sites come online and never grows back.
+   */
+  const everSeen: Record<string, EverSeen> = {};
+  for (const code of plantCodes) everSeen[code] = 'unknown';
+  snapshot = { ...snapshot, everSeen: { ...everSeen } };
+
+  /**
+   * When each plant last gave a COMPLETE `'no'` - the walk finished, every
+   * slice read, nothing found.
+   *
+   * Only definitive answers are recorded. A walk that threw part-way leaves the
+   * plant `'unknown'` and unrecorded, so the hourly retry keeps picking it up;
+   * that is the difference between "we asked and the answer is no" and "we
+   * could not finish asking", and it is what stops a flaky Influx from being
+   * mistaken for a settled negative.
+   */
+  const everSeenAnsweredAtMs: Record<string, number> = {};
+
+  let everSeenProbedAtMs: number | null = null;
+  let probeInFlight = false;
+
+  /**
+   * The free half of the answer: anything in the hot window has, by definition,
+   * reached us. Costs no query at all - the rows are already in hand - which is
+   * why the probe below only ever has to deal with the leftovers.
+   */
+  function noteSeenInHotWindow(): void {
+    let changed = false;
+    for (const code of Object.keys(everSeen)) {
+      if (everSeen[code] !== 'yes' && snapshot.plants[code]?.lastSeen) {
+        everSeen[code] = 'yes';
+        changed = true;
+      }
+    }
+    if (changed) snapshot = { ...snapshot, everSeen: { ...everSeen } };
+  }
+
+  /**
+   * The paid half: walk the horizon in narrow slices for each plant we still
+   * have not heard from, newest first, stopping at the first row found.
+   *
+   * **Sequential, and detached from the tick that triggers it.** Detached
+   * because proving a negative costs every slice in the horizon and the
+   * 2-second status poll must never wait behind it; sequential because these
+   * are the expensive reads, and firing them at once is not merely rude to the
+   * hot poll - windowedSnapshot.ts records this instance answering HTTP 200
+   * with *fewer rows* under concurrency, silently. Nothing reads this result
+   * sooner for being parallel; it is an hourly answer either way.
+   *
+   * Measured 2026-09-08: a reporting plant costs one query (21-26 ms) because
+   * its newest slice hits immediately; the three plants with nothing cost their
+   * full 29-slice walk, 3.1-4.7 s each, 11.6 s together.
+   */
+  async function probeEverSeen(): Promise<void> {
+    if (probeInFlight) return;
+
+    /*
+     * Two speeds, because `'unknown'` and `'no'` are different situations.
+     *
+     * `'unknown'` never got an answer - a probe that failed, or one that has
+     * not run yet - so it is retried on the hourly clock this was written for.
+     * `'no'` DID get an answer, and re-walking it hourly re-asks a settled
+     * question 24 times a day; a site that starts reporting is caught by the
+     * 2-second hot poll long before this probe would notice, so the daily
+     * re-walk exists only for back-filled history (see the policy note).
+     */
+    const now = Date.now();
+    const pending = Object.keys(everSeen).filter((code) => {
+      if (everSeen[code] === 'yes') return false; // settled forever
+      if (everSeen[code] === 'unknown') return true; // never answered - retry
+      const answeredAt = everSeenAnsweredAtMs[code];
+      return answeredAt === undefined || now - answeredAt >= everSeenRecheckMs;
+    });
+    if (pending.length === 0) return; // the steady state, most hours
+
+    probeInFlight = true;
+    try {
+      const slices = everSeenWindows(Date.now(), EVER_SEEN.horizon_days, EVER_SEEN.slice_hours);
+
+      for (const code of pending) {
+        try {
+          let found = false;
+          for (const slice of slices) {
+            const rows = await client.query<PlantEverSeenRow>(plantEverSeenInSql(code, slice));
+            if (rows.length > 0) {
+              found = true;
+              break;
+            }
+          }
+          everSeen[code] = found ? 'yes' : 'no';
+          // Stamped only on a walk that completed - see everSeenAnsweredAtMs.
+          if (!found) everSeenAnsweredAtMs[code] = Date.now();
+        } catch (err) {
+          /*
+           * Left untouched, and the `catch` sits OUTSIDE the slice loop for a
+           * reason: a slice that throws means part of the horizon went unread,
+           * and "we did not find it in the part we could read" is not evidence
+           * of never. Concluding `'no'` from a partial walk is exactly how an
+           * unreachable Influx would turn a live site into `not_connected` on
+           * screen. Next cycle starts the walk again.
+           */
+          log?.warn(
+            { plant: code, err: reasonOf(err) },
+            'ever-seen probe failed part-way - leaving as-is, retrying next cycle',
+          );
+        }
+      }
+      snapshot = { ...snapshot, everSeen: { ...everSeen } };
+    } finally {
+      probeInFlight = false;
+    }
+  }
 
   async function refreshOnce(): Promise<LiveSnapshot> {
     if (!client.configured) {
@@ -301,14 +502,75 @@ export function createSnapshotPoller(opts: {
       log?.warn({ err: message }, 'influx trend poll failed - serving last known trend');
     }
 
+    // After the fold, so it reads the plants this tick actually returned.
+    noteSeenInHotWindow();
+
+    /*
+     * The fourth clock, and the only one whose work is NOT awaited here - see
+     * `probeEverSeen`. `void` is the point: this tick returns the moment the
+     * status fold is done, and a probe grinding through a 90-day negative scan
+     * carries on in the background without holding a single screen refresh.
+     */
+    const everSeenDue =
+      everSeenProbedAtMs === null || Date.now() - everSeenProbedAtMs >= everSeenIntervalMs;
+    if (everSeenDue) {
+      everSeenProbedAtMs = Date.now();
+      void probeEverSeen();
+    }
+
     return snapshot;
   }
 
+  /**
+   * Ticks dropped because the previous poll was still running.
+   *
+   * Counted rather than logged where it happens: a minute of slow Influx would
+   * otherwise emit thirty near-identical lines, which is how a real signal gets
+   * scrolled past. Reported once, by the poll that caused them.
+   */
+  let ticksSkipped = 0;
+
   function tick(): void {
-    if (inFlight) return; // a slow Influx must not queue up overlapping polls
+    if (inFlight) {
+      // A slow Influx must not queue up overlapping polls. Skipping is the
+      // correct behaviour - the board simply serves data one interval older -
+      // but it is invisible from outside, which is what the timing below fixes.
+      ticksSkipped++;
+      return;
+    }
     inFlight = true;
+    const startedAt = Date.now();
     void refreshOnce().finally(() => {
       inFlight = false;
+      const tookMs = Date.now() - startedAt;
+      const skipped = ticksSkipped;
+      ticksSkipped = 0;
+
+      /*
+       * Why this is worth ten lines: every defence around a slow poll is
+       * silent. The `inFlight` guard drops ticks, the client aborts at
+       * INFLUX_TIMEOUT_MS, and a failed poll keeps the last good data on
+       * screen - so the system degrades correctly and tells nobody. Measured
+       * 2026-09-08, a healthy poll runs 187 ms median but has touched 1,921 ms,
+       * which is close enough to the 2,000 ms interval that the first skipped
+       * tick deserves to leave a trace rather than be discovered months later
+       * by someone wondering why the board feels sluggish.
+       *
+       * Thresholds come from the interval itself, not a constant: this poller
+       * is constructed with whatever SNAPSHOT_INTERVAL_MS the deployment sets,
+       * and a warning tuned to 2,000 ms would be wrong on any other value.
+       */
+      if (skipped > 0) {
+        log?.warn(
+          { tookMs, intervalMs, ticksSkipped: skipped },
+          'influx poll outran its interval - ticks were skipped, board data is that much older',
+        );
+      } else if (tookMs > intervalMs / 2) {
+        log?.warn(
+          { tookMs, intervalMs },
+          'influx poll took over half its interval - no ticks lost yet',
+        );
+      }
     });
   }
 

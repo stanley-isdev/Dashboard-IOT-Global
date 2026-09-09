@@ -47,7 +47,31 @@ const zCompanyMasterData = z.object({
   lng: z.number(),
   timezone: zIanaTz,
   readiness: zDataReadiness,
-  readinessNote: z.string().nullable(),
+  /**
+   * What a human knows about this site's silence that no query can - `null`
+   * everywhere else, which includes every site that reports.
+   *
+   * **It does not say there is no data; the database says that.** A site with
+   * no telemetry is read straight off the `everSeen` ledger and the screen
+   * states what was observed. This field only adds context a query has no
+   * access to: that SEH's gateways are being fitted, that VNS has no scheduled
+   * date. Where nobody knows more than the query does, it stays `null`.
+   *
+   * Deliberately no date. Every version of this field that carried one had it
+   * invented - none of these sites ever had data to stop, so there is no moment
+   * for a count to run from - and the invented date reached the screen as a
+   * confident figure nothing supported.
+   *
+   * This is also the line the STJ defect is meant to stop being crossed: config
+   * may add context, but it may no longer assert that a site is connected.
+   * Whether data arrives is observed (`everSeen`), never declared here.
+   */
+  absence: z
+    .object({
+      reason: z.string().min(1),
+      owner: z.string().min(1),
+    })
+    .nullable(),
   shiftConfig: zShiftConfig.nullable(),
   plants: z.array(zPlantMasterData),
 });
@@ -92,7 +116,7 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     lng: 100.56213418111764,
     timezone: 'Asia/Bangkok',
     readiness: 'live',
-    readinessNote: null,
+    absence: null,
     shiftConfig: TWO_SHIFT('Asia/Bangkok'),
     plants: [
       /*
@@ -128,7 +152,7 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     lng: 100.43391089831499,
     timezone: 'Asia/Bangkok',
     readiness: 'live',
-    readinessNote: null,
+    absence: null,
     shiftConfig: TWO_SHIFT('Asia/Bangkok'),
     plants: [
       { code: '6051', label: 'ASI Plant', targetOa: null, machinesExpected: 21, machineExclusions: [] },
@@ -142,8 +166,41 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     lat: 35.38815535277727,
     lng: 139.2082217038006,
     timezone: 'Asia/Tokyo',
+    /*
+     * Still `live`, and deliberately so. Master data's job is to record what
+     * the rollout believes - a gateway IS commissioned here as far as anyone
+     * has said - and quietly demoting it to `planned` to make the tile look
+     * right would be the same lie as before, told in the other direction and
+     * with the evidence thrown away.
+     *
+     * What changed is that this claim no longer decides the tile on its own.
+     * `everSeen` observes that nothing has arrived, the status resolves to
+     * `not_connected`, and the absence below says why - so config and
+     * observation now disagree in the open instead of one silently winning.
+     */
     readiness: 'live',
-    readinessNote: null,
+    /*
+     * **`null`, on the design owner's instruction of 2026-09-08: go by the
+     * database.** And it is the right answer, not a gap.
+     *
+     * Everything this field could have held about STJ turned out to be a guess
+     * that had to be withdrawn. The 2026-08-25 spike read the absence as
+     * evidence of a separate InfluxDB (D-17) - an inference from three
+     * datasource UIDs, never confirmed. A start date was invented for the day
+     * count and had no source. An attribution to the IoT team was invented too.
+     * Each one reached the screen looking like a finding.
+     *
+     * What the database says is enough, and it is not in doubt: zero rows for
+     * STJ-1 across the full retention, measured twice a fortnight apart, while
+     * THS and ASI were current to the minute. The screen says exactly that, and
+     * `contradicts_config` flags that master data still claims otherwise.
+     *
+     * Open, and not for this field to answer: §4.8b establishes - confirmed by
+     * the plant IT owner 2026-08-27, `P1TC1` absent from all ten tables - that
+     * this backend does not read the instance the wall board reads. Whether
+     * that is where STJ writes is still nobody's confirmed answer.
+     */
+    absence: null,
     shiftConfig: STJ_SHIFT,
     plants: [
       { code: 'STJ-1', label: 'Plant 1', targetOa: null, machinesExpected: 18, machineExclusions: [] },
@@ -160,7 +217,10 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     // Section 11: gateways are being installed on 16 machines - a materially
     // different fact from "no plan for this site".
     readiness: 'installing',
-    readinessNote: 'Gateway installation in progress · 16 machines · phase 2',
+    absence: {
+      reason: 'Gateway installation in progress - 16 machines, phase 2',
+      owner: 'IoT team',
+    },
     shiftConfig: null,
     plants: [],
   },
@@ -173,7 +233,10 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     lng: 105.96337126776004,
     timezone: 'Asia/Ho_Chi_Minh',
     readiness: 'planned',
-    readinessNote: null,
+    absence: {
+      reason: 'No IoT installation scheduled yet (DESIGN.md 11)',
+      owner: 'IoT team',
+    },
     shiftConfig: null,
     plants: [],
   },
@@ -186,7 +249,10 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     lng: 106.49968179637503,
     timezone: 'Asia/Jakarta',
     readiness: 'planned',
-    readinessNote: null,
+    absence: {
+      reason: 'No IoT installation scheduled yet (DESIGN.md 11)',
+      owner: 'IoT team',
+    },
     shiftConfig: null,
     plants: [],
   },
@@ -199,7 +265,10 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     lng: -83.41551660704249,
     timezone: 'America/New_York',
     readiness: 'planned',
-    readinessNote: null,
+    absence: {
+      reason: 'No IoT installation scheduled yet (DESIGN.md 11)',
+      owner: 'IoT team',
+    },
     shiftConfig: null,
     plants: [],
   },
@@ -212,7 +281,10 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     lng: -85.2757240901681,
     timezone: 'America/Detroit',
     readiness: 'planned',
-    readinessNote: null,
+    absence: {
+      reason: 'No IoT installation scheduled yet (DESIGN.md 11)',
+      owner: 'IoT team',
+    },
     shiftConfig: null,
     plants: [],
   },
@@ -225,7 +297,10 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     lng: -101.87831543037854,
     timezone: 'America/Mexico_City',
     readiness: 'planned',
-    readinessNote: null,
+    absence: {
+      reason: 'No IoT installation scheduled yet (DESIGN.md 11)',
+      owner: 'IoT team',
+    },
     shiftConfig: null,
     plants: [],
   },

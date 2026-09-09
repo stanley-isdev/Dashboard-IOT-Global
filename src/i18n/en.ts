@@ -41,28 +41,15 @@ export const en = {
   /* The empty scope. "None" alone would read as "no filter", which is the
      opposite of what it means here. */
   'filter.noBases': 'No bases selected',
-  /* "Lamp", not "Plant": it is what the operator boards call this level
-     (`Lamp_var`, "LAMP 2") and what the floor says out loud. A board that
-     renames it makes whoever is holding both screens do the mapping. */
-  'filter.plant': 'Lamp',
-  'filter.allPlants': 'All · {count} lamps',
-  'filter.plantCount.one': '{count} lamp',
-  'filter.plantCount.other': '{count} lamps',
-  'filter.noPlants': 'No lamps selected',
-  /* "Zone", untranslated for the same reason "Lamp" is: it is `Zone_var` on the
-     operator board and the word on the tag itself. The VALUES are never
-     translated either - a zone is called `2A-A` in every language. */
-  'filter.zone': 'Zone',
-  'filter.allZones': 'All · {count} zones',
-  'filter.zoneCount.one': '{count} zone',
-  'filter.zoneCount.other': '{count} zones',
-  'filter.noZones': 'No zones selected',
-  /* Beside a zone tag that more than one lamp in scope reports. Zone tags are
-     plant-local and they collide - `A` exists at 6051 and at 6338 - so ticking
-     one can widen further than a reader expects; saying how many lamps it
-     covers is what stops that being a surprise. Not shown for a tag only one
-     lamp has, which is the common case and needs no explaining. */
-  'filter.zoneLamps': 'in {count} lamps',
+  /* "Plant", the level below Region. The operator boards call the same level
+     `Lamp_var` ("LAMP 2"), so a reader holding both screens maps between them
+     on the plant CODE - which is why the menu leads with the code, not the
+     label. */
+  'filter.plant': 'Plant',
+  'filter.allPlants': 'All · {count} plants',
+  'filter.plantCount.one': '{count} plant',
+  'filter.plantCount.other': '{count} plants',
+  'filter.noPlants': 'No plants selected',
   /* The refresh control, mirroring the plant board's. The interval values
      themselves (5s, 1m) are not translated - see the note on `label` in
      RefreshPicker.tsx. */
@@ -433,6 +420,12 @@ export const en = {
   'readiness.planned': 'Planned',
   'readiness.unknown': 'Unknown',
 
+  /* ------------------------------------------- absence (why there is no data) */
+  'absence.noDate': 'No telemetry yet',
+  'absence.quietWindow': 'No data in this window',
+  'absence.owner': 'Owner: {owner}',
+  'absence.contradiction': 'Configured as connected, but nothing has ever arrived',
+
   /* --------------------------------------------------- machine buckets */
   'bucket.running': 'Running',
   'bucket.stopped': 'Stopped',
@@ -460,6 +453,10 @@ export const en = {
   'unit.shots': 'shots',
 
   /* ------------------------------------------------------------ shifts */
+  /* The base page's shift panel. It used to borrow 'filter.range' - 'Range' -
+     which named the control in the toolbar above rather than the table below,
+     and the table is a per-shift breakdown of output, plan and %OA. */
+  'shift.breakdown': 'Shift breakdown',
   'shift.chip': '{code} · {time}',
   'shift.chipFull': '{label} ({index} of {of}) · {time}',
   'shift.header': '{label} · {start}–{end} · {time}',
@@ -584,7 +581,7 @@ export const en = {
    * The panel-level version, for a drill-down where the site is real and its
    * KPI cards are correct and only one list came back empty. Both name Process
    * and nothing else, because ScopeQuery and PlantQuery carry `range` and
-   * `process` only - see the notes at the call sites. Naming Lamp or Zone here
+   * `process` only - see the notes at the call sites. Naming Plant or Zone here
    * would send the reader to clear a control that is not the cause.
    */
   'empty.panel.plants': 'No plant at this base runs {process}.',
@@ -600,7 +597,12 @@ export const en = {
   'map.title': 'Device Location & Health',
   'map.bases': '{count} Bases Global',
   'map.sub': 'pin colour and shape = reporting state · number = %OA',
-  'map.legend.noData': 'No data',
+  // Two silences, two entries - and the range is named in the first, because
+  // "No data" beside "Not connected" reads as the same claim twice. With both
+  // swatches on the one grey these words are doing more work than usual: see
+  // src/domain/status.ts for why no colour was spent on the distinction.
+  'map.legend.noData': 'No data in range',
+  'map.legend.notConnected': 'Not connected',
   'map.reset': 'Reset view',
   'map.zoomIn': 'Zoom in',
   'map.zoomOut': 'Zoom out',

@@ -3,15 +3,21 @@ import type { Tier, TierPolicy } from '../api/contract';
 /**
  * Tier handling - and the deliberate absence of tier *computation*.
  *
- * D-16 exists because the same %OA is coloured by two different rules today:
- * the web mockup uses `TARGET-5 / TARGET-20` (90/75 at target 95) while the
- * Grafana panels hardcode 95/80. A plant can therefore be amber on the exec
- * screen and green on the operator screen, and nobody can say which is right.
+ * D-16 exists because the same %OA was coloured by two different rules: the
+ * web mockup used `TARGET-5 / TARGET-20` (90/75 at target 95) while the Grafana
+ * panels hardcode 95/80. A plant could therefore be amber on the exec screen and
+ * green on the operator screen, and nobody could say which was right.
  *
  * Two constants in two codebases is the bug. The fix is one served value that
  * both read, so `oa_tier` arrives already resolved and this module only reads
  * it. `deriveTier` exists solely so mock data and the legend can describe the
  * policy - it is never used to overrule what the backend said.
+ *
+ * Which rule won was decided on 2026-09-08: the operator screen's. The served
+ * policy is 95/80 and this file did not have to change for that, which is the
+ * evidence that the shape of the fix is right. Do not reintroduce the
+ * arithmetic - `good_at` now equals the target, and a reader who sees
+ * `TARGET - 0` in the code will assume it is a mistake.
  */
 
 export function readTier(tier: Tier | null | undefined): Tier {
@@ -33,7 +39,7 @@ export function deriveTier(value: number | null, policy: TierPolicy): Tier {
   return 'critical';
 }
 
-/** Human-readable bounds for the map legend, e.g. `>= 90`, `75-89`, `< 75`. */
+/** Human-readable bounds for the map legend, e.g. `>= 95`, `80-94`, `< 80`. */
 export function tierBounds(policy: TierPolicy): { tier: Tier; label: string }[] {
   return [
     { tier: 'good', label: `≥ ${policy.good_at}` },

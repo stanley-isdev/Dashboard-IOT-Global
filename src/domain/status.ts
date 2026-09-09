@@ -75,12 +75,36 @@ function token(tone: ToneName, icon: StatusIconName | null, labelKey: string): S
 
 /* ------------------------------------------------------------------ tier */
 
+/**
+ * A tier is a %OA reading, and since 2026-09-08 %OA has its own ink.
+ *
+ * The design owner asked for the figure on this board to be the same colour as
+ * the figure on the operators' `Machine Status V2.0` panel, which paints its own
+ * %OA in Tailwind's emerald/amber/red 600. That is a statement about %OA and
+ * about nothing else, so it lands here - on the one token group that only ever
+ * colours a tier - rather than on --status-*-ink, which RUNNING, STOP, the pills
+ * and the banners all read and which none of them wanted moved.
+ *
+ * Marks and tints are untouched. The map pin, the tier dot and the badge grounds
+ * stay on the palette that was measured for them; it is the *text* the panel and
+ * this board disagreed about. See the waiver note over --oa-*-ink in tokens.css
+ * for what the new inks cost as type, and check-contrast.mjs for the numbers.
+ */
+function oaToken(
+  tone: 'good' | 'warn' | 'crit',
+  icon: StatusIconName,
+  labelKey: string,
+): StatusToken {
+  return { ...token(tone, icon, labelKey), inkVar: `var(--oa-${tone}-ink)` };
+}
+
 const TIER_TOKENS: Record<Tier, StatusToken> = {
-  good: token('good', 'check-circle', 'tier.good'),
-  warn: token('warn', 'alert-triangle', 'tier.warn'),
-  critical: token('crit', 'alert-octagon', 'tier.critical'),
+  good: oaToken('good', 'check-circle', 'tier.good'),
+  warn: oaToken('warn', 'alert-triangle', 'tier.warn'),
+  critical: oaToken('crit', 'alert-octagon', 'tier.critical'),
   // Never green. An unknown tier that renders as "on target" is worse than one
-  // that renders as nothing.
+  // that renders as nothing. No %OA ink either - there is no reading to colour,
+  // so this one keeps the board's own grey.
   unknown: token('nodata', 'circle-dashed', 'tier.unknown'),
 };
 
@@ -90,6 +114,38 @@ export function tierToken(tier: Tier): StatusToken {
 
 /* ------------------------------------------------------------ site status */
 
+/*
+ * Two silences, one tone, and that last part is a decision worth recording
+ * because it was made against the obvious alternative.
+ *
+ * `no_data` and `not_connected` are not the same state - domain/absence.ts
+ * splits the words for exactly that reason, "nothing has ever arrived" against
+ * "none in this window" - and on the map they were nonetheless the same grey
+ * pin, so a base missing its gateway and a base on a shutdown week were
+ * indistinguishable until you hovered one.
+ *
+ * A sixth tone was drawn for it (a measured blue, mark/ink/tint across all four
+ * theme blocks) and then taken back out at the design owner's call on
+ * 2026-09-09: **five status colours is already the ceiling this board can carry,
+ * and a reader who has to learn a new hue to tell two kinds of silence apart is
+ * being made to work for a distinction that costs nothing in shape.** The risk
+ * was never contrast - the blue passed on every surface with headroom - it was
+ * that green, amber, red, grey and violet already have to be held in the head
+ * at once, and a sixth is where a legend stops being read at all.
+ *
+ * So both stay on `nodata` grey and the difference is carried entirely by
+ * channels that need no key:
+ *
+ *   glyph   circle-slash for the absent link, circle-dashed for the empty
+ *           window. Distinct silhouettes at three metres, and already here.
+ *   words   quietCaption() prints which silence it is, on the card itself.
+ *   weight  the map draws not_connected as a faded, dashed, unelevated card
+ *           and no_data at full strength. Recession, not hue - see the
+ *           .pin__card block in leaflet-overrides.css.
+ *
+ * The rule at the head of this file is what makes that sufficient rather than a
+ * compromise: colour was never carrying status here in the first place.
+ */
 const SITE_TOKENS: Record<SiteStatus, StatusToken> = {
   online: token('good', 'check-circle', 'site.online'),
   stale: token('warn', 'clock', 'site.stale'),
@@ -120,6 +176,11 @@ export function isRankable(status: SiteStatus): boolean {
 
 /* --------------------------------------------------------- measure kinds */
 
+/*
+ * Every silence on the one grey, in step with SITE_TOKENS above - see the note
+ * there for why the two kinds of no-data are told apart by glyph, word and
+ * weight rather than by a colour of their own.
+ */
 const MEASURE_TOKENS: Record<MeasureKind, StatusToken> = {
   value: token('good', null, ''),
   stale: token('warn', 'clock', 'site.stale'),

@@ -175,7 +175,7 @@ export function HardErrorState({
     : [
         d.code,
         api?.status ? `HTTP ${api.status}` : null,
-        api?.kind === 'timeout' ? `${cfg.requestTimeoutMs} MS` : null,
+        api?.kind === 'timeout' ? `${api.timeoutMs ?? cfg.requestTimeoutMs} MS` : null,
         api?.kind === 'notfound' ? detail : null,
         retry?.failedAt
           ? formatClockSeconds(new Date(retry.failedAt).toISOString(), cfg.referenceTimezone, lang)
@@ -198,7 +198,9 @@ export function HardErrorState({
     <StatePage
       tone={d.tone}
       glyph={d.glyph}
-      title={t(d.titleKey, { sec: Math.round(cfg.requestTimeoutMs / 1000) })}
+      title={t(d.titleKey, {
+        sec: Math.round((api?.timeoutMs ?? cfg.requestTimeoutMs) / 1000),
+      })}
       body={t(d.bodyKey, { code: siteCode ?? '' })}
       checks={d.checkKeys.map((k) => t(k))}
       checksLabel={t('state.try')}

@@ -61,6 +61,25 @@ function influxHealth(snapshot: LiveSnapshot | null, env: Env, nowMs: number): S
   }
 
   if (snapshot.ok) {
+    /*
+     * A windowed read that lost some of its hours (windowedSnapshot.ts). The
+     * data on screen is real and the sites it covers are genuinely reporting,
+     * so `down` would be a lie - but so would `ok`, because the averages below
+     * it are taken over fewer hours than the capsule names. This is the same
+     * "good data, one query down" shape as the two cases after it.
+     */
+    const gaps = snapshot.gaps ?? [];
+    if (gaps.length > 0) {
+      const first = gaps[0]!;
+      return {
+        name: 'influxdb',
+        status: 'degraded',
+        last_success: snapshot.lastSuccessAt,
+        message:
+          `${gaps.length} slice(s) of the picked window could not be read and are missing ` +
+          `from these numbers, the first being ${first.from} .. ${first.to}: ${first.error}`,
+      };
+    }
     // Telemetry is landing but the %OA aggregate is not. `ok` would claim the
     // whole feed is healthy while the KPI strip serves an ageing average, so
     // this is exactly the "degraded" case: good data, one query down.

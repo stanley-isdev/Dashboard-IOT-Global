@@ -227,7 +227,7 @@ export function OverviewPage() {
         /* Everything that can narrow the board to nothing, back to its default.
            `process` is in here because Assembly against a base that runs none
            is the other way to reach an empty board. */
-        onClear={() => setFilters({ region: 'all', plant: 'all', zone: 'all', process: 'all' })}
+        onClear={() => setFilters({ region: 'all', plant: 'all', process: 'all' })}
       />
     );
   }
@@ -346,7 +346,7 @@ export function OverviewPage() {
               <div className="panel__body">
                 <WorldMap
                   companies={data?.companies ?? NO_COMPANIES}
-                  targetOa={data?.target_oa ?? 95}
+                  targetOa={data?.target_oa ?? 100}
                   tierPolicy={data?.tier_policy}
                   expanded={mapExpanded}
                   onToggleExpand={toggleMap}
@@ -381,12 +381,23 @@ export function OverviewPage() {
               </div>
 
               <div className="panel__body">
+                {/*
+                  The reference zone in BOTH modes, and deliberately. These
+                  hours are an aggregate over nine bases spanning UTC+01 to
+                  UTC-06: "14:00 in each site's own clock" is not one hour of
+                  fleet data, it is nine different hours, so site-local mode has
+                  nothing to switch to. The chart is not silent about it - its
+                  legend and its accessible description both print
+                  `trend.axis`, "Time (ICT)", which is the one place on the
+                  board where a reader in site-local mode meets a clock that is
+                  not a site's own.
+                */}
                 {data ? (
                   <TrendChart
                     points={trend}
                     target={data.target_oa}
                     warnAt={data.tier_policy.warn_at}
-                    referenceTimezone={cfg.referenceTimezone}
+                    timeZone={cfg.referenceTimezone}
                   />
                 ) : (
                   <div className="skeleton" style={{ flex: 1, minHeight: 0 }} />
@@ -429,7 +440,7 @@ export function OverviewPage() {
        */}
       <BaseDrawer
         company={selectedCompany}
-        targetOa={data?.target_oa ?? 95}
+        targetOa={data?.target_oa ?? 100}
         qtyUnit={data?.qty_unit ?? 'pcs'}
         nowMs={now}
       />

@@ -13,6 +13,7 @@ import { isReporting, siteToken } from '../domain/status';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/en';
 import { formatInt, formatPct } from '../i18n/format';
+import { useDisplayZone } from '../state/useDisplayZone';
 import { useFilters, useLinkWithFilters } from '../state/useFilters';
 import { usePublishExport } from '../state/exportStore';
 import { companyExportDoc } from '../domain/exportDoc';
@@ -30,10 +31,43 @@ import { Flag } from '../components/primitives/Flag';
 import { ShiftChip } from '../components/primitives/ShiftChip';
 import { StatusGlyph } from '../components/primitives/StatusGlyph';
 
+/**
+ * One base, drilled into from a pin or a ranking row.
+ *
+ * ## Laid out as the global board is laid out
+ *
+ * Three blocks, in the overview's own order and with the overview's own frame:
+ * an identity strip, a KPI strip, then ONE card holding every panel with an
+ * even band of card showing around each of them - see `.deck` and `.boardwrap`.
+ *
+ * It used to be five separate cards floating on the page tint, each spaced from
+ * the next by whatever margin was written inline at its call site (--sp-4 under
+ * the header, --sp-3 under the first grid, nothing under the KPI row), and the
+ * header's panel carried a `.panel-head` with its bottom margin zeroed - which
+ * still drew the head's full-width hairline across the bottom of a card with
+ * nothing underneath it. Nothing on the page related it to the board the reader
+ * had just come from.
+ *
+ * What is NOT borrowed from the overview is the tab strip. There the tabs buy a
+ * single-screen board, and that is the overview's whole job: be read at a glance
+ * by someone who will not scroll. A drill-down's job is the opposite - somebody
+ * is here because they want the detail - so all four panels stay on screen at
+ * once and the region scrolls, as it did before.
+ *
+ * ## The two panels that have no height of their own
+ *
+ * Panels in a grid row stretch to the taller of the pair, so the %OA chart used
+ * to be exactly as tall as the stop list beside it happened to be: four open
+ * stops left it about 90px of plot, which cannot show a shift-sized dip. The
+ * chart now carries a floor and the list a ceiling (`.panel--trend`,
+ * `.panel--alerts`), and both tables scroll inside their panels rather than
+ * setting the height of the row they sit in.
+ */
 export function CompanyPage() {
   const { companyCode = '' } = useParams();
   const { t, lang } = useI18n();
   const cfg = useConfig();
+  const displayZone = useDisplayZone();
   const [filters, setFilters] = useFilters();
   const link = useLinkWithFilters();
 
@@ -99,6 +133,11 @@ export function CompanyPage() {
   const coverage = { reporting: reporting ? 1 : 0, total: 1 };
   const int = (v: number) => formatInt(v, lang);
 
+  /* Whether there is a census to draw at all. Named because the plant panel
+     below tests it twice, picking between two different empty states for two
+     different causes - see the long note there. */
+  const hasCensus = c.counts.total > 0;
+
   return (
     <>
       <ConnectionBanner
@@ -109,34 +148,49 @@ export function CompanyPage() {
       />
 
       {/* Drill-downs are taller than one screen by nature, so this region scrolls
-          inside the locked frame rather than the page growing. */}
+          inside the locked frame rather than the page growing. `.scope-view` is
+          what spaces the three blocks below - one --shell-gap between each,
+          replacing the inline margins they used to carry one by one. */}
       <div
-        className={`view view--scroll${connection.degraded ? ' is-stale' : ''}`}
+        className={`view view--scroll scope-view${connection.degraded ? ' is-stale' : ''}`}
         aria-busy={isPending}
       >
-        <header className="panel" style={{ marginBottom: 'var(--sp-4)' }}>
-          <div className="panel-head" style={{ marginBottom: 0 }}>
-            <h2 style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
-              <Flag code={c.country_code} countryName={c.country_code} size="1.4em" />
-              {c.code}
-              <span className="rank-table__sub">{lang === 'th' ? (c.name_th ?? c.name) : c.name}</span>
-            </h2>
-            <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-              <span className="chip" style={{ color: token.inkVar }}>
-                <StatusGlyph token={token} showLabel />
+        <header className="scope-head">
+          <div className="scope-head__id">
+            {/* Sized off the code beside it rather than in rem, so the pair
+                scales together in kiosk density. */}
+            <Flag code={c.country_code} countryName={c.country_code} size="1.75em" />
+            <div className="scope-head__names">
+              {/* The page's heading, and a real one: this is the only h2 on the
+                  page that names the thing the whole screen is about. */}
+              <h2 className="scope-head__code">{c.code}</h2>
+              <span className="scope-head__name">
+                {lang === 'th' ? (c.name_th ?? c.name) : c.name}
               </span>
-              <ShiftChip
-                shift={c.shift}
-                timezone={c.timezone}
-                nowMs={now}
-                variant="header"
-              />
-              <GrafanaLink url={c.grafana_url} />
             </div>
+          </div>
+
+          {/* The three qualifiers on every figure below: is this base reporting,
+              which shift is on, and the way out to Grafana. */}
+          <div className="scope-head__meta">
+            <span className="chip" style={{ color: token.inkVar }}>
+              <StatusGlyph token={token} showLabel />
+            </span>
+            <ShiftChip
+              shift={c.shift}
+              timeZone={displayZone(c.timezone)}
+              nowMs={now}
+              variant="header"
+            />
+            <GrafanaLink url={c.grafana_url} />
           </div>
         </header>
 
-        <div className="kpis" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        {/* Four cards, and the count is a class rather than an inline
+            `gridTemplateColumns`: an inline style outranks every rule in the
+            stylesheet, so the stacked columns at the narrow breakpoints never
+            reached this page. See `.kpis--4`. */}
+        <div className="kpis kpis--4">
           <KpiCard
             labelKey="kpi.machines"
             measure={toMeasure(c.counts.total, c.status)}
@@ -184,9 +238,19 @@ export function CompanyPage() {
           />
         </div>
 
-        <div className="main-grid">
-          <section className="panel">
+        {/*
+          One card, four panels, one band of card between every pair of edges.
+          Row one answers "where in this base"; row two answers "what happened".
+          That is the same split the overview's two boards make, minus the tabs -
+          see the note at the top of this file.
+        */}
+        <div className="deck">
+          <section className="panel panel--plants">
             <div className="panel-head">
+              {/* No count in this head. A bare figure at the far right of a
+                  panel whose rows a reader can count on one hand is a riddle,
+                  not a fact - and the plant panel's rows carry their own
+                  identity anyway. */}
               <h2>{t('table.plant')}</h2>
             </div>
             {/*
@@ -213,7 +277,7 @@ export function CompanyPage() {
              * as though it ought to be the cause here, but it is never sent to
              * this endpoint, so offering to clear it would be a dead end.
              */}
-            {c.counts.total === 0 && filters.process !== 'all' ? (
+            {!hasCensus && filters.process !== 'all' ? (
               <PanelEmpty
                 message={t('empty.panel.plants', { process: filters.process })}
                 action={{
@@ -221,7 +285,7 @@ export function CompanyPage() {
                   onClick: () => setFilters({ process: 'all' }),
                 }}
               />
-            ) : c.counts.total === 0 ? (
+            ) : !hasCensus ? (
               <PanelEmpty
                 /* Not the funnel: nothing was filtered out. The cylinder says
                    the store was read and holds nothing for this base, which is
@@ -230,75 +294,100 @@ export function CompanyPage() {
                 message={t('site.neverConnected')}
               />
             ) : (
-              <table className="rank-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{t('table.plant')}</th>
-                    <th scope="col">{t('table.runStop')}</th>
-                    <th scope="col">{t('table.oa')}</th>
-                    <th scope="col">{t('table.achv')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.plants.map((p) => (
-                    <tr key={p.code}>
-                      <td>
-                        <Link to={link(`/company/${c.code}/plant/${p.code}`)}>
-                          <span className="rank-table__name">
-                            <span>{p.code}</span>
-                            <span className="rank-table__sub">{p.label}</span>
-                          </span>
-                        </Link>
-                      </td>
-                      <td className="mono">
-                        {int(p.counts.running)} / {int(p.counts.stopped)}
-                      </td>
-                      <td className="mono">
-                        {p.kpi.oa_pct === null ? '-' : formatPct(p.kpi.oa_pct, lang)}
-                      </td>
-                      <td className="mono">
-                        {p.kpi.achievement_pct === null
-                          ? t('measure.noPlan')
-                          : formatPct(p.kpi.achievement_pct, lang)}
-                      </td>
+              /* Scrolls in place, like the overview's ranking. The panel is one
+                 half of a grid row, and a base with a long lamp list would
+                 otherwise set the height of the shift table beside it. */
+              <div className="panel__scroll">
+                <table className="rank-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('table.plant')}</th>
+                      <th scope="col">{t('table.runStop')}</th>
+                      <th scope="col">{t('table.oa')}</th>
+                      <th scope="col">{t('table.achv')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.plants.map((p) => (
+                      <tr key={p.code}>
+                        <td>
+                          <Link to={link(`/company/${c.code}/plant/${p.code}`)}>
+                            <span className="rank-table__name">
+                              <span>{p.code}</span>
+                              <span className="rank-table__sub">{p.label}</span>
+                            </span>
+                          </Link>
+                        </td>
+                        <td className="mono">
+                          {int(p.counts.running)} / {int(p.counts.stopped)}
+                        </td>
+                        <td className="mono">
+                          {p.kpi.oa_pct === null ? '-' : formatPct(p.kpi.oa_pct, lang)}
+                        </td>
+                        <td className="mono">
+                          {p.kpi.achievement_pct === null
+                            ? t('measure.noPlan')
+                            : formatPct(p.kpi.achievement_pct, lang)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
 
-          <section className="panel">
+          <section className="panel panel--shifts">
             <div className="panel-head">
-              <h2>{t('filter.range')}</h2>
-              <span className="sub">
-                {data.shift_config
-                  ? `${data.shift_config.shifts.length} ${t('common.of')} ${data.shift_config.shifts.length}`
-                  : t('shift.notConfigured')}
-              </span>
+              {/* Named for the table under it, not for the control above it: the
+                  head used to read `filter.range` - "Range" - which is the time
+                  picker in the toolbar, while the rows below are a per-shift
+                  breakdown of output, plan and %OA. */}
+              <h2>{t('shift.breakdown')}</h2>
+              {/* Only the one state the rows cannot report for themselves. This
+                  head used to read "2 of 2" whenever a pattern WAS configured -
+                  the same figure twice, a ratio that can never be anything but
+                  1 - and every row below already prints its own "1 of 2". */}
+              {data.shift_config ? null : (
+                <span className="sub">{t('shift.notConfigured')}</span>
+              )}
             </div>
-            <ShiftBreakdownTable rows={data.shift_breakdown} timezone={c.timezone} />
+            <div className="panel__scroll">
+              <ShiftBreakdownTable
+                rows={data.shift_breakdown}
+                timeZone={displayZone(c.timezone)}
+              />
+            </div>
           </section>
-        </div>
 
-        <div className="bottom-grid">
-          <section className="panel">
+          <section className="panel panel--trend">
             <div className="panel-head">
               <h2>{`${t('trend.title')} · ${trendRange}`}</h2>
               <span className="sub">{t('trend.subSite', { span: trendSpan })}</span>
             </div>
+            {/* One site, so the chart follows the reader's time mode like
+                everything else on this page. Contrast the fleet chart on the
+                overview, which has nine clocks under it and no local reading. */}
             <TrendChart
               points={trend}
               target={data.target_oa}
               warnAt={data.tier_policy.warn_at}
-              referenceTimezone={cfg.referenceTimezone}
+              timeZone={displayZone(c.timezone)}
             />
           </section>
-          <section className="panel">
+
+          <section className="panel panel--alerts">
             <div className="panel-head">
               <h2>{t('alerts.title')}</h2>
             </div>
-            <AlertList alerts={data.alerts} />
+            {/* The scroll wrapper the overview's copy of this list has always
+                had, and `.alert-row` is already drawn for it: the row reserves
+                6px on its right for the scrollbar thumb, so without a scroll
+                container that inset was padding against nothing and the clock
+                sat 6px short of the panel edge for no reason. */}
+            <div className="panel__scroll">
+              <AlertList alerts={data.alerts} />
+            </div>
           </section>
         </div>
       </div>

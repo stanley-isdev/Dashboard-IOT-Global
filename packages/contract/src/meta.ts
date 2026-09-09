@@ -40,6 +40,20 @@ export const zCompanyMeta = z.object({
       label: z.string(),
       target_oa: z.number().nullable(),
       /**
+       * Whether any telemetry from this plant has ever reached the backend,
+       * over the full retained history.
+       *
+       * `/meta` stays the complete roster - it is master data, and a roster
+       * that quietly drops rows lies about what exists. This flag lets each
+       * reader decide instead: the board hides never-reported plants, and the
+       * plant picker hides them too, because offering a filter that can only
+       * ever produce an empty screen is not a choice, it is a dead end.
+       *
+       * `true` while the probe has not answered, deliberately. Uncertainty must
+       * not make a plant disappear from the picker - only a definite "never".
+       */
+      ever_reported: z.boolean(),
+      /**
        * The zone tags this plant is actually reporting, sorted, or empty while
        * it is silent.
        *

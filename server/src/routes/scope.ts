@@ -5,7 +5,8 @@ import type { Deps } from '../deps.ts';
 import { respondValidated } from '../lib/respondValidated.ts';
 import { buildCompanyDetail, buildPlantDetail } from '../services/scopeService.ts';
 import { RETENTION_DAYS } from '../influx/queries.ts';
-import { resolveWindow } from '../services/windowedSnapshot.ts';
+import { describeGaps, resolveWindow } from '../services/windowedSnapshot.ts';
+import type { WindowGap } from '../services/liveSnapshot.ts';
 import { toPlainDate } from '@dashboard/domain-shared';
 
 /**
@@ -97,11 +98,22 @@ export default async function scopeRoutes(fastify: FastifyInstance, opts: { deps
           oaError: windowError,
           trendOk: false,
           trendError: windowError,
+          /* A window that could not be read at all, not one with holes in it -
+             see the same branch in globalOverview.ts. */
+          gaps: [],
         };
       }
     }
 
-    return { snapshot, resolved, windowError };
+    /* What the window cost, not what it was planned to cost: a chunk the
+       instance refuses is retried in narrower slices. Same reasoning as the
+       board's - see globalOverview.ts. */
+    const served =
+      snapshot.chunksQueried && snapshot.chunksQueried !== resolved.served.chunks
+        ? { ...resolved.served, chunks: snapshot.chunksQueried }
+        : resolved.served;
+
+    return { snapshot, resolved, served, windowError };
   }
 
   /** The warnings both payloads carry when what was asked for was not served. */
@@ -109,6 +121,7 @@ export default async function scopeRoutes(fastify: FastifyInstance, opts: { deps
     warnings: string[],
     resolved: ReturnType<typeof resolveFor>,
     windowError: string | null,
+    gaps: readonly WindowGap[],
   ) {
     if (resolved.rejection) warnings.push(resolved.rejection);
     if (resolved.served.clamped) {
@@ -122,6 +135,8 @@ export default async function scopeRoutes(fastify: FastifyInstance, opts: { deps
         `could not read ${resolved.served.from} .. ${resolved.served.to} from InfluxDB (${windowError})`,
       );
     }
+    const gapWarning = describeGaps(gaps);
+    if (gapWarning) warnings.push(gapWarning);
   }
 
   fastify.get('/companies/:company', async (request, reply) => {
@@ -134,13 +149,16 @@ export default async function scopeRoutes(fastify: FastifyInstance, opts: { deps
       });
     }
 
-    const { snapshot, resolved, windowError } = await snapshotFor(query.data.range, request.log);
+    const { snapshot, resolved, served, windowError } = await snapshotFor(
+      query.data.range,
+      request.log,
+    );
 
     const payload = buildCompanyDetail({
       company: params.data.company,
       snapshot,
       filters: query.data,
-      window: resolved.served,
+      window: served,
       env,
     });
 
@@ -151,7 +169,7 @@ export default async function scopeRoutes(fastify: FastifyInstance, opts: { deps
       return reply.status(404).send({ error: 'no such company', detail: params.data.company });
     }
 
-    annotate(payload.meta.warnings, resolved, windowError);
+    annotate(payload.meta.warnings, resolved, windowError, snapshot.gaps ?? []);
     return respondValidated(zCompanyDetail, payload);
   });
 
@@ -167,7 +185,10 @@ export default async function scopeRoutes(fastify: FastifyInstance, opts: { deps
       });
     }
 
-    const { snapshot, resolved, windowError } = await snapshotFor(query.data.range, request.log);
+    const { snapshot, resolved, served, windowError } = await snapshotFor(
+      query.data.range,
+      request.log,
+    );
 
     const payload = buildPlantDetail({
       company: params.data.company,
@@ -175,7 +196,7 @@ export default async function scopeRoutes(fastify: FastifyInstance, opts: { deps
       shift: query.data.shift,
       snapshot,
       filters: query.data,
-      window: resolved.served,
+      window: served,
       env,
     });
 
@@ -186,7 +207,7 @@ export default async function scopeRoutes(fastify: FastifyInstance, opts: { deps
       });
     }
 
-    annotate(payload.meta.warnings, resolved, windowError);
+    annotate(payload.meta.warnings, resolved, windowError, snapshot.gaps ?? []);
     return respondValidated(zPlantDetail, payload);
   });
 }

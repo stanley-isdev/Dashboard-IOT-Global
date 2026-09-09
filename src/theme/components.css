@@ -895,7 +895,7 @@ button.filter {
  * it down to the title's own line height. A pressable capsule - padding, a
  * border, a tap target - is reliably a few pixels taller than bare text no
  * matter how thin its padding is cut, and this panel sits beside the trend
- * panel in the same `.bottom-grid` row: whichever one's title row is taller
+ * panel in the same board row: whichever one's title row is taller
  * pushes its own divider line below the other's. Absolute positioning means
  * the row's height comes from the `<h2>` alone, same as its neighbour, and the
  * picker is centred on the result rather than shaping it.
@@ -1950,6 +1950,20 @@ button.filter {
 }
 
 /*
+ * A drill-down's strip: four cards where the global board has six.
+ *
+ * A class rather than the inline `gridTemplateColumns` the drill-down pages
+ * used to write at their call sites, and that is not tidiness. An inline style
+ * beats every rule in this file, so the stacked columns in the media queries
+ * below never reached those pages - a base page at 900px kept four cards
+ * squeezed into a phone's width while the overview beside it had already
+ * dropped to three.
+ */
+.kpis--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/*
  * The card, read top to bottom: a status rail along the top edge, a header line
  * pairing the label with its qualifier, the figure, then one line of definition
  * pinned to the foot.
@@ -2522,6 +2536,45 @@ button.filter {
 }
 .kpi--warn .kpi__value {
   color: var(--status-warn-ink);
+}
+
+/*
+ * The %OA card, in the panel's colours rather than the board's.
+ *
+ * `data-tier` and not a tone class, because the tone classes are shared: STOP is
+ * `kpi--critical` for the same reason a %OA of 62 is, and only one of the two is
+ * a reading against a target. `data-tier` is set from the payload's `oa_tier`
+ * and the %OA card is the only card on the strip that carries one, so it is the
+ * one hook that separates them - see the note beside `tier=` in KpiStrip.
+ *
+ * Four families and not just the figure. The card was built so its target pill,
+ * its delta and its caption all take the figure's tone, on the grounds that a
+ * green pill under an amber figure puts the contradiction inside one card; if
+ * the figure moves onto a new green and they do not, the contradiction is back
+ * in the same place with a subtler difference. Everything tinted by this card's
+ * tier moves together or none of it does.
+ *
+ * Marks are deliberately absent: the rail, the chip grounds and the KpiMark keep
+ * the palette that was measured for them. Only type moves. See --oa-*-ink in
+ * tokens.css for what that costs and why it was accepted.
+ */
+.kpi[data-tier='good'] .kpi__value,
+.kpi[data-tier='good'] .kpi__meta--good,
+.kpi[data-tier='good'] .kpi__delta--good,
+.kpi[data-tier='good'] .kpi__foot--good {
+  color: var(--oa-good-ink);
+}
+.kpi[data-tier='warn'] .kpi__value,
+.kpi[data-tier='warn'] .kpi__meta--warn,
+.kpi[data-tier='warn'] .kpi__delta--warn,
+.kpi[data-tier='warn'] .kpi__foot--warn {
+  color: var(--oa-warn-ink);
+}
+.kpi[data-tier='critical'] .kpi__value,
+.kpi[data-tier='critical'] .kpi__meta--critical,
+.kpi[data-tier='critical'] .kpi__delta--critical,
+.kpi[data-tier='critical'] .kpi__foot--critical {
+  color: var(--oa-crit-ink);
 }
 
 /*
@@ -3258,17 +3311,188 @@ button.filter {
   margin-inline-end: 0;
 }
 
-/* Drill-down pages keep the ordinary flow grids; they scroll inside the outlet. */
-.main-grid {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-3);
+/* ================================================== drill-down layout */
+
+/*
+ * A drill-down page - a base, or a plant inside one - framed the way the global
+ * board is framed.
+ *
+ * These pages were a stack of loose cards on the page tint, each spaced by
+ * whatever margin its call site happened to write inline: --sp-4 under the
+ * identity strip, --sp-3 under the first grid, nothing at all under the KPI
+ * row. Four rhythms on one screen, and none of them the overview's, whose
+ * panels sit *inside* one card with an even band of it showing all round - see
+ * .boardwrap.
+ *
+ * So the panels move into a card here too. What is borrowed is the frame: the
+ * 1.5rem outer corner, the 1.25rem inner one, one band of card between every
+ * pair of edges. What is deliberately not borrowed is the height model. The
+ * overview's job is to fit one viewport and it flexes to do it; a drill-down
+ * carries a plant table, a shift table, a day of trend and a stop list, which
+ * is taller than the iPad this is read on - so it scrolls, and its rows are
+ * sized from their contents.
+ */
+
+/* The scroll region ends flush against the frame otherwise: #main pads its
+   sides, but the bottom edge belongs to whatever is scrolling inside it. */
+.scope-view {
+  padding-bottom: var(--shell-pad-bottom);
 }
-.bottom-grid {
+/* One gap between every block on the page, replacing the per-call-site
+   margins. `.view--scroll` is a block flow rather than a flex column - see the
+   note in base.css - so the rhythm is a start margin on each child after the
+   first rather than a `gap`. */
+.scope-view > * + * {
+  margin-block-start: var(--shell-gap);
+}
+
+/*
+ * The identity strip: flag, code and name at one end; at the other, the three
+ * facts that qualify every figure below it - whether this site is reporting,
+ * which shift is on, and the way out to Grafana.
+ *
+ * It is no longer a `.panel` with a `.panel-head` inside it. It was, with the
+ * head's bottom margin zeroed, which left the head's full-width hairline drawn
+ * across the bottom of a card with nothing underneath it - a rule that reads as
+ * a table head above a table that failed to render. What this row needs is a
+ * card with two ends, so that is what it is now.
+ */
+.scope-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  /* The deck's corner, so the page reads as two cards of one family rather
+     than a --r-lg strip sitting above a 1.5rem board. */
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow-panel);
+  padding: var(--sp-3) var(--sp-5);
+}
+
+.scope-head__id {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/*
+ * The code above the name, not beside it.
+ *
+ * Beside it the name wore `.rank-table__sub` - 11px grey, a caption treatment -
+ * on the same line as a 13px code, which is two different things set as one
+ * label. The legal name runs to about sixty characters in both locales, so it
+ * also pushed the chips at the far end of the row into a wrap. Stacked, the
+ * code is the heading it actually is and the name is its caption.
+ */
+.scope-head__names {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.scope-head__code {
+  font-size: var(--fs-h1);
+  font-weight: 650;
+  line-height: var(--lh-tight);
+  color: var(--text);
+}
+.scope-head__name {
+  font-size: var(--fs-micro);
+  line-height: var(--lh-body);
+  color: var(--sub);
+  /* One line. A two-line wrap here grows the strip and shoves the whole page
+     down by a row of type, for a fact nobody reads twice. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-head__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/*
+ * Three marks of three shapes shared this row - a capsule for the status, a
+ * 4px-cornered rectangle for the shift, a capsule for Grafana - each sitting at
+ * its own height. The shift chip's own shape is right where it belongs, inline
+ * in a table row or on a map pin; in a header row between two capsules it reads
+ * as a third kind of control. So here, and only here, it takes the capsule.
+ */
+.scope-head__meta .shift-chip {
+  border-radius: var(--r-control);
+  padding: 0.1875rem 0.6875rem;
+  min-height: var(--target-min);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+}
+
+/*
+ * The deck: one card holding every panel on the page.
+ *
+ * The overview reaches this same frame the long way round - a margin on each
+ * panel, `gap: 0` on the board, then the facing margin zeroed again - because
+ * its panels are grid items in a row that has to fill an exact viewport height.
+ * A scrolling page can simply state it: pad by --sp-3, gap by --sp-3, and every
+ * band on the card is the same width by construction.
+ */
+.deck {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow-panel);
+  padding: var(--sp-3);
   display: grid;
+  /*
+   * The wider column carries the identity in both rows: the plant table sets a
+   * code and a label on every row, and the trend is a shape read across time.
+   * The shift table and the stop list are columns of short lines that gain
+   * nothing past the length of their longest one - the same split, for the same
+   * reason, as .board--analytics.
+   */
   grid-template-columns: 1.5fr 1fr;
   gap: var(--sp-3);
+  /* No row is a sliver: a base with one plant would otherwise fill its half of
+     the top row with a head and a single line. */
+  grid-auto-rows: minmax(9rem, auto);
+}
+
+/*
+ * A panel inside the deck: one step inside the card's own corner, and flat. The
+ * card is the thing lifted off the page, so a shadow under each panel as well
+ * reads as cards stacked on cards - which is why .boardwrap's panels leave
+ * theirs off too.
+ */
+.deck > .panel {
+  border-radius: 1.25rem;
+  box-shadow: none;
+}
+
+/*
+ * Row heights.
+ *
+ * Both panels in a grid row stretch to the taller of the two, and on this page
+ * that meant the %OA chart was as tall as the stop list happened to be: four
+ * open stops gave it about 90px of plot, which cannot show a shift-sized dip,
+ * and forty stops would have handed it a screen and a half. So the panels with
+ * no natural height of their own are told what they are worth - a floor under
+ * the chart, and a ceiling over the tables and the list, which scroll inside
+ * themselves past that instead of growing the page.
+ */
+.deck > .panel--trend {
+  min-height: 17rem;
+}
+.deck > .panel--plants,
+.deck > .panel--shifts,
+.deck > .panel--alerts {
+  max-height: 26rem;
 }
 
 /*
@@ -3287,9 +3511,14 @@ button.filter {
   .kpis {
     grid-template-columns: repeat(3, 1fr);
   }
-  .main-grid,
-  .bottom-grid {
-    grid-template-columns: 1fr;
+  /* Four cards go to two columns, not to the three the six-card strip above
+     takes: 4 into 3 leaves one card alone on a second row, which reads as a
+     card that failed to load rather than as a grid. */
+  .kpis--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .deck {
+    grid-template-columns: minmax(0, 1fr);
   }
   .board {
     grid-template-columns: 1fr;
@@ -3365,7 +3594,7 @@ button.filter {
  * Every run in it is set in a different face: the counts are --font-num (Inter,
  * with Sarabun behind it), the words are --font-ui (Poppins, then Sarabun), and
  * the glyph is an SVG box with no text metrics at all. At 11px those three come
- * out 14px, 16px and 9.8px tall, because a face carrying Thai has to reserve
+ * out 14px, 16px and 9.1px tall, because a face carrying Thai has to reserve
  * ascent for the tone marks and descent for the vowels hung underneath.
  *
  * `align-items: center` centres each of those boxes independently, which lines
@@ -3414,17 +3643,57 @@ button.filter {
  *
  * An inline-block whose only content is a block-level SVG has no line box, so
  * its own baseline is its bottom edge, and `vertical-align` then sets that edge
- * a fixed distance under the line's baseline. -0.113em of the glyph's own size
- * drops the icon's centre onto the middle of the digits' cap band, which is
- * where the eye reads the line as sitting. Being em-relative it survives the
+ * a fixed distance under the line's baseline. Being em-relative it survives the
  * kiosk density switch and any font substitution underneath it.
+ *
+ * ## Why the size is set here and not left to StatusIcon's default
+ *
+ * The mark has to read as the same height as the digit beside it, and "the same
+ * height" means its *stroked outline* against the digits' cap band - not its
+ * viewBox, which is what a font-size on this wrapper controls. Those are two
+ * different numbers: every shape in the set is inset from its own box, so a box
+ * matched to the cap band draws a mark visibly shorter than the digit, and a box
+ * sized by eye drifts the moment the shape changes.
+ *
+ * So the box is derived rather than chosen, from three measured facts at
+ * --fs-micro:
+ *
+ *   cap height   0.727em   Inter's, and --font-num is Inter (see fonts.css)
+ *   ink / box    0.875     the ring: a 6.1 radius plus half of a 1.8 stroke,
+ *                          i.e. 14 of the 16-unit box, and the ring is the
+ *                          container most of the set is built on
+ *   box          0.831em   0.727 / 0.875
+ *
+ * and the offset from the baseline follows from the same two: the ink is centred
+ * in its box, so its centre is 0.831/2 above the box's bottom edge and wants to
+ * land 0.727/2 above the baseline, leaving 0.052em between the two.
+ *
+ * That replaces a 0.85em font-size multiplied by StatusIcon's own 1.05em
+ * default, which came to a box of 0.893em - a mark ~8% taller than the digits,
+ * overhanging them top and bottom, and at TV density overhanging by a whole
+ * pixel. Collapsing the two multipliers into one declared box is also what makes
+ * the arithmetic above checkable: there is no second factor off in a .tsx file
+ * to fold in first.
+ *
+ * The residue is the shapes that are not the ring - the octagon's outline is
+ * 14.1 of 16 and the triangle's 13.78 - which lands them within 0.1px of the cap
+ * band at 11px. Under a font substitution the cap height above is wrong by
+ * whatever the fallback's differs by, a few percent for Sarabun; that is the
+ * cost of sizing against a metric CSS cannot query, and it is bounded well
+ * inside the error this replaces.
  */
 .statuschip__glyph {
   display: inline-block;
-  font-size: 0.85em;
   line-height: 0;
-  vertical-align: -0.113em;
+  vertical-align: -0.052em;
   margin-inline-end: 0.1875rem;
+}
+/* Overriding StatusIcon's `width`/`height` attributes, which any declaration
+   beats. em here is the chip's own em - the wrapper deliberately sets no
+   font-size of its own, so there is one scale in play rather than two. */
+.statuschip__glyph .status-icon {
+  width: 0.831em;
+  height: 0.831em;
 }
 .statuschip__count {
   font-family: var(--font-num);

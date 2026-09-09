@@ -6,7 +6,7 @@ import type { Deps } from '../deps.ts';
 import { respondValidated } from '../lib/respondValidated.ts';
 import { buildGlobalOverview } from '../services/globalOverviewService.ts';
 import { RETENTION_DAYS } from '../influx/queries.ts';
-import { resolveWindow } from '../services/windowedSnapshot.ts';
+import { describeGaps, resolveWindow } from '../services/windowedSnapshot.ts';
 import { toPlainDate } from '@dashboard/domain-shared';
 
 /**
@@ -107,7 +107,14 @@ export default async function globalOverviewRoutes(
     let windowError: string | null = null;
     if (!resolved.isDefault) {
       try {
-        snapshot = await windows.get(resolved.window);
+        /*
+         * The window supplies the numbers; the poller supplies `everSeen`.
+         * That ledger is a statement about all of history, so it does not
+         * belong to any one window - and without this overlay, picking a
+         * calendar range would drop a never-connected site back to `no_data`
+         * purely because a different query answered it.
+         */
+        snapshot = { ...(await windows.get(resolved.window)), everSeen: poller.current().everSeen };
       } catch (err) {
         /*
          * The picked window could not be read. Serving the poller's 24 h under
@@ -131,14 +138,30 @@ export default async function globalOverviewRoutes(
           oaError: windowError,
           trendOk: false,
           trendError: windowError,
+          /* Not a window with holes in it - a window that could not be read at
+             all. `error` above is the whole story, and leaving gaps set would
+             have the envelope report both at once. */
+          gaps: [],
         };
       }
     }
 
+    /*
+     * What the window actually cost, not what it was planned to cost: a chunk
+     * the instance refuses is retried in narrower slices, so the plan the
+     * picker showed can be an undercount. `chunks` is the reader's own cost and
+     * is on the payload to be answerable - reporting the pre-retry number would
+     * make the slowest windows the ones that look cheapest.
+     */
+    const served =
+      snapshot.chunksQueried && snapshot.chunksQueried !== resolved.served.chunks
+        ? { ...resolved.served, chunks: snapshot.chunksQueried }
+        : resolved.served;
+
     const payload = buildGlobalOverview({
       snapshot,
       filters: query.data,
-      window: resolved.served,
+      window: served,
       env,
     });
 
@@ -156,6 +179,8 @@ export default async function globalOverviewRoutes(
         `could not read ${resolved.served.from} .. ${resolved.served.to} from InfluxDB (${windowError})`,
       );
     }
+    const gapWarning = describeGaps(snapshot.gaps ?? []);
+    if (gapWarning) payload.meta.warnings.push(gapWarning);
 
     // zod proves the shape; these prove it makes sense - that the census adds
     // up and an unconnected site contributes nothing to any denominator. The

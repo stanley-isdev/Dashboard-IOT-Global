@@ -18,10 +18,10 @@ import { formatClock, formatInt, formatPct } from '../../i18n/format';
  */
 export function ShiftBreakdownTable({
   rows,
-  timezone,
+  timeZone,
 }: {
   rows: ShiftBreakdown[];
-  timezone: string;
+  timeZone: string;
 }) {
   const { t, lang } = useI18n();
 
@@ -53,8 +53,8 @@ export function ShiftBreakdownTable({
                   </span>
                 </span>
                 <span className="rank-table__sub mono">
-                  {formatClock(r.start_local, timezone, lang)}–
-                  {formatClock(r.end_local, timezone, lang)} ·{' '}
+                  {formatClock(r.start_local, timeZone, lang)}–
+                  {formatClock(r.end_local, timeZone, lang)} ·{' '}
                   {Math.round(r.duration_min / 60)}h
                   {r.duration_min % 60 ? `${r.duration_min % 60}m` : ''}
                 </span>

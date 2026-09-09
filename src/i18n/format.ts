@@ -195,8 +195,10 @@ export function formatDate(plainDate: string, lang: Lang): string {
 /**
  * The wall-clock hour (0-23) of an instant in a zone.
  *
- * The trend axis puts a tick on every sixth hour of the *reference* zone, which
- * means asking which hour a UTC instant lands on there. Parsing it back out of
+ * The trend axis puts a tick on every sixth hour of the zone it is being drawn
+ * in - the site's own on a drill-down, the reference zone for a fleet total;
+ * see src/state/useDisplayZone.ts - which means asking which hour a UTC instant
+ * lands on there. Parsing it back out of
  * formatClock would work today and break the day someone passes a locale whose
  * hour field is not two ASCII digits, so the field is read from the parts.
  */

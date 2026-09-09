@@ -41,7 +41,12 @@ import {
   sumMachineField,
   type MachineOa,
 } from '../domain/oa.ts';
-import { latestSeen, plantStatusFrom, rollUpCompanyStatus } from '../domain/siteStatus.ts';
+import {
+  absenceFor,
+  latestSeen,
+  plantStatusFrom,
+  rollUpCompanyStatus,
+} from '../domain/siteStatus.ts';
 import { buildTrend, trendWarnings } from '../domain/trend.ts';
 import { sourceHealthFrom } from '../lib/sourceHealth.ts';
 import type { LiveSnapshot } from './liveSnapshot.ts';
@@ -97,9 +102,11 @@ import type { LiveSnapshot } from './liveSnapshot.ts';
  *      THS ten machines.
  *   2. **TOTAL = everything except `Order End`** (`domain/counts.ts`), which is
  *      the board's `EXCLUDE_FROM_TOTAL`, replacing TOTAL = RUNNING + STOP.
- *   3. **`Order End` layer 2** (`domain/orderShift.ts`) now excludes a machine
+ *   3. **`Order End` layer 2** (`domain/orderShift.ts`) excluded a machine
  *      whose loaded order was created in an earlier shift from %OA - the last
- *      6 points of the %OA gap.
+ *      6 points of the %OA gap. **Reversed on 2026-09-08 by the design owner:
+ *      the rule may classify but not exclude, so this divergence is back and
+ *      is now deliberate.** See the fourth bullet below and the call site.
  *
  * A fourth was tried and **reverted**: filtering to `process = 'Injection'` the
  * way the per-process board does. It undercounts - THS has 29 machines and only
@@ -114,6 +121,12 @@ import type { LiveSnapshot } from './liveSnapshot.ts';
  *     2026-08-27; closing it is a staleness cutoff in `domain/counts.ts`.
  *   - **An unreadable order-creation time keeps the machine in %OA**, where the
  *     board would blank it. Zero occurrences measured - see `splitByOrderShift`.
+ *   - **A carried-over order keeps the machine in %OA too**, where the board
+ *     blanks it. The design owner's rule of 2026-09-08: an order ends when its
+ *     PO slots clear, and nothing here may declare it ended sooner. This one is
+ *     not rare - it is every ASI machine, every day, and it is the difference
+ *     between that plant reporting 75.0% and reporting nothing at all. The
+ *     machines are named per plant on the envelope.
  *
  * `machineExclusions` stays empty, and that remains a decision rather than a
  * gap: DESIGN.md §10's hardcoded list was decoded, the plant owner confirmed
@@ -139,7 +152,7 @@ const ACHIEVEMENT_SCOPE_WARNING =
   '%Achievement is output against the LOT SIZE of the order each machine has loaded now (plan_qty0..3 of the current PO group), not against a shift or daily target - a machine early in a large order reads low by construction. An order shared across machines would be counted once per machine; none were observed (26 orders, 0 shared)';
 
 const RECONCILIATION_WARNING =
-  'counts and %OA follow the `Machine Status V2.0` board: 24 h window, TOTAL excludes `Order End` only, and a machine whose loaded order was created in an earlier shift leaves the %OA average (DESIGN.md §8.4 layer 2). Counted across ALL processes, unlike that board, which shows one `process_var` at a time - THS has 29 machines and only 27 are Injection, so a plant card here can read higher than the drill-down it links to. Two deliberate differences remain: a machine that has not reported for hours keeps its last known status instead of reading `Offline` - the board does the same, and closing it would move RUNNING away from it (T-11) - and a machine whose order-creation time cannot be parsed stays in %OA rather than being blanked. machineExclusions is empty by decision: the recovered panel query carries no machine exclusion';
+  'counts and %OA follow the `Machine Status V2.0` board: 24 h window, TOTAL excludes `Order End` only. Counted across ALL processes, unlike that board, which shows one `process_var` at a time - THS has 29 machines and only 27 are Injection, so a plant card here can read higher than the drill-down it links to. Three deliberate differences remain: a machine that has not reported for hours keeps its last known status instead of reading `Offline` - the board does the same, and closing it would move RUNNING away from it (T-11); a machine whose order-creation time cannot be parsed stays in %OA rather than being blanked; and, per the design owner on 2026-09-08, a machine whose loaded order was created in an EARLIER shift also stays in %OA, where the board blanks it - an order counts as finished when its PO slots clear, never by inference from its creation time (DESIGN.md §8.4 layer 2). That last one is why this board can read below the production board, and the machines responsible are named per plant. machineExclusions is empty by decision: the recovered panel query carries no machine exclusion';
 
 /**
  * The KPI block for a node, from the machines beneath it.
@@ -211,11 +224,6 @@ function buildCompany(
   asOf: Date,
   /** The wall clock, for the site's header clock only. Never for an age. */
   now: Date,
-  /**
-   * True when the served window spans more than one shift, which switches off
-   * `Order End` layer 2 - see the note at its call site.
-   */
-  multiShiftWindow: boolean,
   warnings: string[],
   plantInScope: (p: { code: string }) => boolean,
   scope: MachineScope,
@@ -277,12 +285,20 @@ function buildCompany(
     // (BACKEND-HANDOVER §4.3a). Master data owns plant -> company.
     const lastSeen =
       company.readiness === 'live' ? (snapshot.plants[master.code]?.lastSeen ?? null) : null;
+    /*
+     * Absent from the ledger means the probe has not answered for this plant -
+     * a poller built without `plantCodes`, or a boot whose first probe has not
+     * landed. `'unknown'` keeps the pre-existing behaviour until it does, which
+     * is why adding this input cannot regress a site that was reading correctly.
+     */
+    const everSeen = snapshot.everSeen[master.code] ?? 'unknown';
     return {
       master,
       lastSeen,
       status: plantStatusFrom({
         readiness: company.readiness,
         lastSeen,
+        everSeen,
         nowMs,
         freshness: FRESHNESS,
       }),
@@ -383,55 +399,41 @@ function buildCompany(
       : [];
 
     /*
-     * `Order End` layer 2 (DESIGN.md §8.4): a machine whose loaded order was
-     * created in an earlier shift has its figures blanked on the board and so
-     * drops out of its %OA average. Judged against THIS company's shift, not a
-     * hardcoded 08:00/20:00 - the panel hardcodes that split and §9.5 records
-     * that it is wrong for STJ's three shifts.
+     * `Order End` layer 2 (DESIGN.md §8.4) - and what it is allowed to do.
      *
-     * This is what closes the last %OA gap against the board: 75.2% -> 81.0% at
-     * THS on 2026-08-27. See domain/orderShift.ts for why BACKEND-HANDOVER
-     * §4.5(c) concluded it could not be done, and what the panel source shows.
-     */
-    /*
-     * ...and it is applied ONLY while the board is showing a single shift.
+     * It classifies each machine's loaded order as belonging to the current
+     * shift or not, judged against THIS company's shift rather than a hardcoded
+     * 08:00/20:00 (the panel hardcodes that split; §9.5 records that it is wrong
+     * for STJ's three shifts).
      *
-     * Layer 2 is a "what is loaded right now" rule. Its whole justification is
-     * that a machine sitting at `Order End` with last shift's order should not
-     * drag down the shift being watched - which presupposes there IS one shift
-     * being watched. Over a window the reader chose, there is not: 14-16 August
-     * is six shifts, and asking "was this order created in the single shift
-     * running at the window's end" throws away five sixths of the work by
-     * construction.
+     * **It does not remove anything from %OA. Design owner, 2026-09-08.** A
+     * carried-over order is still a running order: the machine stays in the
+     * average until the order genuinely ends, which the data says plainly by
+     * clearing the PO slots. Inferring "finished" from the creation timestamp
+     * and dropping the figures on that inference is what this rule may no
+     * longer do.
      *
-     * Measured on the live instance, 2026-09-03, before this gate: the window
-     * 14-16 Aug holds 11,082 rows carrying a real order and 16,071 pieces, and
-     * the board reported %OA, %Achievement and plants-needing-attention as
-     * `null`, `null` and `0` - three of the six KPI cards blank over two days
-     * of genuine production. Worse than blank, it was *inconsistent*: 6-10
-     * August happened to end inside a shift its orders belonged to and read
-     * 83.8%, so the same board answered two comparable windows in two
-     * incompatible ways with nothing on screen to say why.
+     * The cost is known and accepted: layer 2 as an exclusion is what once
+     * closed the last gap to the production board (THS 75.2% -> 81.0% on
+     * 2026-08-27), so this board can now read below that board by exactly the
+     * carried-over machines. `orderShiftWarnings` names them on every payload,
+     * so the difference is stated rather than left to be discovered.
      *
-     * So the rule keeps its scope and loses what was never its scope. Nothing
-     * changes for the live board or for any quick range up to a day - the
-     * overwhelming majority of requests - and a multi-shift window measures
-     * every order worked inside it, which is the only reading the window itself
-     * supports. The envelope says which of the two happened rather than leaving
-     * a reader to infer it from a number.
+     * What made a universal rule out of a THS-shaped one: ASI 6051 runs a
+     * single order across days. On 2026-09-08 that blanked its %OA card
+     * entirely - seven machines, all shooting, a real 75.0% average, every one
+     * of them ruled `ended` because the order was created the previous morning.
      *
-     * Flagged for the design-doc owner: this is a scope decision about a
-     * reconciled metric (DESIGN.md §8.4), not a refactor. The reconciliation
-     * against the production board is unaffected, because that board is always
-     * showing one current shift and so always takes the first branch.
+     * No window gate any more, either. The rule used to be switched off past
+     * `OA_WINDOW_HOURS` because a multi-shift window has no single shift to
+     * judge against; with the verdict no longer touching the number, wide and
+     * narrow windows now answer alike, and the gate had nothing left to guard.
      */
     const oaSplit = splitByOrderShift(observedOa, shift);
-    const oaMachines = multiShiftWindow ? observedOa : oaSplit.current;
+    const oaMachines = observedOa;
 
     const node = `${company.code}/${b.master.code}`;
-    // Only when layer 2 actually ran - otherwise these would report machines
-    // being excluded from an average they are in.
-    if (!multiShiftWindow) for (const w of orderShiftWarnings(node, oaSplit)) warnings.push(w);
+    for (const w of orderShiftWarnings(node, oaSplit)) warnings.push(w);
     for (const w of oaWarnings(node, oaMachines)) warnings.push(w);
     for (const w of achievementWarnings(node, oaMachines)) warnings.push(w);
 
@@ -440,6 +442,14 @@ function buildCompany(
       label: b.master.label,
       status: b.status,
       data_readiness: company.readiness,
+      // Inherited from the company: master data records an absence at company
+      // level, and a plant of a site nobody can reach is unreachable for the
+      // same reason.  returns null the moment the plant reports.
+      absence: absenceFor({
+        status: b.status,
+        readiness: company.readiness,
+        note: company.absence,
+      }),
       // Kept even when the plant has aged into `no_data`: "last seen 40 minutes
       // ago" is the fact that separates a quiet site from a dead one (T-11).
       last_seen: b.lastSeen,
@@ -451,7 +461,39 @@ function buildCompany(
     return { plant, oaMachines, publishes, master: b.master };
   });
 
-  const plants: PlantSummary[] = built.map((b) => b.plant);
+  /*
+   * Plants that have NEVER reported are left off the board.
+   *
+   * THS's 6337 and 6321 are the case: master data lists them with 8 and 2
+   * machines, no row of either has ever arrived, and a permanently dark tile
+   * beside two working ones is noise an executive has to learn to ignore -
+   * which is how real problems get ignored too. The design owner asked for them
+   * to be hidden on 2026-09-08.
+   *
+   * **This hides nothing that could come back on its own, and it reverses
+   * itself.** The filter reads `everSeen`, which is an observation, not a
+   * setting: the moment either plant sends a single row the 2-second hot poll
+   * marks it `'yes'` and the tile reappears with no config edit, no deploy and
+   * nobody having to remember. That is the whole reason this is keyed on the
+   * ledger rather than on a hand-maintained hidden-plants list.
+   *
+   * Three deliberate limits:
+   *   - `'unknown'` is NOT hidden. A probe that has not landed or has been
+   *     failing is uncertainty, and hiding on uncertainty would make a site
+   *     vanish because Influx was briefly unreachable.
+   *   - A plant that HAS reported and went quiet stays on the board however
+   *     long it is silent - that is `no_data`, the outage case, and hiding it
+   *     would be the worst bug this file could have.
+   *   - The company's own status is rolled up from `base` above, before this
+   *     filter, so hiding a dark plant cannot flatter the company it belongs
+   *     to. Numerically the filter is inert either way: a `not_connected` plant
+   *     already carries `emptyCounts()` and a null `last_seen`.
+   *
+   * The full plant roster, hidden ones included, is still served on `/meta`.
+   */
+  const plants: PlantSummary[] = built
+    .filter((b) => (snapshot.everSeen[b.master.code] ?? 'unknown') !== 'no')
+    .map((b) => b.plant);
   // Flat, not a mean of the plant means: one definition of "average %OA" for
   // every level of the board. See averageOa.
   const oaMachines = built.flatMap((b) => b.oaMachines);
@@ -501,6 +543,11 @@ function buildCompany(
       lat: company.lat,
       lng: company.lng,
       timezone: company.timezone,
+      absence: absenceFor({
+        status,
+        readiness: company.readiness,
+        note: company.absence,
+      }),
       local_time: toIsoOffset(now, company.timezone),
       shift: shift ? stripInternals(shift) : null,
       status,
@@ -595,33 +642,23 @@ export function buildGlobalOverview(opts: {
   const warnings = [KPI_WARNING, ACHIEVEMENT_SCOPE_WARNING, RECONCILIATION_WARNING];
 
   /*
-   * Is this window wider than the one `Order End` layer 2 was reconciled in?
+   * Wider than the window the %OA figure was reconciled in.
    *
-   * The threshold is `OA_WINDOW_HOURS` and not a shift length, and the
-   * difference matters. The obvious reading - "layer 2 is a single-shift rule,
-   * so switch it off past the longest shift (12 h)" - is wrong, and switching
-   * it off at 12 h would take the DEFAULT board with it: the default window is
-   * 24 h, and the figure reconciled against the production board on 2026-08-27
-   * (THS 81.0%, plant 6332 69.8%) is precisely "a rolling 24 h of orders, then
-   * layer 2". The rule and that window are one configuration, not two.
-   *
-   * So the pairing is what is preserved: any window at or inside the %OA window
-   * asks the same question at a narrower scope and keeps the rule, which is
-   * every quick range and the live board. Past it - a week, or the reader's own
-   * dates - the window is no longer "now-ish" and "the current shift" has no
-   * referent for the orders in it.
+   * `Order End` layer 2 used to be switched off here, on the grounds that a
+   * multi-shift window has no single shift to judge an order's creation time
+   * against. Since 2026-09-08 that rule excludes nothing at any width, so there
+   * is no behaviour left to gate. What survives is the honest caveat: the
+   * reconciliation against the production board was measured over a rolling
+   * 24 h, and this window is not that.
    *
    * Measured on the SERVED window rather than on `range`, so a clamped or
    * absolute window is judged on what was actually read.
    */
-  const multiShiftWindow = window.hours > OA_WINDOW_HOURS;
-  if (multiShiftWindow) {
+  if (window.hours > OA_WINDOW_HOURS) {
     warnings.push(
-      `this window spans ${Math.round(window.hours)} h, wider than the ${OA_WINDOW_HOURS} h the ` +
-        '%OA rule was reconciled in, so %OA and %Achievement count every order worked inside it. ' +
-        '`Order End` layer 2 (DESIGN.md §8.4), which drops a machine whose loaded order predates ' +
-        'the CURRENT shift, has no single shift to judge against here and is not applied; on the ' +
-        'default board and on every quick range it is',
+      `this window spans ${Math.round(window.hours)} h, wider than the ${OA_WINDOW_HOURS} h that ` +
+        '%OA was reconciled against the production board in, so %OA and %Achievement here describe ' +
+        'the newest order each machine worked inside the window rather than the one it is running now',
     );
   }
 
@@ -723,7 +760,6 @@ export function buildGlobalOverview(opts: {
       // As at the end of the window, not as at now - see `asOf` above.
       asOf,
       now,
-      multiShiftWindow,
       warnings,
       inPlantScope,
       machineScope,

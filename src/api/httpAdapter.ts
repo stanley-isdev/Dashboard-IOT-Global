@@ -51,7 +51,10 @@ async function request<T extends z.ZodType>(
   } catch (err) {
     const e = err as Error;
     if (e.name === 'TimeoutError') {
-      throw new ApiError('timeout', `No response within ${timeoutMs} ms`, { detail: url });
+      throw new ApiError('timeout', `No response within ${timeoutMs} ms`, {
+        detail: url,
+        timeoutMs,
+      });
     }
     // A caller-driven abort (navigation, refetch) is not a failure to report.
     if (e.name === 'AbortError') throw e;
@@ -84,19 +87,47 @@ async function request<T extends z.ZodType>(
   return parsed.data;
 }
 
+/**
+ * Whether this request makes the server ASSEMBLE a window out of several
+ * InfluxDB queries, rather than answer it from the snapshot it already holds.
+ *
+ * Which decides the timeout, and nothing else. `8h` and `24h` are one query on
+ * the server (or none - `24h` is the poller's own window), so they belong under
+ * the tight `requestTimeoutMs` where silence means a fault. `7d` is three
+ * queries, and a calendar pair is up to twenty-eight days of them run one after
+ * another; those genuinely take ten seconds or more and the client must not
+ * call a correct answer a timeout while it is still arriving.
+ *
+ * Kept as a rule about the REQUEST rather than read off `/meta`'s
+ * `max_query_hours`, because it has to hold for the very first request, before
+ * any meta has landed - see `chunksFor` in TimeRangePicker.tsx, which duplicates
+ * the server's chunk arithmetic for the same reason.
+ */
+function needsAssembly(q: { range?: string; from?: string | null; to?: string | null }): boolean {
+  if (q.from && q.to) return true;
+  return q.range === '7d';
+}
+
 export function createHttpAdapter(cfg: RuntimeConfig): DashboardApi {
   const t = cfg.requestTimeoutMs;
+  /** The timeout for a window the server has to assemble - see `needsAssembly`. */
+  const tw = Math.max(cfg.windowedRequestTimeoutMs, t);
   return {
     getMeta: (signal) => request(buildUrl(cfg.apiBaseUrl, 'meta', {}), zMeta, t, signal),
 
     getGlobalOverview: (q: OverviewQuery, signal) =>
-      request(buildUrl(cfg.apiBaseUrl, 'global-overview', { ...q }), zGlobalOverview, t, signal),
+      request(
+        buildUrl(cfg.apiBaseUrl, 'global-overview', { ...q }),
+        zGlobalOverview,
+        needsAssembly(q) ? tw : t,
+        signal,
+      ),
 
     getCompany: (company: string, q: ScopeQuery, signal) =>
       request(
         buildUrl(cfg.apiBaseUrl, `companies/${encodeURIComponent(company)}`, { ...q }),
         zCompanyDetail,
-        t,
+        needsAssembly(q) ? tw : t,
         signal,
       ),
 
@@ -108,7 +139,7 @@ export function createHttpAdapter(cfg: RuntimeConfig): DashboardApi {
           { ...q },
         ),
         zPlantDetail,
-        t,
+        needsAssembly(q) ? tw : t,
         signal,
       ),
   };

@@ -69,6 +69,7 @@ function snapshot(
     lastSuccessAt: seen,
     ok: true,
     error: null,
+    everSeen: {},
     plants,
     machines,
     unknownStatuses: [],

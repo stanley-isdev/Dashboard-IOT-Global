@@ -25,6 +25,27 @@ export const zRuntimeConfig = z.object({
   refreshMs: z.number().int().positive(),
   requestTimeoutMs: z.number().int().positive(),
   /**
+   * The timeout for a board the server has to ASSEMBLE - a calendar window, or
+   * any quick range wider than the snapshot the poller holds.
+   *
+   * A separate number because those two cases are separated by an order of
+   * magnitude and one timeout cannot serve both honestly. The default board is
+   * one in-memory read and answers in milliseconds, so ten seconds of silence
+   * there means something is wrong and the banner should say so. A month-wide
+   * calendar pick is dozens of sequential InfluxDB queries - measured
+   * 2026-09-08 at 10-14.5 s for the widest window the picker allows, and the
+   * queries cannot be run in parallel to speed it up (the instance answers
+   * concurrent reads with silently short results - see the note in
+   * server/src/services/windowedSnapshot.ts). Under the shared 10 s the widest
+   * windows timed out on the client while the server was still answering them
+   * correctly, which reads on screen as a broken board rather than a slow one.
+   *
+   * `.default()` rather than required, for the same reason `tileUrlDark` is: a
+   * runtime-config.json deployed before this field existed must keep
+   * validating, or a version bump drops the whole config to FALLBACK_CONFIG.
+   */
+  windowedRequestTimeoutMs: z.number().int().positive().default(45_000),
+  /**
    * Null on a site with no public internet. The bundled Natural Earth vector
    * layer renders underneath regardless, so the map degrades to country
    * outlines instead of going grey.
@@ -65,11 +86,12 @@ export const FALLBACK_CONFIG: RuntimeConfig = {
   apiBaseUrl: '/api/v1',
   refreshMs: 30_000,
   requestTimeoutMs: 10_000,
+  windowedRequestTimeoutMs: 45_000,
   tileUrl: null,
   tileUrlDark: null,
   tileAttribution: '&copy; Natural Earth',
   grafanaBaseUrl: '',
-  defaultLang: 'en',
+  defaultLang: 'th',
   defaultTheme: 'light',
   kioskDefault: false,
   referenceTimezone: 'Asia/Bangkok',

@@ -1,4 +1,4 @@
-import type { ResolvedShift } from '@dashboard/domain-shared';
+import { zonedToUtc, type ResolvedShift } from '@dashboard/domain-shared';
 
 /**
  * DESIGN.md §8.4's **`Order End` layer 2**, ported from the panel source now
@@ -18,6 +18,24 @@ import type { ResolvedShift } from '@dashboard/domain-shared';
  * of layer 2 on the numbers an executive reads is exactly one thing: **the
  * machine leaves the %OA denominator.** It does NOT change Total, Running or
  * Stop - the original card keeps its real status.
+ *
+ * ## What THIS port does with the verdict - and it is not that
+ *
+ * **The verdict is reported. It excludes nothing. Design owner, 2026-09-08.**
+ *
+ * The board's inference - order created before this shift, therefore finished -
+ * holds at THS, which creates an order per shift, and fails at ASI, which runs
+ * one order across days. Applied there on 2026-09-08 it blanked the plant
+ * outright: seven machines with a computable %OA averaging 75.0%, all of them
+ * still shooting that minute, all of them ruled `ended` because their orders
+ * were created the previous morning.
+ *
+ * So the rule keeps its judgement and loses its authority to act on it. An
+ * order is finished when its `ProductionOrderN` slots clear, which the gateway
+ * says plainly and needs no inferring; until then the machine stays in the
+ * average. What the verdict is still for is `orderShiftWarnings`, which names
+ * the carried-over machines so a reader can see exactly why this board and the
+ * production board can disagree.
  *
  * ## Why BACKEND-HANDOVER §4.5(c) said this was impossible
  *
@@ -39,9 +57,12 @@ import type { ResolvedShift } from '@dashboard/domain-shared';
  *      `YYYY-MM-DD HH:MM:SS` (58), `YYYY/MM/DD HH:MM:SS` (4), `-` (226). The
  *      two real shapes differ only in separator.
  *
- * Applied to live THS data it moves 2 machines of 15, not 15 of 15: `I5` and
- * `IC5` both carry orders created 2026-08-26 13:06 UTC - 20:06 Bangkok, the
- * previous night shift. Avg %OA goes 75.2% -> **81.0%**, which is the board.
+ * The 2026-08-27 measurement recorded here - `I5` and `IC5` "created 13:06 UTC
+ * = 20:06 Bangkok, the previous night shift", moving Avg %OA 75.2% -> 81.0% to
+ * match the board - was itself a product of the UTC misreading corrected in
+ * `parseCreateDate` on 2026-09-08. Those two orders were raised at 13:06 local,
+ * inside the day shift. The agreement with the board was agreement on a shared
+ * mistake, not a reconciliation.
  */
 
 /** Layer 2's verdict for one machine's loaded order. */
@@ -57,9 +78,18 @@ export type OrderShiftVerdict =
  * The two shapes `vCreateDateTxt` actually holds, plus anything already
  * carrying a zone marker.
  *
- * Values are **UTC** - stated in the panel's own comment ("dtStr ... is UTC
- * now") and the reason its JavaScript appends a literal `Z` before parsing.
- * Anything zone-less here is therefore read as UTC, never as server-local time.
+ * **A zone-less value is the site's local wall clock.** This file used to say
+ * the opposite - "values are UTC", on the strength of the panel's own comment
+ * ("dtStr ... is UTC now") and the literal `Z` its JavaScript appends before
+ * parsing. That claim is wrong, and measurement settles it: see
+ * `parseCreateDate` for the 400-row comparison against the row's own UTC `time`
+ * column, where the deltas cap at exactly +7.00 h.
+ *
+ * Worth recording that the panel's comment is not incidental here - appending
+ * `Z` to a local timestamp is precisely how the production board reaches its own
+ * inflated %OA, and trusting that comment is how this port inherited the same
+ * defect. A source's description of its data is a claim to be checked, not a
+ * fact.
  */
 const TIMESTAMP = /^(\d{4})[-/](\d{2})[-/](\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/;
 
@@ -73,8 +103,33 @@ const EMPTY = new Set(['', '-']);
  * slash-separated shape is not an ECMAScript date-time string, so `Date.parse`
  * of it is implementation-defined - V8 happens to accept it, which is exactly
  * the kind of agreement that survives right up until it is load-bearing.
+ *
+ * **A bare timestamp is the SITE'S wall clock, not UTC.** This read `Date.UTC`
+ * until 2026-09-08 and nothing in the handover ever established the zone, so
+ * the assumption went unexamined. Measured against the `time` column on the
+ * same row - which is UTC, so it settles the question - over 400 rows at 6332:
+ * 154 of them placed the create time in the FUTURE relative to the row that
+ * carried it, and the deltas topped out at **exactly +7.00 h**. An order cannot
+ * be created after the row recording it, and +7 is Bangkok. The digits are
+ * local.
+ *
+ * What that cost: every create time landed 7 h late, so an order raised in the
+ * afternoon fell outside the shift window and `orderShiftVerdict` called it
+ * `ended`. The rule meant to catch the OLDEST orders was catching the NEWEST
+ * ones - IA1 at 13:56 and P1I8 at 15:03, both `Mass Pro` and mid-cycle, both
+ * ruled finished. And with the shift-based exclusion still live it inflated
+ * THS's %OA to 88.8% against a true 83.3%, which is the figure the production
+ * panel shows to this day (its own afterRender JavaScript reproduces the same
+ * mistake - DESIGN.md §8.4 layer 2).
+ *
+ * `timeZone` is the site's, threaded from `ResolvedShift`, NOT a constant: STJ
+ * is Asia/Tokyo and SEH is Europe/Budapest, which observes DST. `zonedToUtc`
+ * resolves the offset at the instant in question rather than a fixed one.
  */
-export function parseCreateDate(raw: string | null | undefined): Date | null {
+export function parseCreateDate(
+  raw: string | null | undefined,
+  timeZone: string,
+): Date | null {
   if (raw == null) return null;
   // The panel's SQL URL-encodes spaces for the drill-down href; we read the
   // column raw, but a value that has been through that round trip still parses.
@@ -90,8 +145,14 @@ export function parseCreateDate(raw: string | null | undefined): Date | null {
   const m = TIMESTAMP.exec(value);
   if (!m) return null;
   const [, y, mo, d, h, mi, s] = m;
-  const at = Date.UTC(+y, +mo - 1, +d, +h, +mi, s ? +s : 0);
-  return Number.isNaN(at) ? null : new Date(at);
+  const at = zonedToUtc(
+    { year: +y, month: +mo, day: +d, hour: +h, minute: +mi },
+    timeZone,
+  );
+  if (Number.isNaN(at.getTime())) return null;
+  // `zonedToUtc` works to the minute; the seconds ride along separately so a
+  // boundary comparison is not quietly rounded down by up to 59 s.
+  return new Date(at.getTime() + (s ? +s : 0) * 1000);
 }
 
 /**
@@ -111,7 +172,9 @@ export function orderShiftVerdict(
 ): OrderShiftVerdict {
   if (!shift) return 'unknown';
 
-  const parsed = createdRaw.map(parseCreateDate).filter((d): d is Date => d !== null);
+  const parsed = createdRaw
+    .map((raw) => parseCreateDate(raw, shift.timeZone))
+    .filter((d): d is Date => d !== null);
   if (parsed.length === 0) return 'unknown';
 
   const from = shift.startUtc.getTime();

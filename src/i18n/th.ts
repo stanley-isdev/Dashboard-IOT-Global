@@ -52,22 +52,14 @@ export const th: Dict = {
   'filter.baseCount.one': '{count} ฐาน',
   'filter.baseCount.other': '{count} ฐาน',
   'filter.noBases': 'ยังไม่เลือกฐาน',
-  /* คงคำว่า Lamp ไว้ตรงกับบอร์ด operator (`Lamp_var`, "LAMP 2") และตรงกับที่หน้างานเรียก
-     ถ้าแปลเป็น "โรงงาน" คนที่ถือสองจอจะต้องมาแปลงเองว่าอันไหนคืออันไหน */
-  'filter.plant': 'Lamp',
-  'filter.allPlants': 'ทั้งหมด · {count} Lamp',
-  'filter.plantCount.one': '{count} Lamp',
-  'filter.plantCount.other': '{count} Lamp',
-  'filter.noPlants': 'ยังไม่เลือก Lamp',
-  /* คงคำว่า Zone ไว้ด้วยเหตุผลเดียวกับ Lamp: บอร์ด operator เรียก `Zone_var`
-     และป้ายหน้างานก็เขียนแบบนี้ ส่วนค่าของโซน (`2A-A`) ไม่แปลในทุกภาษา */
-  'filter.zone': 'Zone',
-  'filter.allZones': 'ทั้งหมด · {count} โซน',
-  // ภาษาไทยไม่ผันตามจำนวน มีสองคีย์เพื่อให้ครบตาม schema
-  'filter.zoneCount.one': '{count} โซน',
-  'filter.zoneCount.other': '{count} โซน',
-  'filter.noZones': 'ยังไม่เลือกโซน',
-  'filter.zoneLamps': 'อยู่ใน {count} Lamp',
+  /* ระดับถัดจาก Region ใช้คำว่า "ฐานการผลิต" ให้ตรงกับหัวคอลัมน์ในตารางอันดับ ซึ่งใช้คำนี้
+     อยู่ก่อนแล้ว ส่วนรหัส plant (6332) ยังขึ้นนำในเมนูเหมือนเดิม เพราะรหัสคือสิ่งที่คนถือสองจอ
+     ใช้เทียบกับ `Lamp_var` ("LAMP 2") บนบอร์ด operator ไม่ใช่ชื่อระดับ */
+  'filter.plant': 'ฐานการผลิต',
+  'filter.allPlants': 'ทั้งหมด · {count} ฐานการผลิต',
+  'filter.plantCount.one': '{count} ฐานการผลิต',
+  'filter.plantCount.other': '{count} ฐานการผลิต',
+  'filter.noPlants': 'ยังไม่เลือกฐานการผลิต',
   'refresh.now': 'รีเฟรชเดี๋ยวนี้',
   'refresh.interval': 'รอบรีเฟรชอัตโนมัติ',
   'refresh.off': 'ปิด',
@@ -150,8 +142,8 @@ export const th: Dict = {
   'kpi.achievement.gap': '{delta}',
   'kpi.attention': 'ต้องเข้าดูแล',
   // Thai does not inflect for number; both keys exist to satisfy the schema.
-  'table.plants.one': '{count} โรงงาน',
-  'table.plants.other': '{count} โรงงาน',
+  'table.plants.one': '{count} ฐานการผลิต',
+  'table.plants.other': '{count} ฐานการผลิต',
   'kpi.attention.none': 'ไม่มีฐานที่ต่ำกว่า {threshold}%',
   'kpi.attention.tooltip':
     'นับฐานที่อยู่ในเกณฑ์วิกฤต คือ %OA ต่ำกว่า {threshold}% ซึ่งไม่เท่ากับ “ต่ำกว่าเป้า {target}%” เพราะเกณฑ์สีคือ {target}-5 และ {target}-20 ฐานที่ทำได้ 82% จึงต่ำกว่าเป้าแต่ยังไม่วิกฤต ป้ายสถานะเหนือตารางอันดับนับครบทุกเกณฑ์',
@@ -178,7 +170,7 @@ export const th: Dict = {
   'kpi.machines.source': 'นับจากสถานะล่าสุดที่แต่ละเครื่องส่งเข้า InfluxDB',
   'kpi.machines.source.formula': 'TOTAL = RUNNING + STOP',
   'kpi.machines.source.note':
-    'เครื่องที่อยู่สถานะอื่นจะไม่ถูกนับ เช่น No Plan (ไม่มีแผนผลิต), Order End (ผลิตครบออเดอร์แล้ว), Pending (รอดำเนินการ) และโรงงานที่ไม่ส่งข้อมูลจะไม่ถูกนับเลย',
+    'เครื่องที่อยู่สถานะอื่นจะไม่ถูกนับ เช่น No Plan (ไม่มีแผนผลิต), Order End (ผลิตครบออเดอร์แล้ว), Pending (รอดำเนินการ) และฐานที่ไม่ส่งข้อมูลจะไม่ถูกนับเลย',
   'kpi.running.source':
     'เครื่องที่สถานะล่าสุดเป็น Mass Pro หรือ Dandori · Dandori คือการเปลี่ยนรุ่น เครื่องมีคนดูแลและกำลังทำงานอยู่ จึงนับเป็นเดินเครื่อง ไม่ใช่การหยุด',
   'kpi.running.source.formula': 'RUNNING = Mass Pro {massPro} + Dandori {dandori}',
@@ -212,7 +204,7 @@ export const th: Dict = {
   /* การ์ดนี้ถูกอ่านผิดบ่อยที่สุดในแถบ เพราะ "ต้องเข้าดูแล 0" กับป้าย
      "ต่ำกว่าเป้า 3" อยู่บนจอเดียวกันแล้วดูขัดกัน ทั้งที่นับคนละเกณฑ์ */
   'kpi.attention.source':
-    'นับจำนวนฐานผลิตที่ %OA ตกอยู่ในเกณฑ์วิกฤต ไม่ใช่จำนวนเครื่องและไม่ใช่จำนวนโรงงาน\n' +
+    'นับจำนวนฐานที่ %OA ตกอยู่ในเกณฑ์วิกฤต ไม่ใช่จำนวนเครื่องและไม่ใช่จำนวนฐานการผลิต\n' +
     '- เกณฑ์วิกฤต คือ %OA ต่ำกว่า {warn}% เซิร์ฟเวอร์เป็นคนกำหนด ไม่ได้ตั้งค่าไว้ในหน้าเว็บ\n' +
     '- ฐานที่ยังไม่มีค่า %OA ไม่ถูกนับ เพราะ “วัดไม่ได้” ไม่เท่ากับ “ปกติดี”',
   'kpi.attention.source.formula': 'ต้องเข้าดูแล = ฐานที่ %OA ต่ำกว่า {warn}%',
@@ -223,7 +215,7 @@ export const th: Dict = {
     '- {good}% ขึ้นไป ตามเป้า\n' +
     '- {warn} ถึง {warnTop}% ต่ำกว่าเป้า แต่ยังไม่วิกฤต\n' +
     '- ต่ำกว่า {warn}% วิกฤต คือกลุ่มที่การ์ดนี้นับ\n' +
-    'ตอนนี้มีโรงงานย่อยอยู่ในเกณฑ์วิกฤต {plants} โรง',
+    'ตอนนี้มีฐานการผลิตอยู่ในเกณฑ์วิกฤต {plants} แห่ง',
 
   /* โครงเดียวกับ kpi.oa.source: บอกตัวแปรก่อน แล้วค่อยสูตร แล้วค่อยข้อควรระวัง */
   'kpi.achievement.source':
@@ -266,6 +258,12 @@ export const th: Dict = {
   'readiness.planned': 'อยู่ในแผน',
   'readiness.unknown': 'ยังไม่ระบุ',
 
+  /* ------------------------------------------- absence (why there is no data) */
+  'absence.noDate': 'ยังไม่เคยได้รับข้อมูล',
+  'absence.quietWindow': 'ไม่มีข้อมูลในช่วงนี้',
+  'absence.owner': 'ผู้รับผิดชอบ: {owner}',
+  'absence.contradiction': 'ตั้งค่าไว้ว่าเชื่อมต่อแล้ว แต่ยังไม่เคยได้รับข้อมูล',
+
   /* --------------------------------------------------- machine buckets */
   'bucket.running': 'Running',
   'bucket.stopped': 'Stopped',
@@ -291,6 +289,7 @@ export const th: Dict = {
   'unit.shots': 'ช็อต',
 
   /* ------------------------------------------------------------ shifts */
+  'shift.breakdown': 'รายละเอียดตามกะ',
   'shift.chip': '{code} · {time}',
   'shift.chipFull': '{label} ({index} จาก {of}) · {time}',
   'shift.header': '{label} · {start}–{end} · {time}',
@@ -367,13 +366,13 @@ export const th: Dict = {
 
   /* ------------------------------------------------------ empty result */
   'empty.title': 'ไม่มีข้อมูลตามตัวกรองที่เลือก',
-  'empty.noRegion': 'ระบบทำงานปกติ - ยังไม่ได้ติ๊ก Region ไว้เลย จึงไม่มีฐานผลิตให้แสดง',
+  'empty.noRegion': 'ระบบทำงานปกติ - ยังไม่ได้ติ๊ก Region ไว้เลย จึงไม่มีฐานให้แสดง',
   'empty.narrowed': 'ระบบทำงานปกติ ตัวกรองที่ใช้อยู่ไม่ตรงกับข้อมูลใดในช่วงเวลานี้',
-  'empty.selectAll': 'เลือกทุกฐานผลิต',
+  'empty.selectAll': 'เลือกทุกฐาน',
   'empty.clear': 'ล้างตัวกรอง',
 
-  'empty.panel.plants': 'ไม่มีโรงงานในฐานนี้ที่ผลิตกระบวนการ {process}',
-  'empty.panel.machines': 'ไม่มีเครื่องจักรในโรงงานนี้ที่ผลิตกระบวนการ {process}',
+  'empty.panel.plants': 'ไม่มีฐานการผลิตในฐานนี้ที่ผลิตกระบวนการ {process}',
+  'empty.panel.machines': 'ไม่มีเครื่องจักรในฐานการผลิตนี้ที่ผลิตกระบวนการ {process}',
   'empty.panel.clearProcess': 'แสดงทุกกระบวนการ',
   'empty.panel.working': 'ส่วนอื่นของหน้านี้เป็นข้อมูลปัจจุบันทั้งหมด',
 
@@ -383,7 +382,8 @@ export const th: Dict = {
   'map.title': 'ตำแหน่งและสถานะอุปกรณ์',
   'map.bases': '{count} ฐานทั่วโลก',
   'map.sub': 'สีและรูปทรงหมุด = สถานะการรายงาน · ตัวเลข = %OA',
-  'map.legend.noData': 'ไม่มีข้อมูล',
+  'map.legend.noData': 'ไม่มีข้อมูลในช่วงนี้',
+  'map.legend.notConnected': 'ยังไม่เชื่อมต่อ',
   'map.reset': 'รีเซ็ตมุมมอง',
   'map.zoomIn': 'ขยายเข้า',
   'map.zoomOut': 'ย่อออก',
@@ -405,15 +405,15 @@ export const th: Dict = {
   'drawer.read.oa': '%OA ห่างจากเป้า {target}% อยู่ {delta} จุด',
   'drawer.read.planMet': 'ผลผลิตถึงแผนแล้วที่ {pct}',
   'drawer.read.planShort': 'ผลผลิตอยู่ที่ {pct} ของแผน',
-  'drawer.plants': 'โรงงานในฐานนี้ {count} แห่ง',
+  'drawer.plants': 'ฐานการผลิตในฐานนี้ {count} แห่ง',
   'map.pop.rollout': 'การติดตั้ง',
   'map.pop.telemetry': 'การส่งข้อมูล',
 
   /* ------------------------------------------------------------- table */
-  'table.title': 'อันดับโรงงาน',
+  'table.title': 'อันดับฐานการผลิต',
   'table.sub': 'เรียงตาม %OA จากต่ำไปสูง',
   'table.base': 'ฐานการผลิต',
-  'table.plant': 'โรงงาน',
+  'table.plant': 'ฐานการผลิต',
   'table.dateTime': 'วันที่/เวลา',
   'table.shift': 'กะ',
   'table.runStop': 'Run/Stop',
@@ -425,9 +425,9 @@ export const th: Dict = {
   'table.stop': '{count} Stop',
   'table.noDowntime': 'ไม่มี',
   'table.notReporting': 'ยังไม่รายงาน ({count})',
-  'table.expand': 'แสดงโรงงานของ {company}',
-  'table.collapse': 'ซ่อนโรงงานของ {company}',
-  'table.plantsCount': '{count} โรงงาน',
+  'table.expand': 'แสดงฐานการผลิตของ {company}',
+  'table.collapse': 'ซ่อนฐานการผลิตของ {company}',
+  'table.plantsCount': '{count} ฐานการผลิต',
 
   /* --------------------------------------------- sortable column heads ---- */
   'sort.by': 'เรียงตาม {column}',
@@ -452,7 +452,7 @@ export const th: Dict = {
 
   /* ------------------------------------------------------------- trend */
   'trend.title': 'แนวโน้ม',
-  'trend.sub': 'ค่าเฉลี่ยรายชั่วโมงของโรงงานที่เชื่อมต่อทั้งหมด · {span}',
+  'trend.sub': 'ค่าเฉลี่ยรายชั่วโมงของฐานการผลิตที่เชื่อมต่อทั้งหมด · {span}',
   'trend.subSite': 'ค่าเฉลี่ยรายชั่วโมงของไซต์นี้ · {span}',
   'trend.span': '{hours} ชม. ล่าสุด',
   'trend.spanShort': 'มีข้อมูล {hours} ชม. ล่าสุด จาก {range} ที่เลือก',

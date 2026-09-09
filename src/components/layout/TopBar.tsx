@@ -28,7 +28,6 @@ import { RefreshPicker } from './RefreshPicker';
 import { RegionFilter } from './RegionFilter';
 import { ThemeToggle } from './ThemeToggle';
 import { TimeRangePicker } from './TimeRangePicker';
-import { ZoneFilter } from './ZoneFilter';
 
 /**
  * Brand, freshness, language, and the filter row.
@@ -68,10 +67,10 @@ export function TopBar({ connection }: { connection: ConnectionInfo }) {
   /*
    * The filter row comes off a board that has nothing on it.
    *
-   * With no payload every control in this row is furniture: Region, Lamp,
-   * Process and Zone all narrow a set that does not exist, Export photographs a
-   * blank, and the two range controls re-ask a question the server is failing to
-   * answer. Nine tappable capsules that do nothing is worse than none - a reader
+   * With no payload every control in this row is furniture: Region, Lamp and
+   * Process all narrow a set that does not exist, Export photographs a blank,
+   * and the two range controls re-ask a question the server is failing to
+   * answer. Eight tappable capsules that do nothing is worse than none - a reader
    * presses them, watches nothing happen, and concludes the whole board is
    * frozen rather than that one service is down. What is left is the masthead,
    * which still says whose board this is, how fresh it is not, and how to get
@@ -203,21 +202,12 @@ export function TopBar({ connection }: { connection: ConnectionInfo }) {
           Surface, and the plant board is Injection-only, so without it the two
           screens counted different machines. Set it to Injection to read this
           board against that one.
-
-          Zone is the fourth and the narrowest - the operator board's Zone_var,
-          a tag on the machine row rather than a level of master data. It is
-          last on the row because it is the only one whose CHOICES depend on the
-          three to its left: the menu lists the zones the plants still in scope
-          are reporting, so a reader narrows left to right and never sees a zone
-          belonging to a base they have already filtered out.
         */}
         <RegionFilter />
 
         <PlantFilter />
 
         <ProcessFilter />
-
-        <ZoneFilter />
 
         <span className="topbar__filters-spacer" />
 

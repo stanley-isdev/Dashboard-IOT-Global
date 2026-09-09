@@ -40,16 +40,6 @@ export interface OverviewQuery {
    */
   plant: string;
   /**
-   * The Zone picker: `all`, `none`, or a comma-separated list of zone tags.
-   * Same encoding again, one level below `plant`, and matched on the machine -
-   * `zone` is a tag on the machine and no site row above it has one.
-   *
-   * Zone tags are plant-local and they collide (`A` exists at both 6051 and
-   * 6338), so this means what `${Zone_var}` means on the operator board: the
-   * named zones inside whatever plant scope is in force.
-   */
-  zone: string;
-  /**
    * The longest-active-stops panel's Top-N picker: how many rows `alerts`
    * comes back with. One of `ALERT_LIMIT_CHOICES` in state/useFilters.ts.
    */

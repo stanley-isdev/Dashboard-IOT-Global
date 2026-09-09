@@ -10,6 +10,7 @@ import {
   machineOaInSql,
   MAX_ASSEMBLED_HOURS,
   MAX_WINDOW_HOURS,
+  NARROW_WINDOW_HOURS,
   OA_WINDOW_HOURS,
   type LatestMachineStatusRow,
   type MachineHourOaRow,
@@ -17,7 +18,12 @@ import {
   type Window,
 } from '../influx/queries.ts';
 import { influxTimeToIsoUtc } from '../influx/time.ts';
-import { foldRows, type LiveSnapshot, type MiniLogger } from './liveSnapshot.ts';
+import {
+  foldRows,
+  type LiveSnapshot,
+  type MiniLogger,
+  type WindowGap,
+} from './liveSnapshot.ts';
 
 /**
  * Serving a window the poller does not hold.
@@ -199,6 +205,24 @@ export function resolveWindow(opts: {
   }
 }
 
+/**
+ * The envelope warning for a window served with holes in it, or null when
+ * there are none.
+ *
+ * Shared by both routes that read windows, because the sentence is the reader's
+ * answer to "can I trust this average" and two copies of it would drift. Names
+ * the hours rather than counting them: "3 slices missing" cannot be checked
+ * against anything, where a pair of instants can be re-queried by hand.
+ */
+export function describeGaps(gaps: readonly WindowGap[]): string | null {
+  if (gaps.length === 0) return null;
+  return (
+    `${gaps.length} slice(s) of the picked window could not be read and are NOT in these ` +
+    `numbers: ${gaps.map((g) => `${g.from} .. ${g.to}`).join(', ')}. ` +
+    `InfluxDB said: ${gaps[0]!.error}`
+  );
+}
+
 /** Midnight of `YYYY-MM-DD` in `timeZone`, as epoch ms. */
 function startOfDay(date: string, timeZone: string): number {
   const [year, month, day] = date.split('-').map(Number);
@@ -282,8 +306,32 @@ export function createWindowStore(opts: {
  * a shared production instance for in one burst; three is the width of the
  * families, and they are genuinely different questions.
  *
+ * Re-measured 2026-09-08 with a worker pool over the full 28 days, and the
+ * failure mode is worse than a rejected query: the instance answers HTTP 200
+ * with FEWER ROWS. Six reads in flight returned 828 status rows where the same
+ * 28 chunks run one at a time returned 1,510, with no error on any of them, and
+ * at twelve in flight it fell to 392. Nothing downstream can detect that - a
+ * short answer is indistinguishable from a quiet day - so the sequential rule
+ * is not a politeness knob to be traded for wall-clock. Leave it alone.
+ *
  * The cost is wall-clock on the widest windows only, and it is bounded by the
- * chunk count the payload already declares.
+ * chunk count the payload declares.
+ *
+ * ## A rejected chunk costs its own hours, not the window
+ *
+ * `MAX_WINDOW_HOURS` is the width of the first attempt, and it is not always
+ * servable: the file cap counts files, and the newest days are held in many
+ * small ones. A rejected chunk is retried as `NARROW_WINDOW_HOURS` slices,
+ * which is measured to hold anywhere in retention.
+ *
+ * If a slice is still refused, its hours become a `WindowGap` and the rest of
+ * the window is served without them. Until 2026-09-08 the first rejection threw
+ * and the route emptied the census, so a single dense 71 h stretch cost the
+ * reader all 28 days of a month-wide pick - the board that made this
+ * measurement showed nine offline sites and a row of zeros while nine of its
+ * ten chunks had answered. A family that read NOTHING still throws: there is a
+ * difference between "these hours are missing" and "this window is unreadable",
+ * and only the second one is honest as a blank board.
  */
 async function fetchWindow(
   client: InfluxClient,
@@ -297,12 +345,67 @@ async function fetchWindow(
   }
 
   const chunks = chunkWindow(window, MAX_WINDOW_HOURS);
+
+  /* Shared across the three families, because a chunk too dense to scan is too
+     dense for all three: the same hours are recorded once however many families
+     tripped over them, and the count is the one the reader is told about. */
+  const gaps = new Map<string, WindowGap>();
+  /* The largest per-family query count, which is what `window.chunks` means -
+     the plan is `chunks.length` and the narrow retries add to it. Tracked as a
+     max rather than a sum so the number stays comparable with the estimate the
+     time picker showed before the request. */
+  let queried = 0;
+
   /* Sequential, not `Promise.all` - see the note above. A `for` loop rather
-     than a reduce chain so a failing chunk rejects the family immediately
-     instead of after every remaining chunk has also been sent. */
+     than a reduce chain so the retry can be decided per chunk, in order. */
   const all = async <T>(sql: (w: Window) => string): Promise<T[]> => {
     const out: T[] = [];
-    for (const c of chunks) out.push(...(await client.query<T>(sql(c))));
+    let read = 0;
+    let queries = 0;
+    let firstError: Error | null = null;
+
+    const lost = (w: Window, err: unknown) => {
+      const e = err instanceof Error ? err : new Error(String(err));
+      firstError ??= e;
+      gaps.set(`${w.from}..${w.to}`, { from: w.from, to: w.to, error: e.message });
+    };
+
+    for (const c of chunks) {
+      try {
+        queries++;
+        out.push(...(await client.query<T>(sql(c))));
+        read++;
+        continue;
+      } catch (err) {
+        const slices = chunkWindow(c, NARROW_WINDOW_HOURS);
+        /* Nothing to narrow to - the chunk is already one slice wide, so a
+           retry would send the query that just failed. */
+        if (slices.length < 2) {
+          lost(c, err);
+          continue;
+        }
+        log?.warn(
+          { err: err instanceof Error ? err.message : String(err), chunk: c, slices: slices.length },
+          'chunk rejected - retrying it in narrower slices',
+        );
+        for (const s of slices) {
+          try {
+            queries++;
+            out.push(...(await client.query<T>(sql(s))));
+            read++;
+          } catch (retryErr) {
+            lost(s, retryErr);
+          }
+        }
+      }
+    }
+
+    queried = Math.max(queried, queries);
+    /* Not one chunk answered. The caller distinguishes this from a gap: there
+       is no partial window to serve, only a failure to report. */
+    if (read === 0) {
+      throw firstError ?? new Error(`no chunk of ${window.from} .. ${window.to} could be read`);
+    }
     return out;
   };
 
@@ -329,6 +432,15 @@ async function fetchWindow(
     ok: true,
     error: null,
     ...folded,
+    /*
+     * Empty, and NOT a gap in the answer: "has this plant ever reported" is a
+     * fact about all of history, so a fetch scoped to one calendar window is
+     * the wrong thing to derive it from. The poller owns that ledger and
+     * routes/globalOverview.ts overlays it onto this snapshot, which is what
+     * keeps a site's status the same whether the reader is on the default
+     * board or a picked range.
+     */
+    everSeen: {},
     oa: oa.status === 'fulfilled' ? foldMachineOa(mergeOaGroups(oa.value)) : [],
     oaLastSuccessAt: oa.status === 'fulfilled' ? at : null,
     oaOk: oa.status === 'fulfilled',
@@ -339,6 +451,10 @@ async function fetchWindow(
     trendLastSuccessAt: trend.status === 'fulfilled' ? at : null,
     trendOk: trend.status === 'fulfilled',
     trendError: trendFailed,
+    /* Oldest first, so the warning naming them reads in the order the reader's
+       own window does. */
+    gaps: [...gaps.values()].sort((a, b) => a.from.localeCompare(b.from)),
+    chunksQueried: queried,
   };
 }
 

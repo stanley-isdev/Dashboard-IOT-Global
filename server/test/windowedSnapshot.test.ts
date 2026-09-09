@@ -1,18 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
   chunkWindow,
+  everSeenWindows,
+  plantEverSeenInSql,
   latestMachineStatusInSql,
   machineHourOaInSql,
   machineOaInSql,
   MAX_WINDOW_HOURS,
+  NARROW_WINDOW_HOURS,
   type MachineOaRow,
   type LatestMachineStatusRow,
+  type Window,
 } from '../src/influx/queries.ts';
 import {
+  createWindowStore,
+  describeGaps,
   mergeLatestStatus,
   mergeOaGroups,
   resolveWindow,
+  type WindowStore,
 } from '../src/services/windowedSnapshot.ts';
+import type { InfluxClient } from '../src/influx/client.ts';
 
 /**
  * The window machinery, which exists because one InfluxDB query on this
@@ -351,5 +359,202 @@ describe('the bounded SQL builders', () => {
     // No `now()` anywhere: a bounded chunk must not drift with the clock
     // between the three queries that make up one window.
     expect(sql).not.toContain('now()');
+  });
+});
+
+/**
+ * What a refused chunk costs.
+ *
+ * `MAX_WINDOW_HOURS` is the width of the FIRST attempt and not a width the
+ * instance always honours - the cap counts Parquet files and the newest days
+ * are held in many small ones, so the same 71 h that answers over mid-August is
+ * refused over the start of September (queries.ts records the measurement).
+ *
+ * The claim here is that such a chunk costs its own hours and nothing more.
+ * Before this, the first rejection threw and the route emptied the census: a
+ * month-wide pick came back as nine offline sites and a row of zeros while nine
+ * of its ten chunks had answered perfectly well.
+ */
+describe('a window whose chunks the instance refuses', () => {
+  /** 168 h - three chunks at the first-attempt width. */
+  const WEEK = { from: '2026-08-27T05:00:00.000Z', to: '2026-09-03T05:00:00.000Z' };
+  const FILE_CAP =
+    'InfluxDB returned HTTP 500: External error: Query would scan 432 Parquet files, ' +
+    'exceeding the file limit.';
+
+  /** The window a query is bounded by, read back off its own SQL. */
+  function boundsOf(sql: string): Window {
+    const stamps = [...sql.matchAll(/timestamp '([^']+)'/g)].map((m) => m[1]!);
+    return { from: stamps[0]!, to: stamps[1]! };
+  }
+
+  const overlaps = (a: Window, b: Window) =>
+    Date.parse(a.from) < Date.parse(b.to) && Date.parse(b.from) < Date.parse(a.to);
+
+  /**
+   * A client that refuses any query overlapping `dead`, and answers every other
+   * one with a single machine row stamped with the window it was asked for - so
+   * the assembled snapshot says which slices actually contributed.
+   */
+  function clientRefusing(dead: Window | null) {
+    const asked: Window[] = [];
+    const client: InfluxClient = {
+      configured: true,
+      async query<T>(sql: string): Promise<T[]> {
+        const w = boundsOf(sql);
+        asked.push(w);
+        if (dead && overlaps(w, dead)) throw new Error(FILE_CAP);
+        // Only the census family carries rows here; the %OA and trend families
+        // fold empty without complaint and are not what these tests are about.
+        if (!sql.includes('status_start_time')) return [] as T[];
+        return [
+          {
+            plant: '6332',
+            machine: `M@${w.from}`,
+            process: 'Injection',
+            zone: 'A',
+            result: 'Mass Pro',
+            last_seen: w.from,
+            status_start_time: Date.parse(w.from),
+          } satisfies LatestMachineStatusRow as unknown as T,
+        ];
+      },
+    };
+    return { client, asked };
+  }
+
+  const machinesOf = (snap: Awaited<ReturnType<WindowStore['get']>>) =>
+    (snap.machines['6332'] ?? []).map((m) => m.machine.replace('M@', '')).sort();
+
+  it('retries a refused chunk in narrower slices rather than losing the window', async () => {
+    // Refuses the middle chunk outright, and every slice of it as well.
+    const middle = chunkWindow(WEEK)[1]!;
+    const { client, asked } = clientRefusing(middle);
+    const store = createWindowStore({ client });
+
+    // The middle chunk is unreadable at ANY width here, so this is the gap
+    // case; the retry itself is asserted by what was asked for.
+    const snap = await store.get(WEEK);
+    const slices = chunkWindow(middle, NARROW_WINDOW_HOURS);
+    expect(slices.length).toBeGreaterThan(1);
+
+    for (const s of slices) {
+      expect(asked.some((w) => w.from === s.from && w.to === s.to)).toBe(true);
+    }
+    // The two chunks that were never refused still answered.
+    expect(machinesOf(snap)).toEqual([chunkWindow(WEEK)[0]!.from, chunkWindow(WEEK)[2]!.from]);
+  });
+
+  it('serves the hours it could read and records only the ones it could not', async () => {
+    /* One hour inside the middle chunk's SECOND slice. The wide attempt fails,
+       and of the three slices it splits into only that one does. */
+    const dead = { from: '2026-08-31T05:00:00.000Z', to: '2026-08-31T06:00:00.000Z' };
+    const { client } = clientRefusing(dead);
+    const snap = await createWindowStore({ client }).get(WEEK);
+
+    const slices = chunkWindow(chunkWindow(WEEK)[1]!, NARROW_WINDOW_HOURS);
+    const lost = slices.filter((s) => overlaps(s, dead));
+    expect(lost).toHaveLength(1);
+
+    expect(snap.gaps).toEqual([{ from: lost[0]!.from, to: lost[0]!.to, error: FILE_CAP }]);
+    /* Four of the five queries answered, and their rows are all here: the point
+       of the change is that one dense day does not cost the other six. */
+    expect(machinesOf(snap)).toHaveLength(4);
+    expect(machinesOf(snap)).not.toContain(lost[0]!.from);
+    // The read succeeded - the window is served, with a hole the envelope names.
+    expect(snap.ok).toBe(true);
+  });
+
+  it('reports what the window actually cost, retries included', async () => {
+    const dead = { from: '2026-08-31T05:00:00.000Z', to: '2026-08-31T06:00:00.000Z' };
+    const { client } = clientRefusing(dead);
+    const snap = await createWindowStore({ client }).get(WEEK);
+
+    /* Three chunks planned; the middle one was refused and split into three
+       slices. Six queries per family - the refused attempt included, because it
+       cost the instance a scan too - where `resolveWindow` promised three. */
+    expect(snap.chunksQueried).toBe(6);
+  });
+
+  it('still fails when no chunk of the window could be read', async () => {
+    const { client } = clientRefusing(WEEK);
+    await expect(createWindowStore({ client }).get(WEEK)).rejects.toThrow(/Parquet files/);
+  });
+
+  /**
+   * A chunk already at the retry width has nothing to narrow to, and sending
+   * the same query again would cost a second rejection to learn nothing.
+   */
+  it('does not retry a chunk that is already one slice wide', async () => {
+    const day = { from: '2026-09-02T05:00:00.000Z', to: '2026-09-03T05:00:00.000Z' };
+    const { client, asked } = clientRefusing(day);
+    await expect(createWindowStore({ client }).get(day)).rejects.toThrow(/Parquet files/);
+    // One attempt per family, no more.
+    expect(asked).toHaveLength(3);
+  });
+});
+
+describe('describeGaps', () => {
+  it('says nothing when the window came back whole', () => {
+    expect(describeGaps([])).toBeNull();
+  });
+
+  /* Named rather than counted: a reader deciding whether to trust a month-wide
+     average has to know WHICH hours are not in it - "3 slices missing" cannot
+     be checked against anything, where a pair of instants can be re-queried. */
+  it('names the hours that are missing, and what InfluxDB said', () => {
+    const said = describeGaps([
+      { from: '2026-08-31T04:00:00.000Z', to: '2026-09-01T04:00:00.000Z', error: 'file limit' },
+    ]);
+    expect(said).toContain('2026-08-31T04:00:00.000Z .. 2026-09-01T04:00:00.000Z');
+    expect(said).toContain('file limit');
+    expect(said).toContain('NOT in these');
+  });
+});
+
+describe('everSeenWindows - Q-09 slicing', () => {
+  const NOW = Date.parse('2026-09-08T12:00:00.000Z');
+
+  it('covers the whole horizon and no more', () => {
+    const slices = everSeenWindows(NOW, 30, 24);
+    const earliest = Math.min(...slices.map((w) => Date.parse(w.from)));
+    const latest = Math.max(...slices.map((w) => Date.parse(w.to)));
+    expect(latest).toBe(NOW);
+    expect(earliest).toBe(NOW - 30 * 24 * 3_600_000);
+  });
+
+  it('hands slices out newest first, so a live plant hits on the first one', () => {
+    // The ordering IS the optimisation: measured 2026-09-08, a reporting plant
+    // costs one query (74 ms) rather than a 30-slice crawl.
+    const slices = everSeenWindows(NOW, 30, 24);
+    expect(Date.parse(slices[0]!.to)).toBe(NOW);
+    for (let i = 1; i < slices.length; i++) {
+      expect(Date.parse(slices[i]!.to)).toBeLessThanOrEqual(Date.parse(slices[i - 1]!.from));
+    }
+  });
+
+  it('keeps every slice inside the instance file cap', () => {
+    // Measured: 72 h answers, 84 h is refused outright with "would scan 432
+    // Parquet files". A slice wider than the cap makes every probe fail.
+    for (const w of everSeenWindows(NOW, 30, 24)) {
+      expect(Date.parse(w.to) - Date.parse(w.from)).toBeLessThanOrEqual(72 * 3_600_000);
+    }
+  });
+
+  it('rejects nonsense rather than silently probing the wrong range', () => {
+    expect(() => everSeenWindows(NOW, 0, 24)).toThrow(/horizonDays/);
+    expect(() => everSeenWindows(NOW, 30, 0)).toThrow(/sliceHours/);
+  });
+
+  it('builds a single-plant existence probe bounded to the slice', () => {
+    const sql = plantEverSeenInSql('STJ-1', {
+      from: '2026-09-07T12:00:00.000Z',
+      to: '2026-09-08T12:00:00.000Z',
+    });
+    expect(sql).toContain(`"plant" = 'STJ-1'`);
+    expect(sql).toContain('LIMIT 1');
+    expect(sql).toContain('ORDER BY "time" DESC');
+    // No Result predicate: any row at all proves the plant reached us.
+    expect(sql).not.toContain('Result');
   });
 });

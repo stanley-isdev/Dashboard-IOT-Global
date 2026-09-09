@@ -347,12 +347,38 @@
   border: 1.5px solid;
   box-shadow: 0 0 0 2px var(--pin-halo);
 }
+/*
+ * Hollow and unhaloed for either silence - a ring where a reporting base has a
+ * filled disc, which is the part that survives greyscale.
+ *
+ * The class stays on both states and must: MapLabelLayer picks the anchor for a
+ * cluster badge with `.pin__dot:not(.pin__dot--quiet)`, i.e. "a dot with a
+ * figure behind it", and narrowing this to one of the two silences would put
+ * that badge back on a base that has no numbers.
+ */
 .pin__dot--quiet {
+  background: none !important;
+  box-shadow: none;
+}
+/*
+ * Dashed and a size down, on the base that has never sent a row.
+ *
+ * The dashes are the honest mark for it: a broken outline reads as a coordinate
+ * that is on the map without being on the network. A base that is merely quiet
+ * over the chosen window has a working gateway, so it keeps the full-size solid
+ * ring and says what it has to say in its own colour - see the card rules below
+ * for the same distinction at card scale.
+ */
+.pin[data-quiet='not_connected'] .pin__dot {
   width: 0.4375rem;
   height: 0.4375rem;
-  background: none !important;
   border-style: dashed;
-  box-shadow: none;
+}
+/* The leader is a hairline to a coordinate nothing is arriving from. A third of
+   its strength, so the eye reaches the connected bases first; it is still there,
+   because the card still has to be traceable to its own dot. */
+.pin[data-quiet='not_connected'] .pin__line {
+  opacity: 0.35;
 }
 
 /*
@@ -451,8 +477,151 @@
 .pin__card[data-tier='critical'] {
   border-left-color: var(--status-crit-mark);
 }
-.pin__card--quiet {
+/*
+ * The two silences, drawn apart. Keyed off `data-quiet` on the pin root, which
+ * CompanyPin sets to the site status and leaves off a reporting base.
+ *
+ * Neither of them introduces a colour, and that constraint is the whole design
+ * here: both silences sit on the same grey they always did (a sixth status hue
+ * was drawn for this and rejected - see src/domain/status.ts), so the frame, the
+ * elevation and the weight of the type have to carry all of it.
+ *
+ * `no_data` - connected, and the window came back empty - is an ordinary card.
+ * Solid hairline, the panel ground back, its shadow back, the base code at full
+ * --ink-2. Nothing recedes, because nothing is broken: the reader is looking at
+ * an answer ("none in this range"), and a card drawn as provisional would say
+ * the site is in trouble instead. Only the glyph and the caption separate it
+ * from a reporting card, which is as much difference as there actually is.
+ *
+ * `not_connected` - nothing has ever arrived - is the one that recedes: a
+ * rectangle sketched around a site rather than a reading taken from one. Three
+ * things carry that, and the order they were arrived at is worth keeping,
+ * because the first attempt fixed the wrong one.
+ *
+ *   1. The ground goes translucent, letting the basemap through. This is the
+ *      one that actually reads as faint, and it was the missing piece for two
+ *      passes: dashing the hairline while the card stayed an opaque --panel-2
+ *      rectangle produced a solid white box with almost no outline, which
+ *      looks *less* finished rather than quieter. A card you can see the map
+ *      through is a card that is not claiming to hold a reading.
+ *   2. The left rail drops from --status-nodata-mark to --line. That 2px bar
+ *      was the heaviest ink on the card by a distance, so no amount of work
+ *      on the other three sides could out-vote it. It stays 2px and present,
+ *      because it is the rail all nine cards align on.
+ *   3. The other three sides go dashed at --line. A dash still has to be
+ *      *visible* to read as a sketch - taken to --line-row the outline
+ *      disappears and the card becomes a floating word with no frame, which
+ *      is what the first attempt at this shipped.
+ *
+ * Then the type, which is its own note below the no_data rule - the short
+ * version is that the fade rides on --ink-2 rather than on --sub, because
+ * fading a dark ink gets more apparent faintness per point of contrast spent
+ * than lightening it to the palette floor does.
+ *
+ * All of it is a resting state. The hover and selected rules below restore the
+ * border colour and the elevation - same specificity, later in source - and the
+ * pair after this restores the solid outline, which those two do not touch. A
+ * card being pointed at or read from stands up to full strength, because the
+ * fade is about which cards the eye reaches first, not about this one being less
+ * worth opening.
+ */
+.pin[data-quiet='no_data'] .pin__card {
+  background: var(--panel);
+}
+.pin[data-quiet='not_connected'] .pin__card {
+  /* Fainter than --map-plate, which is why this is a literal mix rather than
+     that token: the plate is also the zoom buttons and the attribution, and
+     those are controls that have to stay solid. 55% lets noticeably more
+     basemap through than the 72% this started at. */
+  background: color-mix(in oklab, var(--panel) 55%, transparent);
+  border-style: dashed;
+  border-color: var(--line);
+  border-left-style: solid;
+  border-left-color: var(--line);
+  box-shadow: none;
+}
+/*
+ * Every line on the card onto --ink-2, then the whole block faded as one.
+ *
+ * That looks backwards - --ink-2 is the *darkest* type on a pin - and it is
+ * the measurement that says to do it. Fading a dark ink beats lightening it:
+ * --ink-2 at 0.72 composites to about #7a7d83, which is visibly lighter than
+ * --sub (#676c76) drawn at full strength, and it measures better than --sub
+ * faded to the same apparent lightness. The first pass had this the wrong way
+ * round - the base code on --sub and only the two supporting lines faded -
+ * which spent contrast to get less fade than this does.
+ *
+ * .pin__oa is the exception and cannot join them: MeasureValue writes its ink
+ * as an inline style (token.inkVar), so CSS cannot recolour it without
+ * !important. It rides the same opacity off its own --status-nodata-ink,
+ * which is close enough to --ink-2 that the card still fades as one object.
+ *
+ * The cost, stated plainly: these lines are under the 4.5:1 AA asks of text.
+ * They are above the 3:1 a non-text graphic owes, the exact ratios are
+ * checked in the browser rather than assumed, and the mitigation is the one
+ * src/domain/status.ts mandates for the whole board - every status carries a
+ * glyph and a word as well as a weight. It is a deliberate trade for a card
+ * that must read as "no gateway here" from across a room without competing
+ * with the sites that have numbers.
+ */
+.pin[data-quiet='not_connected'] .pin__name,
+.pin[data-quiet='not_connected'] .pin__meta,
+.pin[data-quiet='not_connected'] .pin__code {
+  color: var(--ink-2);
+}
+/*
+ * The type on an unconnected card, taken a little further down than a token
+ * swap can reach - and this is the one place on this board where an ink is
+ * knowingly under AA, so what fades and what does not was picked carefully.
+ *
+ * --sub is the floor of the palette (tokens.css: everything quieter failed AA
+ * in the artboard with nothing passing below it), and on the translucent plate
+ * these cards now float on it is already down to 5.18:1 over land and 4.57:1
+ * over the orange hatch. There was no fainter *colour* left to reach for, so
+ * the fade had to come from opacity or not at all.
+ *
+ * It is spent on the first and last lines only, at 0.85 - the "not connected"
+ * status line and the "no telemetry yet" caption under it. Those two are the
+ * cheapest ink on the card: they say the same thing as each other, that thing
+ * is in the map legend as well, and the glyph in front of the first one
+ * carries it without being read at all. They measure 3.80:1 over land and
+ * 3.45:1 over the hatch - under the 4.5:1 a word owes, above the 3:1 a
+ * non-text graphic does.
+ *
+ * The middle line does NOT fade. The country code and the base code are the
+ * identity, they are the one fact on this card that appears nowhere else on
+ * the board, and the note in CompanyPin is explicit that a base with no
+ * gateway still has to name itself legibly - "which one is that grey dot" is
+ * the question the card exists to stop being asked. It stays at --sub, full
+ * strength, still AA on both grounds.
+ *
+ * Restored to full on hover and on the open card, along with the border and
+ * the ground: a card being read is never a faded card.
+ */
+.pin[data-quiet='not_connected'] .pin__oa,
+.pin[data-quiet='not_connected'] .pin__name,
+.pin[data-quiet='not_connected'] .pin__meta {
+  opacity: 0.72;
+}
+.pin[data-quiet='not_connected']:hover .pin__oa,
+.pin[data-quiet='not_connected']:hover .pin__name,
+.pin[data-quiet='not_connected']:hover .pin__meta,
+.pin[data-quiet='not_connected'].pin--selected .pin__oa,
+.pin[data-quiet='not_connected'].pin--selected .pin__name,
+.pin[data-quiet='not_connected'].pin--selected .pin__meta {
+  opacity: 1;
+}
+/* Pointed at or open: the outline goes solid again. The colour and the shadow
+   are restored by the hover and selected rules further down, which do not touch
+   border-style - hence this pair rather than a declaration in either of them. */
+.pin[data-quiet='not_connected']:hover .pin__code,
+.pin[data-quiet='not_connected'].pin--selected .pin__code {
+  color: var(--ink-2);
+}
+.pin[data-quiet='not_connected']:hover .pin__card,
+.pin[data-quiet='not_connected'].pin--selected .pin__card {
   background: var(--panel-2);
+  border-style: solid;
 }
 /*
  * Hover lifts the card slightly.

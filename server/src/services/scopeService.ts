@@ -178,6 +178,10 @@ function buildZones(
         /* No per-zone Grafana board exists; the plant's link already lands on
            the zones in scope. A URL invented here would 404. */
         grafana_url: null,
+        /* A zone is only reachable at all because its plant's telemetry is
+           arriving - these rows are built FROM those rows - so a zone can never
+           be the site nobody can reach, and has no absence to explain. */
+        absence: null,
         counts: census.counts,
         kpi: buildKpi(oa.filter((m) => ids.has(m.machine))),
       };

@@ -100,12 +100,16 @@ export function buildMeta(
       lng: c.lng,
       timezone: c.timezone,
       data_readiness: c.readiness,
-      readiness_note: c.readinessNote,
+      readiness_note: c.absence?.reason ?? null,
       shift_config: c.shiftConfig,
       plants: c.plants.map((p) => ({
         code: p.code,
         label: p.label,
         target_oa: p.targetOa,
+        // Only a definite `'no'` counts as never-reported. `'unknown'` - the
+        // probe has not landed, or has been failing - must read as `true`, or a
+        // brief Influx outage would empty the plant picker.
+        ever_reported: (snapshot.everSeen[p.code] ?? 'unknown') !== 'no',
         zones: zonesOf(p.code),
       })),
       grafana_url: companyGrafanaUrl(c),

@@ -79,6 +79,7 @@ function snapshot(
     lastSuccessAt: NOW.toISOString(),
     ok: true,
     error: null,
+    everSeen: {},
     plants,
     machines,
     unknownStatuses: [],
@@ -116,12 +117,21 @@ function onOrder(
     planQty: plan,
     shotCount: qty,
     poSlots: 1,
-    // Inside NOW's shift, so `Order End` layer 2 keeps it. NOW is 02:00Z =
-    // 09:00 Bangkok, in THS/ASI's Day shift (01:00Z-13:00Z), and these tests
-    // are about the roll-up rather than about the shift rule - `orderShift`
-    // tests own that. A machine dated outside the shift is exercised in
-    // "excludes a machine whose order was created in an earlier shift".
-    createdRaw: ['2026-08-25 01:30:00'],
+    /*
+     * Inside NOW's shift, so `Order End` layer 2 calls it `current`. NOW is
+     * 02:00Z = 09:00 Bangkok, in THS/ASI's Day shift (08:00-20:00 local, which
+     * is 01:00Z-13:00Z). These tests are about the roll-up rather than the shift
+     * rule - `orderShift.test.ts` owns that - and a machine dated outside the
+     * shift is exercised in "KEEPS a machine whose order was created in an
+     * earlier shift".
+     *
+     * **Written in the site's clock, not UTC.** This read `01:30:00` until
+     * 2026-09-08, which was 01:30Z under the old parser and inside the window;
+     * corrected, those digits are 01:30 Bangkok - half past one in the morning,
+     * seven hours before the shift opens - and every fixture machine silently
+     * became `ended`. See `parseCreateDate` for the measurement.
+     */
+    createdRaw: ['2026-08-25 09:30:00'],
     gap: null,
   };
 }
@@ -218,14 +228,43 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
     }
   });
 
-  it('reports STJ as no_data rather than live, because this instance has none of its data', () => {
+  it('reports STJ as no_data rather than live while the ever-seen probe has not answered', () => {
     // BACKEND-HANDOVER §4.3b: STJ is master-data `live` but absent from this
     // InfluxDB entirely. Claiming `online` from config alone would be the
     // fabrication the project exists to prevent.
+    //
+    // `no_data` is what an empty `everSeen` ledger yields - every plant reads
+    // `'unknown'` - and it is deliberately the behaviour that predates the
+    // probe. The case below is what happens once the probe HAS answered.
     const stj = build(snapshot({ '6332': 10 })).companies.find((c) => c.code === 'STJ')!;
     expect(stj.data_readiness).toBe('live');
     expect(stj.status).toBe('no_data');
     expect(stj.last_seen).toBeNull();
+  });
+
+  it('reports STJ as not_connected once the probe confirms nothing has ever arrived', () => {
+    /*
+     * The payoff. `no_data` above tells an executive "that plant is quiet",
+     * which sends them after a site doing nothing wrong; the truth is that this
+     * backend has never been able to see STJ at all (D-17 - its telemetry is
+     * believed to be on another Influx instance). Config still says `live`, and
+     * that is the point: the observation now outranks it.
+     */
+    const snap = snapshot({ '6332': 10 });
+    const payload = build({ ...snap, everSeen: { '6332': 'yes', 'STJ-1': 'no' } });
+
+    const stj = payload.companies.find((c) => c.code === 'STJ')!;
+    expect(stj.data_readiness).toBe('live'); // master data unchanged
+    expect(stj.status).toBe('not_connected'); // observation wins
+    expect(stj.last_seen).toBeNull();
+    expect(stj.plants.every((p) => p.status === 'not_connected')).toBe(true);
+
+    // And the reporting site is untouched: same status as the same snapshot
+    // built with no ledger at all, so the new input moved STJ and nothing else.
+    const baseline = build(snap).companies.find((c) => c.code === 'THS')!;
+    const ths = payload.companies.find((c) => c.code === 'THS')!;
+    expect(ths.status).toBe(baseline.status);
+    expect(ths.counts).toEqual(baseline.counts);
   });
 
   it('rolls the machine census plant -> company -> global', () => {
@@ -429,16 +468,19 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
 
   it('states on the payload which rules it follows and where it still differs', () => {
     // A consumer that never reads the source must still be able to learn from
-    // the response what scope produced these numbers, and the two places they
+    // the response what scope produced these numbers, and the three places they
     // deliberately part company with the board.
     const warnings = build(snapshot({ '6332': 10 })).meta.warnings.join(' ');
     expect(warnings).toMatch(/24 h window/);
     expect(warnings).toMatch(/TOTAL excludes `Order End` only/);
     // The plant card reading higher than its own drill-down needs saying.
     expect(warnings).toMatch(/Counted across ALL processes/);
-    expect(warnings).toMatch(/created in an earlier shift leaves the %OA average/);
-    // The two named divergences.
+    // The three named divergences. The last is the widest of them - it is why
+    // this board can read BELOW the production board, so it is stated as a
+    // standing rule and not only when a machine happens to trip it.
     expect(warnings).toMatch(/keeps its last known status instead of reading `Offline`/);
+    expect(warnings).toMatch(/created in an EARLIER shift also stays in %OA/);
+    expect(warnings).toMatch(/an order counts as finished when its PO slots clear/);
     expect(warnings).toMatch(/machineExclusions is empty by decision/);
   });
 
@@ -471,6 +513,32 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
     expect(buildConnected(snap).meta.sources.find((s) => s.name === 'influxdb')!.status).toBe(
       'down',
     );
+  });
+
+  /**
+   * A windowed read that lost some of its hours (windowedSnapshot.ts). The
+   * plants on screen are genuinely reporting, so `down` would be a lie - but so
+   * would `ok`, because every average under it was taken over fewer hours than
+   * the capsule names. The banner is the only thing standing between the reader
+   * and a month-wide %OA quietly missing a day.
+   */
+  it('marks a window served with holes in it degraded, not ok', () => {
+    const snap = snapshot({ '6332': 10 });
+    snap.gaps = [
+      {
+        from: '2026-08-31T04:00:00.000Z',
+        to: '2026-09-01T04:00:00.000Z',
+        error: 'Query would scan 432 Parquet files, exceeding the file limit',
+      },
+    ];
+    const payload = buildConnected(snap);
+
+    // The site is still online: the hours that DID come back are real.
+    expect(payload.companies.find((c) => c.code === 'THS')!.plants[0]!.status).toBe('online');
+    const influx = payload.meta.sources.find((s) => s.name === 'influxdb')!;
+    expect(influx.status).toBe('degraded');
+    expect(influx.message).toContain('2026-08-31T04:00:00.000Z .. 2026-09-01T04:00:00.000Z');
+    expect(payload.meta.partial).toBe(true);
   });
 
   it('reports influx ok - and the payload not partial - on a healthy poll', () => {
@@ -791,19 +859,24 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
       idle('6332', 'IC6'),
     ]);
 
-  it('excludes a machine whose order was created in an earlier shift', () => {
+  it('KEEPS a machine whose order was created in an earlier shift, and names it', () => {
     /*
-     * `Order End` layer 2, end to end - DESIGN.md §8.4, reconciled at THS on
-     * 2026-08-27. NOW is 02:00Z = 09:00 Bangkok, so the Day shift began at
-     * 01:00Z. `I5`'s order predates it by twelve hours, which is the shape of
-     * the real case: `I5` and `IC5` were both on orders created 20:06 Bangkok
-     * the previous night, and dropping them moved Avg %OA from 75.2% to the
-     * board's 81.0%.
+     * `Order End` layer 2 end to end, under the design owner's rule of
+     * 2026-09-08: the verdict is reported, never subtracted.
      *
-     * The machine keeps its Stop status in the census - layer 2 only ever
-     * touched the %OA figure - so this asserts both halves.
+     * NOW is 02:00Z = 09:00 Bangkok, so the Day shift began at 01:00Z and
+     * `I5`'s order predates it. Until this rule changed, that dropped the
+     * machine and moved THS from 75.2% to the production board's 81.0%. It no
+     * longer does: an order is finished when its PO slots clear, and `I5` still
+     * has one loaded and is still producing against it.
+     *
+     * What forced the reversal was ASI 6051, which runs one order across days -
+     * seven machines, a real 75.0% average, and a blank card, because every one
+     * of them was ruled `ended`. Asserted here on the THS fixture because that
+     * is the fixture reconciled against the board, so the cost of the rule is
+     * visible in the same numbers the reconciliation was written in.
      */
-    const stale = { ...onOrder('6332', 'I5', 47.5, 295, 400), createdRaw: ['2026-08-24 13:06:23'] };
+    const stale = { ...onOrder('6332', 'I5', 47.5, 295, 400), createdRaw: ['2026-08-24 21:06:23'] };
     const payload = build(
       snapshot({ '6332': 10 }, { '6332': boardMachines }, [
         onOrder('6332', 'IC4', 48.9, 137, 220),
@@ -816,34 +889,43 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
       .find((c) => c.code === 'THS')!
       .plants.find((p) => p.code === '6332')!;
 
-    // Mean of the three that remain: (48.9 + 89.9 + 93) / 3 = 77.3.
-    expect(p6332.kpi.oa_pct).toBe(77.3);
-    expect(p6332.kpi.oa_machine_count).toBe(3);
-    // Its plan and output leave with it, so plan/actual/% still divide out.
-    expect(p6332.kpi.plan_qty).toBe(220 + 309 + 816);
-    expect(p6332.kpi.actual_qty).toBe(137 + 71 + 41);
-    // Still counted as a machine, and still Stop.
+    // All four: (48.9 + 47.5 + 89.9 + 93) / 4 = 69.8. The board would say 77.3.
+    expect(p6332.kpi.oa_pct).toBe(69.8);
+    expect(p6332.kpi.oa_machine_count).toBe(4);
+    // Its plan and output stay with it, so plan/actual/% still divide out.
+    expect(p6332.kpi.plan_qty).toBe(220 + 400 + 309 + 816);
+    expect(p6332.kpi.actual_qty).toBe(137 + 295 + 71 + 41);
+    // Layer 2 never touched the census, and still does not.
     expect(p6332.counts.total).toBe(4);
     expect(p6332.counts.stopped).toBe(1);
-    // Named, not silently removed from the denominator.
-    expect(payload.meta.warnings.join(' ')).toMatch(
+    /*
+     * Named on the envelope. This is the load-bearing half of the assertion:
+     * the figure now differs from the production board by exactly this machine,
+     * and a reader comparing the two screens must be able to find out why from
+     * the payload rather than by subtraction.
+     */
+    const warnings = payload.meta.warnings.join(' ');
+    expect(warnings).toMatch(
       /THS\/6332: 1 machine\(s\) are running an order created in an earlier shift \(I5 47\.5%\)/,
     );
+    expect(warnings).toMatch(/KEPT in %OA: an order ends when its PO slots clear/);
   });
 
   /**
-   * The other half of layer 2: it is a single-shift rule, and a window the
-   * reader picked is usually not a single shift.
+   * The rule has no window gate any more, and this is what that means.
    *
-   * Measured on the live instance on 2026-09-03 before this was gated: the
-   * window 14-16 August holds 11,082 rows carrying a real order and 16,071
-   * pieces, and the board answered %OA, %Achievement and plants-needing-
-   * attention with null, null and 0 - half the KPI strip blank over two days of
-   * genuine production, because not one of those orders was created in the one
-   * shift running at the window's end.
+   * It used to have one. Layer 2 was switched off past `OA_WINDOW_HOURS`
+   * because a multi-shift window has no single shift to judge an order against
+   * - measured on the live instance on 2026-09-03, the window 14-16 August held
+   * 11,082 rows carrying a real order and answered %OA, %Achievement and
+   * plants-needing-attention with null, null and 0. So the same board gave two
+   * comparable windows two incompatible answers depending on where they ended.
+   *
+   * With the verdict no longer subtracting anything, that asymmetry is gone by
+   * construction: every width now answers alike, which is what this asserts.
    */
-  it('keeps every order worked inside a window wider than the %OA window', () => {
-    const stale = { ...onOrder('6332', 'I5', 47.5, 295, 400), createdRaw: ['2026-08-24 13:06:23'] };
+  it('reports the same %OA at every window width', () => {
+    const stale = { ...onOrder('6332', 'I5', 47.5, 295, 400), createdRaw: ['2026-08-24 21:06:23'] };
     const snap = snapshot({ '6332': 10 }, { '6332': boardMachines }, [
       onOrder('6332', 'IC4', 48.9, 137, 220),
       stale,
@@ -851,60 +933,44 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
       onOrder('6332', 'P1I1', 93, 41, 816),
     ]);
 
-    const week = buildGlobalOverview({
-      snapshot: snap,
-      filters: FILTERS,
-      window: { ...WINDOW, hours: 168, source: 'absolute', chunks: 3 },
-      env: ENV,
-      now: NOW,
-    });
-    const p6332 = week.companies
-      .find((c) => c.code === 'THS')!
-      .plants.find((p) => p.code === '6332')!;
-
-    // All four, including the one the single-shift rule would have dropped:
-    // (48.9 + 47.5 + 89.9 + 93) / 4 = 69.8.
-    expect(p6332.kpi.oa_machine_count).toBe(4);
-    expect(p6332.kpi.oa_pct).toBe(69.8);
-    expect(p6332.kpi.plan_qty).toBe(220 + 400 + 309 + 816);
-
-    // Said on the envelope, never inferred from the number moving.
-    expect(week.meta.warnings.join(' ')).toMatch(/Order End` layer 2 .* is not applied/);
-    /* And the PER-PLANT exclusion notice does not fire, because nothing was
-       excluded - reporting a machine as dropped from an average it is in would
-       be worse than saying nothing. Matched on the `THS/6332: n machine(s)`
-       form rather than on the phrase alone: RECONCILIATION_WARNING is a static
-       string that also describes the rule, and it is on every payload. */
-    expect(week.meta.warnings.join(' ')).not.toMatch(
-      /THS\/6332: \d+ machine\(s\) are running an order created in an earlier shift/,
-    );
-  });
-
-  it('still applies layer 2 on every window the rule was reconciled in', () => {
-    const stale = { ...onOrder('6332', 'I5', 47.5, 295, 400), createdRaw: ['2026-08-24 13:06:23'] };
-    const snap = snapshot({ '6332': 10 }, { '6332': boardMachines }, [
-      onOrder('6332', 'IC4', 48.9, 137, 220),
-      stale,
-      onOrder('6332', 'IA1', 89.9, 71, 309),
-      onOrder('6332', 'P1I1', 93, 41, 816),
-    ]);
-
-    // 8 h and the default 24 h both sit inside OA_WINDOW_HOURS, so both keep
-    // the rule and both must still produce the board's reconciled figure.
-    for (const hours of [8, 24]) {
+    // 8 h and 24 h sit inside the reconciled window; 168 h is far outside it.
+    for (const hours of [8, 24, 168]) {
       const payload = buildGlobalOverview({
         snapshot: snap,
         filters: FILTERS,
-        window: { ...WINDOW, hours },
+        window: { ...WINDOW, hours, ...(hours > 24 ? { source: 'absolute' as const, chunks: 3 } : {}) },
         env: ENV,
         now: NOW,
       });
       const plant = payload.companies
         .find((c) => c.code === 'THS')!
         .plants.find((p) => p.code === '6332')!;
-      expect(plant.kpi.oa_machine_count).toBe(3);
-      expect(plant.kpi.oa_pct).toBe(77.3);
+      expect(plant.kpi.oa_machine_count).toBe(4);
+      expect(plant.kpi.oa_pct).toBe(69.8);
+      // And the carried-over machine is named whatever the width, because it is
+      // in the average whatever the width.
+      expect(payload.meta.warnings.join(' ')).toMatch(
+        /THS\/6332: 1 machine\(s\) are running an order created in an earlier shift/,
+      );
     }
+  });
+
+  it('still says on the envelope when a window is wider than the reconciled one', () => {
+    // The gate is gone; the caveat is not. The board's 69.8% was measured over
+    // a rolling 24 h, and a week is not that - which is worth saying even now
+    // that no machine leaves the average for it.
+    const week = buildGlobalOverview({
+      snapshot: snapshot({ '6332': 10 }, { '6332': boardMachines }, [
+        onOrder('6332', 'IC4', 48.9, 137, 220),
+      ]),
+      filters: FILTERS,
+      window: { ...WINDOW, hours: 168, source: 'absolute', chunks: 3 },
+      env: ENV,
+      now: NOW,
+    });
+    expect(week.meta.warnings.join(' ')).toMatch(
+      /this window spans 168 h, wider than the 24 h that %OA was reconciled/,
+    );
   });
 
   it("puts the board's 69.8% on the card, at plant, company and group level", () => {
@@ -920,11 +986,24 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
     expect(() => zGlobalOverview.parse(payload)).not.toThrow();
   });
 
-  it('colours it against the served policy, not a hardcoded 95/80', () => {
+  it('colours it against the served policy, whatever that policy currently says', () => {
     const payload = build(boardSnapshot());
-    // 69.8 is under warn_at 75, so the card and the map pin both read critical.
+    // 69.8 is under warn_at, so the card and the map pin both read critical.
     expect(payload.totals.oa_tier).toBe('critical');
-    expect(payload.tier_policy.warn_at).toBe(75);
+    /*
+     * The bands, asserted as the numbers a caller receives rather than by
+     * re-importing TIER_POLICY - a test that computes its expectation the same
+     * way the code does cannot catch the code changing.
+     *
+     * They were 90/75 until 2026-09-08, when D-16 was closed onto the operators'
+     * panel instead of the web mockup: see server/src/config/policy.ts. The name
+     * of this test used to say "not a hardcoded 95/80", which is now exactly
+     * what the policy serves - the point it was making survives the reversal,
+     * because what it guards is that the *payload* carries the bands and the
+     * front end does not keep its own copy.
+     */
+    expect(payload.tier_policy.good_at).toBe(95);
+    expect(payload.tier_policy.warn_at).toBe(80);
     expect(payload.oa_aggregation).toBe('simple_avg');
   });
 
@@ -1404,5 +1483,124 @@ describe('GET /api/v1/global-overview', () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/global-overview?range=99d' });
     expect(res.statusCode).toBe(400);
     await app.close();
+  });
+});
+
+describe('hiding plants that have never reported', () => {
+  /*
+   * Requested by the design owner on 2026-09-08 for THS 6337 and 6321: two
+   * plants master data lists with 8 and 2 machines that have never sent a row.
+   * The requirement was explicitly two-sided - hide them now, but bring them
+   * back by themselves if data ever starts - so both halves are asserted here.
+   */
+  it('leaves a never-reported plant off the board', () => {
+    const snap = snapshot({ '6332': 10 });
+    const payload = build({ ...snap, everSeen: { '6332': 'yes', '6337': 'no', '6321': 'no' } });
+    const ths = payload.companies.find((c) => c.code === 'THS')!;
+
+    expect(ths.plants.map((p) => p.code)).not.toContain('6337');
+    expect(ths.plants.map((p) => p.code)).not.toContain('6321');
+    expect(ths.plants.map((p) => p.code)).toContain('6332');
+  });
+
+  it('brings it back on its own the moment a single row arrives', () => {
+    // No config edit, no deploy: the hot poll flips the ledger and the tile
+    // returns. This is the half that makes hiding safe to do at all.
+    const snap = snapshot({ '6332': 10 });
+    const payload = build({ ...snap, everSeen: { '6332': 'yes', '6337': 'yes', '6321': 'no' } });
+    const ths = payload.companies.find((c) => c.code === 'THS')!;
+
+    expect(ths.plants.map((p) => p.code)).toContain('6337');
+    expect(ths.plants.map((p) => p.code)).not.toContain('6321');
+  });
+
+  it('never hides a plant merely because the probe has not answered', () => {
+    // Hiding on uncertainty would make a site vanish because Influx was briefly
+    // unreachable - the opposite of what this feature is for.
+    const snap = snapshot({ '6332': 10 });
+    const payload = build({ ...snap, everSeen: {} }); // every plant `unknown`
+    const ths = payload.companies.find((c) => c.code === 'THS')!;
+
+    expect(ths.plants.map((p) => p.code).sort()).toEqual(['6321', '6332', '6337', '6338']);
+  });
+
+  it('keeps a plant that reported before and has gone quiet', () => {
+    // The outage case. `no_data` must stay visible however long the silence -
+    // hiding it would be the worst bug this file could have.
+    const snap = snapshot({ '6332': 10, '6338': 99_999 });
+    const payload = build({ ...snap, everSeen: { '6332': 'yes', '6338': 'yes' } });
+    const ths = payload.companies.find((c) => c.code === 'THS')!;
+
+    const quiet = ths.plants.find((p) => p.code === '6338')!;
+    expect(quiet).toBeDefined();
+    expect(quiet.status).toBe('no_data');
+  });
+
+  it('does not let hiding flatter the company it belongs to', () => {
+    // Status is rolled up before the filter, so THS stays `degraded` on the
+    // strength of all four plants rather than reading `online` off the two left.
+    const snap = snapshot({ '6332': 10 });
+    const hidden = build({ ...snap, everSeen: { '6332': 'yes', '6337': 'no', '6321': 'no' } });
+    const shown = build({ ...snap, everSeen: {} });
+
+    const a = hidden.companies.find((c) => c.code === 'THS')!;
+    const b = shown.companies.find((c) => c.code === 'THS')!;
+    expect(a.status).toBe(b.status);
+    expect(a.counts).toEqual(b.counts);
+    expect(a.last_seen).toBe(b.last_seen);
+  });
+});
+
+describe('the absence invariant: not_connected <=> an absence object', () => {
+  /*
+   * `absenceFor` returns `null` constantly and correctly - for every site that
+   * IS reporting, where there is no absence to explain. What must never happen
+   * again is the other half: a `not_connected` site with `absence: null`. That
+   * was the path that let CompanyPin fall through to `readiness.{...}` and
+   * caption STJ's empty tile "Live".
+   *
+   * Asserted over the whole payload rather than the one function, because the
+   * field is set at three separate places (company rows, plant rows, and zone
+   * rows in scopeService) and a regression at any one of them puts config back
+   * in charge of what a reader sees.
+   */
+  const check = (payload: ReturnType<typeof build>) => {
+    for (const c of payload.companies) {
+      const label = `company ${c.code} (${c.status})`;
+      if (c.status === 'not_connected') expect(c.absence, label).not.toBeNull();
+      else expect(c.absence, label).toBeNull();
+
+      for (const p of c.plants) {
+        const plabel = `plant ${c.code}/${p.code} (${p.status})`;
+        if (p.status === 'not_connected') expect(p.absence, plabel).not.toBeNull();
+        else expect(p.absence, plabel).toBeNull();
+      }
+    }
+  };
+
+  it('holds with a live snapshot and a settled ledger', () => {
+    const snap = snapshot({ '6332': 10, '6051': 5, '6338': 99_999 });
+    check(build({ ...snap, everSeen: { '6332': 'yes', '6051': 'yes', '6338': 'yes', 'STJ-1': 'no' } }));
+  });
+
+  it('holds while the probe has answered nothing at all', () => {
+    // Boot, or a poller built without plantCodes: every plant `unknown`.
+    check(build(snapshot({ '6332': 10 })));
+  });
+
+  it('holds when nothing anywhere is reporting', () => {
+    check(build(snapshot({})));
+  });
+
+  it('gives a never-reported site an absence even though config annotates nothing', () => {
+    // STJ carries `absence: null` in master data on purpose - the query is the
+    // whole answer - so this is precisely the case that used to return null.
+    const payload = build({ ...snapshot({ '6332': 10 }), everSeen: { 'STJ-1': 'no' } });
+    const stj = payload.companies.find((c) => c.code === 'STJ')!;
+
+    expect(stj.status).toBe('not_connected');
+    expect(stj.absence).not.toBeNull();
+    expect(stj.absence!.reason).toBeNull(); // nothing from config, and that is fine
+    expect(stj.absence!.contradicts_config).toBe(true); // computed, so it survives
   });
 });

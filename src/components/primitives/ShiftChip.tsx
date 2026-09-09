@@ -10,6 +10,14 @@ import { formatClock, formatDate, zoneAbbrev } from '../../i18n/format';
  * cardinality an executive will compare a THS shift total against an STJ shift
  * total and draw a conclusion from the difference in window length.
  *
+ * `timeZone` is the clock to PRINT on, resolved by the caller through
+ * `useDisplayZone`, and not necessarily the site's own: in HQ mode this chip
+ * reads "B Shift (2 of 3) - 09:00 ICT" for a base in Tokyo. What it must never
+ * do is change WHICH shift it names or when that shift ends. Both come off the
+ * payload already cut on the site's own shift, `production_date` is a plain
+ * date with no zone to move, and `minsToEnd` below is instant arithmetic - so
+ * the guard fires at the same moment in both modes.
+ *
  * The clock ticks locally between polls, because a frozen clock on a wall panel
  * reads as a broken screen. But it is guarded: if the ticking clock passes
  * `end_local` before the next payload arrives, the chip stops asserting the old
@@ -17,12 +25,12 @@ import { formatClock, formatDate, zoneAbbrev } from '../../i18n/format';
  */
 export function ShiftChip({
   shift,
-  timezone,
+  timeZone,
   nowMs,
   variant = 'row',
 }: {
   shift: Shift | null;
-  timezone: string;
+  timeZone: string;
   nowMs: number;
   variant?: 'pin' | 'row' | 'header';
 }) {
@@ -42,8 +50,8 @@ export function ShiftChip({
   }
 
   const nowIso = new Date(nowMs).toISOString();
-  const clock = formatClock(nowIso, timezone, lang);
-  const abbrev = zoneAbbrev(nowIso, timezone);
+  const clock = formatClock(nowIso, timeZone, lang);
+  const abbrev = zoneAbbrev(nowIso, timeZone);
   const endMs = new Date(shift.end_local).getTime();
   const minsToEnd = (endMs - nowMs) / 60_000;
 
@@ -56,8 +64,8 @@ export function ShiftChip({
         <span>
           {t('shift.header', {
             label: shift.label,
-            start: formatClock(shift.start_local, timezone, lang),
-            end: formatClock(shift.end_local, timezone, lang),
+            start: formatClock(shift.start_local, timeZone, lang),
+            end: formatClock(shift.end_local, timeZone, lang),
             time: `${clock} ${abbrev}`,
           })}
         </span>
@@ -81,7 +89,7 @@ export function ShiftChip({
       {label}
       {ended ? <span> · {t('shift.ending')}</span> : null}
       {endingSoon ? (
-        <span> · {t('shift.endsSoon', { time: formatClock(shift.end_local, timezone, lang) })}</span>
+        <span> · {t('shift.endsSoon', { time: formatClock(shift.end_local, timeZone, lang) })}</span>
       ) : null}
       {variant === 'pin' ? (
         <span className="visually-hidden">

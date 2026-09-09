@@ -58,12 +58,21 @@ const SHAPES: Record<StatusIconName, React.ReactNode> = {
   ),
 
   /* Below target. The exclamation triangle, which is the one shape in this set
-     that already means "warning" to everybody before they read the label. */
+     that already means "warning" to everybody before they read the label.
+
+     Raised 0.3 from where it was drawn, because it was the one mark in the set
+     that did not sit around y=8: the ring is a circle centred there and the
+     octagon is symmetric about it, but this outline ran 1.4 to 15.18 once
+     stroked - a box centred on 8.29. Anything that aligns one of these marks to
+     a line of text therefore put the triangle a fraction below it, which shows
+     the moment two of them appear side by side, and the ranking head draws
+     exactly that pair. Moved as a translation, not a rescale, so the silhouette
+     the accessibility argument rests on is untouched. */
   'alert-triangle': (
     <>
-      <path d="M8 2.3 1.95 13a.85.85 0 0 0 .74 1.28h10.62A.85.85 0 0 0 14.05 13L8 2.3Z" />
-      <path d="M8 6.6v2.9" />
-      <Dot cx={8} cy={11.9} />
+      <path d="M8 2 1.95 12.7a.85.85 0 0 0 .74 1.28h10.62A.85.85 0 0 0 14.05 12.7L8 2Z" />
+      <path d="M8 6.3v2.9" />
+      <Dot cx={8} cy={11.6} />
     </>
   ),
 

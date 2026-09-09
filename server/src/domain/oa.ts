@@ -303,24 +303,37 @@ export function foldMachineOa(rows: MachineOaRow[]): MachineOa[] {
 }
 
 /**
- * `Order End` layer 2 applied to a site's machines - DESIGN.md §8.4, and the
- * last divergence between this board's %OA and the production board's.
+ * `Order End` layer 2 applied to a site's machines - DESIGN.md §8.4.
  *
- * Splits rather than filters, so the caller can say on the envelope which
- * machines left the average and why. A machine that silently vanishes from a
- * denominator is indistinguishable from one that was measured.
+ * **This classifies. It no longer removes anything from %OA.** Rule change from
+ * the design owner, 2026-09-08: a machine carrying an order created in an
+ * earlier shift stays in the average until the order genuinely ends. This code
+ * may not rule an order finished on its own and take the machine's figures out
+ * on the strength of that inference.
  *
- * Measured at THS on 2026-08-27: 13 machines `current`, 2 `ended` (`I5` and
- * `IC5`, both on orders created 20:06 Bangkok the previous night shift), 0
- * `unknown`. Avg %OA 75.2% before, **81.0%** after - the board's figure.
+ * The genuine end signal is already in the data and needs no inference. When an
+ * order finishes, its `ProductionOrderN` slots go back to `-`, `foldMachineOa`
+ * gives that machine `oaPct: null`, and `averageOa` passes over it. Slots
+ * clearing is now the ONLY way a machine leaves the %OA denominator.
  *
- * **`unknown` is KEPT in the average, which is a named divergence from the
- * board.** The board has no third case: anything it cannot match to the current
- * shift is blanked, so an unreadable timestamp silently removes a machine. Here
- * that machine stays and `orderShiftWarnings` names it. The branch has zero
- * occurrences on the live data (every machine carrying an order had a parseable
- * `vCreateDateTxt0`), so this costs nothing today and refuses to fabricate an
- * exclusion the day the gateway changes format.
+ * What forced the change: ASI 6051 runs one order across days. Measured there
+ * on 2026-09-08, all seven machines with a computable %OA - a real 75.0%
+ * average, every one of them still shooting that minute - were judged `ended`
+ * against the Day shift because their orders were created the previous morning,
+ * and the plant's %OA card went blank. THS creates an order per shift and so
+ * never hit this, which is how a rule reconciled there came to be read as
+ * universal.
+ *
+ * The split survives because the verdict is still worth SAYING. It feeds
+ * `orderShiftWarnings`, which names the carried-over machines on the envelope:
+ * the production board does blank them, so this figure can now differ from the
+ * board by exactly those machines, and a reader should not have to work that
+ * out by subtraction.
+ *
+ * Measured at THS on 2026-08-27, when the verdict still moved the number: 13
+ * machines `current`, 2 `ended` (`I5` and `IC5`, on orders created 20:06
+ * Bangkok the previous night shift), 0 `unknown` - 75.2% with them, 81.0%
+ * without. Under this rule THS reports the 75.2%.
  */
 export function splitByOrderShift(
   machines: MachineOa[],
@@ -346,7 +359,12 @@ export function splitByOrderShift(
   return { current, ended, unknown };
 }
 
-/** What layer 2 removed from this site's %OA, and what it could not judge. */
+/**
+ * Which machines carry an order layer 2 cannot tie to the current shift.
+ *
+ * Both groups are IN %OA. These sentences name them; since 2026-09-08 neither
+ * reports a removal, because neither causes one.
+ */
 export function orderShiftWarnings(
   node: string,
   split: { ended: MachineOa[]; unknown: MachineOa[] },
@@ -359,7 +377,7 @@ export function orderShiftWarnings(
       `${node}: ${ended.length} machine(s) are running an order created in an earlier shift (${ended
         .map((m) => `${m.machine} ${m.oaPct}%`)
         .sort()
-        .join(', ')}) - excluded from %OA as \`Order End\`, which is what the production board does (DESIGN.md §8.4 layer 2)`,
+        .join(', ')}) - KEPT in %OA: an order ends when its PO slots clear, not because it predates the current shift (design owner, 2026-09-08). The production \`Machine Status V2.0\` board blanks these, so this figure can differ from that board by exactly these machines (DESIGN.md §8.4 layer 2)`,
     );
   }
 

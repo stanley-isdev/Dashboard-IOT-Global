@@ -129,6 +129,11 @@ export function TimeRangePicker() {
      meta lands - every reader of it treats that as "no bound known yet" rather
      than substituting a guess. */
   const limits = meta.data?.window_limits;
+  /* Today in the fleet's reference zone, not the browser's: the board's clock
+     is the fleet's, and on an iPad left in a stand the two can differ by a day
+     either side of midnight. It is both the calendar's upper bound and the day
+     an unset To field stands for. */
+  const today = todayIn(cfg.referenceTimezone);
 
   const close = useCallback((focusTrigger: boolean) => {
     setOpen(false);
@@ -255,23 +260,40 @@ export function TimeRangePicker() {
    * Apply is live exactly when the draft is a complete pair that differs from
    * what the board is already showing.
    *
-   * Both ends, because one end is not a range. Different, because a button that
-   * refetches the board against the window it is already on is a control that
-   * looks broken - nothing changes when it is pressed.
+   * A start, because a window with no beginning is not a window. Not both ends,
+   * though: the To field has a default printed in it and the From field does
+   * not. Different, because a button that refetches the board against the
+   * window it is already on is a control that looks broken - nothing changes
+   * when it is pressed.
    *
    * Note what is NOT checked here: whether the window has data in it. That is a
    * fact about the database, the server answers it by clamping and saying so on
    * `window.clamped`, and a front end that tried to pre-judge it would need a
    * second copy of the retention rule to drift out of step with the first.
    */
+  /*
+   * An unset To means "now", because that is what the field says.
+   *
+   * The second click of the grid fills it; until then it prints `now`, and a
+   * reader who picks one day and reads "24 Aug .. now" has named a window. The
+   * panel refusing that with a dead button and nothing on screen saying why was
+   * the defect - the field was making a promise Apply did not keep.
+   *
+   * It resolves to today in the reference zone, which is the same instant the
+   * word means: the server reads the end day inclusively and caps it at the
+   * current time (`resolveWindow` in windowedSnapshot.ts), so "to today" is "to
+   * now" rather than "to midnight tonight".
+   */
+  const draftEnd = abs.end ?? (abs.start !== null ? today : null);
+
   const canApply =
     abs.start !== null &&
-    abs.end !== null &&
-    (abs.start !== filters.from || abs.end !== filters.to);
+    draftEnd !== null &&
+    (abs.start !== filters.from || draftEnd !== filters.to);
 
   const applyAbsolute = () => {
     if (!canApply) return;
-    setFilters({ from: abs.start, to: abs.end });
+    setFilters({ from: abs.start, to: draftEnd });
     setCalOpen(false);
     close(true);
   };
@@ -491,10 +513,7 @@ export function TimeRangePicker() {
             <DateRangeCalendar
               start={abs.start}
               end={abs.end}
-              /* Today in the reference zone, not the browser's: the board's
-                 clock is the fleet's, and on an iPad left in a stand the two
-                 can differ by a day either side of midnight. */
-              max={todayIn(cfg.referenceTimezone)}
+              max={today}
               /* The retention floor, served on /meta rather than assumed here.
                  Undefined until meta lands, which leaves the grid unbounded
                  below for that moment - the server clamps and says so, so the

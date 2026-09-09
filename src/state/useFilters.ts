@@ -71,14 +71,6 @@ const zFilters = z.object({
   region: z.string().catch('all'),
   plant: z.string().catch('all'),
   /*
-   * The Zone picker, below the Lamp one. A free string rather than an enum
-   * because nobody owns the vocabulary: the values are whatever `zone` tags the
-   * plants are reporting, and they differ per plant (`6051`: `A`-`F`; `6332`:
-   * `2A-A` ...). An unknown token matches nothing rather than widening, which is
-   * what region.ts's shared parser already guarantees.
-   */
-  zone: z.string().catch('all'),
-  /*
    * The Top-N picker beside the longest-active-stops panel title. A closed
    * set rather than a free number, so a hand-typed `?alertsLimit=99999` falls
    * back to the default instead of asking the server to sort and slice an
@@ -99,7 +91,6 @@ const DEFAULTS: Filters = {
   process: 'all',
   region: 'all',
   plant: 'all',
-  zone: 'all',
   alertsLimit: 10,
 };
 
@@ -128,9 +119,9 @@ function serialize(current: Filters, next: Partial<Filters>, params: URLSearchPa
    * `,` is a sub-delimiter and legal in a query. `?region=TH,JP` is a URL
    * somebody can read out; `?region=TH%2CJP` is one they have to decode first,
    * and this board's whole filter design rests on the URL being the state
-   * somebody shares. The region, plant and zone lists are the ones that
-   * carry commas, and the two forms parse identically, so nothing downstream
-   * can tell the difference.
+   * somebody shares. The region and plant lists are the ones that carry
+   * commas, and the two forms parse identically, so nothing downstream can
+   * tell the difference.
    */
   return search.toString().replaceAll('%2C', ',');
 }
@@ -150,7 +141,6 @@ export function useFilters(): [Filters, (next: Partial<Filters>) => void] {
       process: params.get('process') ?? DEFAULTS.process,
       region: params.get('region') ?? DEFAULTS.region,
       plant: params.get('plant') ?? DEFAULTS.plant,
-      zone: params.get('zone') ?? DEFAULTS.zone,
       alertsLimit: params.get('alertsLimit') ?? String(DEFAULTS.alertsLimit),
     }) as Filters;
   }, [params]);

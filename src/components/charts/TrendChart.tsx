@@ -1,4 +1,4 @@
-import { memo, useId, useLayoutEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useId, useLayoutEffect, useMemo, useState } from 'react';
 import type { TrendPoint } from '../../api/contract';
 import { useI18n } from '../../i18n/I18nProvider';
 import {
@@ -86,7 +86,17 @@ interface Props {
    * to close, so this is `tier_policy.warn_at` off the payload and nothing else.
    */
   warnAt: number;
-  referenceTimezone: string;
+  /**
+   * The clock the axis, the tooltip and the table view are printed on, resolved
+   * by the caller through `useDisplayZone`.
+   *
+   * A site's chart follows the reader's time mode. The fleet chart on the
+   * overview does not and cannot: its hours are an aggregate over nine bases
+   * spanning UTC+01 to UTC-06, so there is no local clock to switch to and the
+   * caller hands it the reference zone in both modes. That is why `tz` below is
+   * printed beside the hovered reading rather than assumed.
+   */
+  timeZone: string;
 }
 
 /*
@@ -98,7 +108,7 @@ interface Props {
  * the tab it sits on. `points` comes memoised out of `useTrendWindow` and the
  * rest are numbers, so it now recomputes when the trend or the window moves.
  */
-export const TrendChart = memo(function TrendChart({ points, target, warnAt, referenceTimezone }: Props) {
+export const TrendChart = memo(function TrendChart({ points, target, warnAt, timeZone }: Props) {
   const { t, lang } = useI18n();
   const [asTable, setAsTable] = useState(false);
 
@@ -218,6 +228,30 @@ export const TrendChart = memo(function TrendChart({ points, target, warnAt, ref
     return () => ro.disconnect();
   }, [plotEl]);
 
+  /*
+   * The table twin opens at its foot, not its head.
+   *
+   * The rows run oldest-first because the chart they stand in for reads
+   * left-to-right, and a twin that reads the other way makes the reader flip
+   * the axis in their head every time they toggle. What that ordering costs is
+   * the one row anyone actually came for: the latest hour sits off the bottom
+   * of a scroller showing seven of twenty-four rows, and a value you have to go
+   * hunting for is the value the panel reports worst.
+   *
+   * A callback ref rather than an effect, because what is being waited on is
+   * the node arriving, not the component mounting - this subtree is swapped in
+   * and out while the component itself stays mounted, so an effect keyed on
+   * mount would never see it. And a *stable* callback, because an inline one is
+   * a new function every render: React would detach and re-attach the node on
+   * each refresh and drag the reader back to the foot mid-read. Held by
+   * `useCallback`, it runs when the table opens and not again.
+   */
+  const openAtFoot = useCallback((el: HTMLDivElement | null) => {
+    /* Not a follow, only the opening position - and the window slides rather
+       than grows, so a reader left at the foot stays there unaided. */
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
   const { w: W, h: H } = size;
 
   const usable = useMemo(() => points.filter((p) => p.oa_pct !== null), [points]);
@@ -259,10 +293,11 @@ export const TrendChart = memo(function TrendChart({ points, target, warnAt, ref
   const gridlines = useMemo(() => yTicks(domain), [domain]);
 
   /* Resolving the zone hour is the component's job - it is the one part that
-     needs Intl and the deploy-time reference zone. */
+     needs Intl. WHICH zone is the caller's, not a deploy-time constant: see the
+     prop doc above and src/state/useDisplayZone.ts. */
   const xTicks = useMemo(
-    () => timeTickIndices(points.map((p) => zoneHour(p.ts, referenceTimezone))),
-    [points, referenceTimezone],
+    () => timeTickIndices(points.map((p) => zoneHour(p.ts, timeZone))),
+    [points, timeZone],
   );
 
   /*
@@ -333,7 +368,7 @@ export const TrendChart = memo(function TrendChart({ points, target, warnAt, ref
   const warnY = y(clampToDomain(warnAt));
   const baseline = H - PAD_BOTTOM;
   const lastIndex = points.length - 1;
-  const tz = zoneAbbrev(points[0].ts, referenceTimezone);
+  const tz = zoneAbbrev(points[0].ts, timeZone);
   const annotate = W >= ANNOTATION_MIN_W && H >= ANNOTATION_MIN_H;
 
   /* A point's colour carries the one status the series has: below the served
@@ -415,7 +450,7 @@ export const TrendChart = memo(function TrendChart({ points, target, warnAt, ref
         </div>
         {/* Twenty-four rows will not fit a panel that is also holding a nine-base
             ranking, so the table twin scrolls in place like the ranking does. */}
-        <div className="panel__scroll">
+        <div className="panel__scroll" ref={openAtFoot}>
           <table className="rank-table">
             <thead>
               <tr>
@@ -443,8 +478,8 @@ export const TrendChart = memo(function TrendChart({ points, target, warnAt, ref
                       axis carries it: a column of bare clock times over a week
                       repeats every value seven times. */}
                   <td className="mono">
-                    {spansDays ? `${formatDayShort(p.ts, referenceTimezone, lang)} ` : ''}
-                    {formatClock(p.ts, referenceTimezone, lang)}
+                    {spansDays ? `${formatDayShort(p.ts, timeZone, lang)} ` : ''}
+                    {formatClock(p.ts, timeZone, lang)}
                   </td>
                   <td className="num mono">
                     {p.oa_pct === null ? '-' : formatPct(p.oa_pct, lang)}
@@ -692,8 +727,8 @@ export const TrendChart = memo(function TrendChart({ points, target, warnAt, ref
                 fill="var(--sub)"
               >
                 {spansDays
-                  ? formatDayShort(points[i].ts, referenceTimezone, lang)
-                  : formatClock(points[i].ts, referenceTimezone, lang)}
+                  ? formatDayShort(points[i].ts, timeZone, lang)
+                  : formatClock(points[i].ts, timeZone, lang)}
               </text>
             </g>
           ))}
@@ -712,8 +747,8 @@ export const TrendChart = memo(function TrendChart({ points, target, warnAt, ref
             }}
           >
             <div className="trend-tip__meta">
-              {spansDays ? `${formatDayShort(hovered.ts, referenceTimezone, lang)} ` : ''}
-              {formatClock(hovered.ts, referenceTimezone, lang)} · {tz}
+              {spansDays ? `${formatDayShort(hovered.ts, timeZone, lang)} ` : ''}
+              {formatClock(hovered.ts, timeZone, lang)} · {tz}
             </div>
             <div className="trend-tip__value">
               <b className="tnum">

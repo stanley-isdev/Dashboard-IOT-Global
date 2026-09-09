@@ -147,14 +147,21 @@ export const zServedWindow = z.object({
    */
   source: z.enum(['range', 'absolute']),
   /**
-   * How many InfluxDB queries the window was split into - see
+   * How many InfluxDB queries the window actually took, per query family - see
    * MAX_WINDOW_HOURS in server/src/influx/queries.ts: one query cannot scan
    * more than ~71 h of this table before the file-scan cap rejects it.
    *
    * On the payload rather than in a log because it is the cost of the reader's
-   * own pick. Nine queries for a seven-day window is why that window is slower
+   * own pick. Three queries for a seven-day window is why that window is slower
    * than the default one, and a support question about it should be answerable
    * from the response.
+   *
+   * Counted after the fact, so it can exceed the chunk plan: 71 h is only the
+   * width of the FIRST attempt, and a chunk the instance refuses is retried in
+   * narrower slices (fetchWindow in windowedSnapshot.ts). A window reporting
+   * more chunks than its width divided by `max_query_hours` is one that hit the
+   * cap somewhere and worked around it - which is exactly the case worth being
+   * able to see from a response.
    */
   chunks: z.number().int().positive(),
   /**

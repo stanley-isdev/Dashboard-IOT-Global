@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { en, type TKey } from '../../i18n/en';
 import { formatDowntime, formatInt, formatPct, formatSigned } from '../../i18n/format';
 import { useSelection } from '../../state/selectionStore';
+import { useDisplayZone } from '../../state/useDisplayZone';
 import { GrafanaLink } from '../common/GrafanaLink';
 import { KpiMark, type KpiMarkName } from '../kpi/KpiMark';
 import { CloseMark } from '../primitives/CloseMark';
@@ -78,6 +79,7 @@ export function BaseDrawer({
   nowMs: number;
 }) {
   const { t, lang } = useI18n();
+  const displayZone = useDisplayZone();
   const close = useSelection((s) => s.close);
   const panel = useRef<HTMLDivElement>(null);
 
@@ -242,7 +244,7 @@ export function BaseDrawer({
                 {' · '}
                 <ShiftChip
                   shift={company.shift}
-                  timezone={company.timezone}
+                  timeZone={displayZone(company.timezone)}
                   nowMs={nowMs}
                   variant="row"
                 />
