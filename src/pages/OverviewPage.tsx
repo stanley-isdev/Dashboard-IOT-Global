@@ -10,6 +10,7 @@ import { useConfig } from '../config/AppContext';
 import { useI18n } from '../i18n/I18nProvider';
 import { REGION_NONE, type CompanySummary } from '../api/contract';
 import type { TKey } from '../i18n/en';
+import { useDisplayZone } from '../state/useDisplayZone';
 import { useFilters } from '../state/useFilters';
 import { useSelection } from '../state/selectionStore';
 import { usePublishExport } from '../state/exportStore';
@@ -104,6 +105,11 @@ const BOARDS: { id: Board; tabKey: TKey }[] = [
 export function OverviewPage() {
   const { t } = useI18n();
   const cfg = useConfig();
+  /* Only ever called with no site on this page, and that is the honest reading:
+     the global board has no single base for a clock to belong to. The one place
+     the fleet's nine clocks DO appear is the ranking's Date/Time column, which
+     prints `company.timezone` per row and does not come through here. */
+  const displayZone = useDisplayZone();
   const [filters, setFilters] = useFilters();
   const { query, violations } = useOverview(filters);
   const { data, isError, isPending, error, refetch } = query;
@@ -247,7 +253,7 @@ export function OverviewPage() {
     <>
       <ConnectionBanner
         info={connection}
-        referenceTimezone={cfg.referenceTimezone}
+        timeZone={displayZone()}
         onRetry={() => void refetch()}
         recovery={recovery}
       />
@@ -391,6 +397,16 @@ export function OverviewPage() {
                   `trend.axis`, "Time (ICT)", which is the one place on the
                   board where a reader in site-local mode meets a clock that is
                   not a site's own.
+
+                  `cfg.referenceTimezone` and NOT `displayZone()`, which is the
+                  deliberate part and not an oversight - every other fleet-wide
+                  timestamp on this page went through `displayZone()` in D-32.
+                  This one did not, because the reason above does not stop at
+                  site-local mode: the buckets are aggregated across nine bases,
+                  so no reader's clock makes them line up any better than the
+                  reference one does, and re-labelling the axis per reader would
+                  change what the picture appears to say without changing a
+                  single point in it. The axis names its own zone either way.
                 */}
                 {data ? (
                   <TrendChart

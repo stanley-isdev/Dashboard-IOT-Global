@@ -12,7 +12,6 @@ import {
   formatInt,
   formatWeekdayDate,
 } from '../../i18n/format';
-import { useDisplayZone } from '../../state/useDisplayZone';
 import { useLinkWithFilters } from '../../state/useFilters';
 import { GrafanaLink } from '../common/GrafanaLink';
 import { Flag } from '../primitives/Flag';
@@ -33,11 +32,19 @@ import { DEFAULT_SORT, nextSort, sortRows, type SortCol, type SortState } from '
  * than taking a column of its own, because "D" is two pixels of information and
  * the artboard is right to fold it in.
  *
- * WHICH clock those cells are on is the reader's choice, not this file's: in
- * site-local mode they are nine clocks and the column reads as written above,
- * and in HQ mode they collapse to one and the column becomes a check that all
- * nine bases are being read as of the same moment. The shift code does not move
- * either way. See src/state/useDisplayZone.ts.
+ * These cells do NOT follow the display-zone picker, and this is the one place
+ * on the board where that picker is deliberately overruled. The column exists
+ * to answer "what time is it there", so putting all nine rows on one clock
+ * leaves nine identical readings and deletes the only fact the column was added
+ * to carry - the fleet's spread across three calendar days. Every other clock
+ * on the board follows the reader; this column is where the geography lives, so
+ * the zone here is always `company.timezone`, in every mode.
+ *
+ * It was briefly resolved through `useDisplayZone` (D-31). That read as a
+ * feature - "one clock to check all nine are read as of the same moment" - and
+ * it is not one: `generated_at` in the methodology dialog already states that
+ * moment once, for the whole payload, instead of restating it nine times in the
+ * column that had the timezones in it. See src/state/useDisplayZone.ts.
  *
  * Five structural decisions carry most of the value here.
  *
@@ -70,14 +77,9 @@ import { DEFAULT_SORT, nextSort, sortRows, type SortCol, type SortState } from '
  */
 export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
   const { t, lang } = useI18n();
-  /*
-   * Which clock the Date/Time and Last-seen cells are printed on. Resolved per
-   * row rather than once for the table: in site-local mode these nine cells are
-   * nine different clocks, which is the column's whole reason for existing, and
-   * in HQ mode they collapse to one. A hook cannot be called in the row loop,
-   * so this is the resolver and not the zone.
-   */
-  const displayZone = useDisplayZone();
+  /* No `useDisplayZone` here, deliberately - see the note on the Date/Time
+     column in this file's header. The cells in `col-time` read `company.timezone`
+     directly, which is also why they need no resolver: the zone is on the row. */
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   /*
    * Open by default. All nine bases belong on the board - a panel listing three
@@ -273,7 +275,9 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
                          * A site with no gateway still has a real local clock,
                          * and printing it is what stops "not connected" reading
                          * as "does not exist". Everything downstream of it is an
-                         * em-dash, because there is nothing to divide.
+                         * em-dash, because there is nothing to divide - the
+                         * shift code included: see LocalDateTime for why a
+                         * configured pattern is not enough to print one here.
                          */}
                         <td className="col-time">
                           <LocalDateTime company={c} nowMs={nowMs} />
@@ -547,12 +551,18 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
         </td>
 
         {/* Last seen, not a clock: for a plant the useful fact is when it last
-            spoke, and the site's clock is already on the row above. */}
+            spoke, and the site's clock is already on the row above.
+
+            On the site's zone, like the company row it sits under. It shares a
+            column with those cells, and a column that printed the parent on
+            Bangkok time and its four children on the reader's would be worse
+            than either choice made consistently: the two readings sit four rows
+            apart and invite a subtraction that means nothing. */}
         <td className="col-time tnum">
           {plant.last_seen === null ? (
             <span className="quiet">-</span>
           ) : (
-            formatClockSeconds(plant.last_seen, displayZone(company.timezone), lang)
+            formatClockSeconds(plant.last_seen, company.timezone, lang)
           )}
         </td>
 
@@ -643,20 +653,39 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
   /**
    * The site's date over its clock and shift code, ticking.
    *
-   * "Its clock" is the site's in site-local mode and the reference zone in HQ
-   * mode - the shift CODE beside it never moves either way, because which shift
-   * a base is running is a fact about that base and not about the reader.
+   * "Its clock" is the site's, always - the display-zone picker does not reach
+   * this column, for the reason set out in this file's header. Neither does it
+   * reach the shift CODE beside it, because which shift a base is running is a
+   * fact about that base and not about the reader.
+   *
+   * The date and clock print for every row; the shift code only for a reporting
+   * one. See the note on the code below.
    */
   function LocalDateTime({ company, nowMs: at }: { company: CompanySummary; nowMs: number }) {
     const iso = new Date(at).toISOString();
-    const zone = displayZone(company.timezone);
+    const zone = company.timezone;
     return (
       <span className="localtime">
         <span className="localtime__date">
           {formatWeekdayDate(iso, zone, lang)}
         </span>
         <span className="localtime__clock">
-          {company.shift ? (
+          {/*
+           * The shift code is gated on the row REPORTING, not merely on a shift
+           * pattern existing - the same `isRankable` that put this row above or
+           * below the divider.
+           *
+           * It reads as observation and it is not: `shift` is resolved from the
+           * site's configured pattern against the clock, so STJ - three shifts
+           * configured, zero rows ever received - printed "A · 13:10" inside a
+           * cell whose next column said "not connected". A reader has no way to
+           * tell that apart from a shift that reported. The other un-commissioned
+           * bases hid the problem by having no pattern configured at all.
+           *
+           * The date and clock stay, for the timezone reading the column exists
+           * for. Only the claim about which shift is running goes.
+           */}
+          {company.shift && isRankable(company.status) ? (
             <>
               {/*
                * Code only. The full "B Shift (2 of 3)" belongs on the drill-down

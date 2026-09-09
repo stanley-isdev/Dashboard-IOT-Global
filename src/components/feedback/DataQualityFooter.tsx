@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/en';
 import { formatDateTime } from '../../i18n/format';
 import { useConfig } from '../../config/AppContext';
+import { useDisplayZone } from '../../state/useDisplayZone';
 import { CloseMark } from '../primitives/CloseMark';
 import { StatusIcon } from '../primitives/StatusIcon';
 
@@ -27,6 +28,11 @@ export function DataQualityFooter({
 }) {
   const { t, lang } = useI18n();
   const cfg = useConfig();
+  /* A fleet-wide stamp, so `displayZone()` is called with no site - the
+     documented call for "this instant belongs to the payload, not to any one
+     base". It stays on the reference zone in site-local mode, where nine bases
+     have no shared clock, and follows the reader in the other two. */
+  const displayZone = useDisplayZone();
   const [open, setOpen] = useState(false);
 
   return (
@@ -127,7 +133,7 @@ export function DataQualityFooter({
                   what this dialog is for. */}
               <dt>{t('methodology.generatedAt')}</dt>
               <dd className="mono">
-                {formatDateTime(payload.meta.generated_at, cfg.referenceTimezone, lang)}
+                {formatDateTime(payload.meta.generated_at, displayZone(), lang)}
               </dd>
 
               {/* The API this board is reading, which is the whole of "where did

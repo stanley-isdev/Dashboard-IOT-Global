@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router';
 import { useCompany, useRetryState } from '../api/queries';
-import { useConfig } from '../config/AppContext';
 import {
   deriveConnection,
   useFreezeDetector,
@@ -63,10 +62,17 @@ import { StatusGlyph } from '../components/primitives/StatusGlyph';
  * `.panel--alerts`), and both tables scroll inside their panels rather than
  * setting the height of the row they sit in.
  */
+/*
+ * The two statuses RUNNING is made of, and therefore the two the caption under
+ * TOTAL MACHINE must leave out. Spelled out here rather than imported from
+ * KpiStrip, which keeps its own copy for the same card on the global strip and
+ * records there why the pair is not read off the server's bucket map.
+ */
+const RUNNING_STATUSES = new Set(['Mass Pro', 'Dandori']);
+
 export function CompanyPage() {
   const { companyCode = '' } = useParams();
   const { t, lang } = useI18n();
-  const cfg = useConfig();
   const displayZone = useDisplayZone();
   const [filters, setFilters] = useFilters();
   const link = useLinkWithFilters();
@@ -138,11 +144,34 @@ export function CompanyPage() {
      different causes - see the long note there. */
   const hasCensus = c.counts.total > 0;
 
+  /*
+   * What the machine count is made of, less the two states the RUNNING card
+   * beside it already names.
+   *
+   * This strip is four cards where the global one is six, and the two it drops
+   * are STOP and NEEDING ATTENTION - so without this line a reader sees 44 and
+   * 34 and has nothing at all telling them what the other ten machines are
+   * doing. It is the same composition line the plant page prints under each
+   * census tile, and it is also what gives this card the third row every other
+   * card on the strip has: a card two rows tall next to three-row neighbours
+   * cannot sit level with them, whatever the alignment rule says.
+   *
+   * Read off the payload's own keys rather than a hand-kept list, so a status
+   * the source system starts reporting appears the day it lands. The names stay
+   * in English in both locales on purpose - they are the identifiers the
+   * operator reads off the andon and off Grafana, not English words being
+   * translated. See the note at the top of th.ts.
+   */
+  const remainder = Object.entries(c.counts.by_status)
+    .filter(([status, n]) => n > 0 && !RUNNING_STATUSES.has(status))
+    .map(([status, n]) => `${status} ${int(n)}`)
+    .join(' · ');
+
   return (
     <>
       <ConnectionBanner
         info={connection}
-        referenceTimezone={cfg.referenceTimezone}
+        timeZone={displayZone()}
         onRetry={() => void refetch()}
         recovery={recovery}
       />
@@ -156,18 +185,27 @@ export function CompanyPage() {
         aria-busy={isPending}
       >
         <header className="scope-head">
-          <div className="scope-head__id">
-            {/* Sized off the code beside it rather than in rem, so the pair
-                scales together in kiosk density. */}
-            <Flag code={c.country_code} countryName={c.country_code} size="1.75em" />
-            <div className="scope-head__names">
-              {/* The page's heading, and a real one: this is the only h2 on the
-                  page that names the thing the whole screen is about. */}
-              <h2 className="scope-head__code">{c.code}</h2>
-              <span className="scope-head__name">
-                {lang === 'th' ? (c.name_th ?? c.name) : c.name}
-              </span>
-            </div>
+          <div className="scope-head__names">
+            {/* The page's heading, and a real one: this is the only h2 on the
+                page that names the thing the whole screen is about. */}
+            <h2 className="scope-head__code">{c.code}</h2>
+            {/*
+             * The flag rides the caption line rather than sitting ahead of the
+             * code, and that is a decision about the left edge. Ahead of the
+             * code it pushed "ASI" 44px inboard, so the page's own title was the
+             * one thing on the screen not standing on the margin the KPI cards
+             * and the deck below it share - which is most of what stops a title
+             * reading as a title. On this line the code is flush with them, and
+             * the flag is beside the thing it actually qualifies: the country of
+             * that legal entity, not the three letters of its code.
+             *
+             * Sized in em off the caption, so it follows the density switch with
+             * the text rather than staying at a fixed pixel height on a wall.
+             */}
+            <span className="scope-head__name">
+              <Flag code={c.country_code} countryName={c.country_code} size="1.3em" />
+              {lang === 'th' ? (c.name_th ?? c.name) : c.name}
+            </span>
           </div>
 
           {/* The three qualifiers on every figure below: is this base reporting,
@@ -186,16 +224,36 @@ export function CompanyPage() {
           </div>
         </header>
 
-        {/* Four cards, and the count is a class rather than an inline
-            `gridTemplateColumns`: an inline style outranks every rule in the
-            stylesheet, so the stacked columns at the narrow breakpoints never
-            reached this page. See `.kpis--4`. */}
+        {/*
+          * Four cards, in the global strip's own style.
+          *
+          * Two things make that true and both are one prop each. `mark` turns on
+          * `.kpi--feature` - the subject glyph, the sentence-case label at
+          * reading size, the softer borderless card - which the design owner
+          * took the whole overview strip onto; nothing else selects on the
+          * class, so the mark IS the style. And the four marks are the same four
+          * the overview gives these same four figures (gear, play, gauge,
+          * target), so a reader arriving from the board meets the same glyph
+          * against the same number rather than a second visual language one
+          * level down.
+          *
+          * The card count is a class rather than an inline
+          * `gridTemplateColumns` for a separate reason: an inline style outranks
+          * every rule in the stylesheet, so the stacked columns at the narrow
+          * breakpoints never reached this page. See `.kpis--4`.
+          */}
         <div className="kpis kpis--4">
           <KpiCard
             labelKey="kpi.machines"
             measure={toMeasure(c.counts.total, c.status)}
             format={int}
             coverage={coverage}
+            /* Undefined and not the empty string when everything in scope is
+               running: KpiCard prints no caption row at all for undefined,
+               where an empty one would be a blank line pretending to be a
+               fact. The strip stays level either way now. */
+            foot={remainder === '' ? undefined : remainder}
+            mark="gear"
           />
           <KpiCard
             labelKey="kpi.running"
@@ -204,6 +262,7 @@ export function CompanyPage() {
             tier="good"
             coverage={coverage}
             definitionKey="kpi.running.definition"
+            mark="play"
           />
           <KpiCard
             labelKey="kpi.oa"
@@ -211,6 +270,7 @@ export function CompanyPage() {
             tier={c.kpi.oa_tier}
             coverage={coverage}
             definitionKey="kpi.oa.definition"
+            mark="gauge"
           />
           <KpiCard
             labelKey="kpi.achievement"
@@ -235,6 +295,7 @@ export function CompanyPage() {
                 })}
               </>
             }
+            mark="target"
           />
         </div>
 

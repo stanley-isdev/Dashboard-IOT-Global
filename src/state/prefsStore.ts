@@ -18,7 +18,23 @@ import type { ThemePref } from '../config/runtimeConfig';
  * stuck in kiosk mode.
  */
 
-export type TimeMode = 'site_local' | 'reference';
+/**
+ * Which clock the board prints timestamps on.
+ *
+ *   viewer      the reader's own, from the browser. The default since
+ *               2026-09-09: it is the only setting that is right for everybody
+ *               without anybody configuring it, and a colleague in Japan
+ *               reading a Thai plant's stop no longer adds seven hours by hand.
+ *   site_local  each base on its own - THS in Bangkok, STJ in Tokyo, side by
+ *               side in one table. The one reading a single zone cannot express,
+ *               which is why it survives as a choice rather than a zone entry.
+ *   fixed       one named zone for the whole fleet, in `fixedZone`. This
+ *               replaced a dedicated `reference` mode: "HQ time" is just this
+ *               with Asia/Bangkok picked, so a list of zones subsumes it and
+ *               also lets a reader hold the board against any other site's
+ *               clock (D-31).
+ */
+export type TimeMode = 'site_local' | 'viewer' | 'fixed';
 
 /**
  * Resolved, never 'system'. The moon/sun switch in the masthead is a two-state
@@ -61,6 +77,12 @@ interface PrefsState {
   theme: Theme;
   kiosk: boolean;
   timeMode: TimeMode;
+  /**
+   * The zone `timeMode: 'fixed'` names. Empty until a reader picks one, and
+   * every consumer falls back to the deployment's reference zone rather than
+   * handing Intl a blank string.
+   */
+  fixedZone: string;
   /** `undefined` means "not chosen" - the deployment's runtime-config wins. */
   refreshMs: RefreshMs | undefined;
   setRefreshMs: (refreshMs: RefreshMs) => void;
@@ -71,6 +93,8 @@ interface PrefsState {
   setKiosk: (kiosk: boolean) => void;
   toggleKiosk: () => void;
   setTimeMode: (mode: TimeMode) => void;
+  /** Picks a named zone and switches to 'fixed' in one step. */
+  setFixedZone: (zone: string) => void;
 }
 
 export const usePrefs = create<PrefsState>()(
@@ -79,7 +103,8 @@ export const usePrefs = create<PrefsState>()(
       lang: 'th',
       theme: 'light',
       kiosk: false,
-      timeMode: 'site_local',
+      timeMode: 'viewer',
+      fixedZone: '',
       refreshMs: undefined,
       setRefreshMs: (refreshMs) => set({ refreshMs }),
       setLang: (lang) => set({ lang }),
@@ -89,6 +114,7 @@ export const usePrefs = create<PrefsState>()(
       setKiosk: (kiosk) => set({ kiosk }),
       toggleKiosk: () => set((s) => ({ kiosk: !s.kiosk })),
       setTimeMode: (timeMode) => set({ timeMode }),
+      setFixedZone: (fixedZone) => set({ fixedZone, timeMode: 'fixed' }),
     }),
     {
       name: 'osnp.prefs',

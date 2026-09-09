@@ -10,6 +10,8 @@ import { useI18n } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/en';
 import { formatDate, zoneOffset, zoneOffsetShort } from '../../i18n/format';
 import { usePrefs } from '../../state/prefsStore';
+import { viewerTimeZone } from '../../state/useDisplayZone';
+import { fleetZones } from '../../domain/fleetZones';
 import { useFilters } from '../../state/useFilters';
 import { DateRangeCalendar } from './DateRangeCalendar';
 
@@ -69,11 +71,22 @@ import { DateRangeCalendar } from './DateRangeCalendar';
  * ## The footer
  *
  * Grafana's footer names the timezone the timestamps are in. Ours does that and
- * carries the one timezone preference this board actually models: each site's
- * own clock, or one reference zone for the whole fleet. Metrics never move -
- * every %OA is still computed against the site's own shift, whichever way this
- * is set - and the footer's own line says so, because a timezone control that
- * looks like it re-cuts the numbers is the dangerous kind.
+ * carries the display-zone control: a button for each site's own clock, and a
+ * select for every reading that is a single zone - the reader's own first, then
+ * each clock the fleet spans, from `/meta`.
+ *
+ * That shape replaced a pair of buttons, `site_local` / `reference`, on
+ * 2026-09-09. A colleague in Japan asked to read a Thai plant's stop in JST,
+ * which the pair could not express; and once a list of zones exists, "HQ time"
+ * is just Asia/Bangkok picked from it, so the second button had nothing left to
+ * do. Default is now the reader's own clock - the only setting that is right for
+ * everybody with nobody configuring it.
+ *
+ * Metrics never move. Every %OA is still computed against the site's own shift
+ * whichever way this is set, and the footer's own line says so in all three
+ * modes, because a timezone control that looks like it re-cuts the numbers is
+ * the dangerous kind - which is exactly what the production Grafana panel turned
+ * out to be doing (docs/grafana/MACHINE-STATUS-V2.md §4).
  */
 
 /** Grafana's relative expression for each served window, for the From field. */
@@ -99,6 +112,16 @@ export function TimeRangePicker() {
   const cfg = useConfig();
   const timeMode = usePrefs((s) => s.timeMode);
   const setTimeMode = usePrefs((s) => s.setTimeMode);
+  /* The reader's own zone, or null when the browser will not name one. Read
+     here so both the capsule badge and the footer sentence agree on it. */
+  const viewerZone = viewerTimeZone();
+  const fixedZone = usePrefs((s) => s.fixedZone);
+  const setFixedZone = usePrefs((s) => s.setFixedZone);
+  /* Every clock the fleet spans, from `/meta` - so a tenth base in a country
+     nobody anticipated appears in the picker with no frontend change. */
+  const zones = fleetZones(meta.data ?? null, lang);
+  /** IANA name plus its offset now, which is the pair a reader recognises. */
+  const named = (z: string) => `${z} (${zoneOffset(z)})`;
 
   const [open, setOpen] = useState(false);
   /*
@@ -368,14 +391,26 @@ export function TimeRangePicker() {
         {absoluteApplied ? <CalendarIcon className="timepicker__icon" /> : <ClockIcon />}
         <span className="timepicker__val">{capsule}</span>
         {/*
-         * The offset, as Grafana prints it, and only in reference mode. In
-         * site-local mode there is no single offset to print - the nine bases
-         * span UTC+01 to UTC-06 - and a "+07" beside nine local clocks would be
-         * a straightforward lie.
+         * The offset, as Grafana prints it, and in every mode that HAS one.
+         *
+         * Site-local is the exception and stays bare: nine bases span UTC+01 to
+         * UTC-06, so there is no single offset, and a "+07" beside nine local
+         * clocks would be a straightforward lie.
+         *
+         * The other two both resolve to one zone, and both need the badge for
+         * the same reason - `viewer` most of all, since it is the mode where two
+         * readers of the same board are on different clocks and the capsule is
+         * the only thing on screen that says which.
          */}
-        {timeMode === 'reference' ? (
-          <span className="timepicker__zone">{zoneOffsetShort(cfg.referenceTimezone)}</span>
-        ) : null}
+        {timeMode === 'site_local' ? null : (
+          <span className="timepicker__zone">
+            {zoneOffsetShort(
+              timeMode === 'viewer'
+                ? (viewerZone ?? cfg.referenceTimezone)
+                : fixedZone || cfg.referenceTimezone,
+            )}
+          </span>
+        )}
         <span className="filter__caret" aria-hidden="true" />
       </button>
 
@@ -527,24 +562,32 @@ export function TimeRangePicker() {
 
           <div className="timepanel__foot">
             {/*
-             * The zone *and* the promise about the metrics, in both modes.
+             * The zone in force, named, and the promise about the metrics.
              *
-             * Grafana's footer prints the zone alone, and it can: nothing in
-             * Grafana's toolbar re-cuts a shift. Here the sentence is the point.
-             * `time.referenceNote` was written for this row and had never been
-             * rendered anywhere, which is why the reference mode used to say
-             * only "Asia/Bangkok" - the mode where a reader is most likely to
-             * assume the numbers moved with the clock.
+             * The sentence is the point rather than the zone alone: Grafana's
+             * footer prints a zone because nothing in Grafana's toolbar re-cuts
+             * a shift, whereas a reader here could reasonably fear this control
+             * moved the numbers. It did not, and every branch says so.
+             *
+             * `viewer` is the branch that most needs the zone spelled out - it
+             * is the one mode where two people reading the same board see
+             * different clocks, so a screenshot passed between Bangkok and
+             * Tokyo has to carry which one it was taken on.
              */}
             <span className="timepanel__zoneline">
-              {timeMode === 'reference'
-                ? t('time.referenceNote', {
-                    tz: `${cfg.referenceTimezone} (${zoneOffset(cfg.referenceTimezone)})`,
-                  })
-                : t('time.siteLocalNote')}
+              {timeMode === 'site_local'
+                ? t('time.siteLocalNote')
+                : timeMode === 'viewer'
+                  ? t('time.viewerNote', { tz: named(viewerZone ?? cfg.referenceTimezone) })
+                  : t('time.fixedNote', { tz: named(fixedZone || cfg.referenceTimezone) })}
             </span>
 
-            <div className="timepanel__seg" role="group" aria-label={t('filter.time')}>
+            <div className="timepanel__zonepick">
+              {/*
+               * Per-site stays a button of its own, because it is the one
+               * reading a list of zones cannot express: nine bases on nine
+               * clocks in one table is not a zone, it is the absence of one.
+               */}
               <button
                 type="button"
                 className="timepanel__segbtn"
@@ -553,14 +596,56 @@ export function TimeRangePicker() {
               >
                 {t('time.siteLocal')}
               </button>
-              <button
-                type="button"
-                className="timepanel__segbtn"
-                aria-pressed={timeMode === 'reference'}
-                onClick={() => setTimeMode('reference')}
+
+              {/*
+               * Everything that IS one zone goes in the select - the reader's
+               * own first, then every clock the fleet spans, from `/meta`. This
+               * replaced a second button for "HQ time": picking Thailand is the
+               * same reading, and the list also answers "let me hold this
+               * against Tokyo for a minute", which no pair of buttons could.
+               */}
+              {/*
+               * `is-on` when a zone is what is in force, which is the other
+               * half of `aria-pressed` on the button beside it. Without it this
+               * was a segmented control where one tile filled orange when
+               * chosen and the other showed no state at all, so the pair read
+               * as a button next to an unrelated field rather than as two
+               * settings of one thing. A class rather than `:has()` on the
+               * container: the state is the reader's mode, and the mode is
+               * already here.
+               */}
+              <select
+                className={`timepanel__zonesel${timeMode === 'site_local' ? '' : ' is-on'}`}
+                aria-label={t('time.pickZone')}
+                value={timeMode === 'site_local' ? '' : timeMode === 'viewer' ? 'viewer' : fixedZone}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === 'viewer') setTimeMode('viewer');
+                  else if (v) setFixedZone(v);
+                }}
               >
-                {t('time.reference')}
-              </button>
+                {/* Only reachable while per-site is active; picking any real
+                    entry leaves it behind and it stops being selectable. */}
+                {timeMode === 'site_local' ? <option value="">{t('time.pickZone')}</option> : null}
+                {/*
+                 * The offset in parentheses, not after a dash. A hyphen is what
+                 * check-nodash asks for in place of an em dash, and it cannot
+                 * be used here: `fleetZones` already joins co-located countries
+                 * with " · ", so "Thailand · Vietnam - +07" puts two different
+                 * separators in one label and "Thailand · Vietnam · +07" reads
+                 * as a third country. Brackets are unambiguous either way.
+                 */}
+                {viewerZone ? (
+                  <option value="viewer">
+                    {t('time.viewer')} ({zoneOffsetShort(viewerZone)})
+                  </option>
+                ) : null}
+                {zones.map((z) => (
+                  <option key={z.zone} value={z.zone}>
+                    {z.label} ({zoneOffsetShort(z.zone)})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>

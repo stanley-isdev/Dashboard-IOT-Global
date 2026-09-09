@@ -1,6 +1,6 @@
 import type { ShiftOutput } from '../../api/contract';
 import { useI18n } from '../../i18n/I18nProvider';
-import { formatInt, formatPct } from '../../i18n/format';
+import { formatClock, formatInt, formatPct } from '../../i18n/format';
 
 /**
  * Output per bucket across the current shift.
@@ -20,8 +20,30 @@ import { formatInt, formatPct } from '../../i18n/format';
  * so a quarter of an hour's output reads as a catastrophic collapse in the last
  * hour of B shift. Every night. The `qty_per_hour` row is the honest
  * cross-bucket comparison and is computed server-side.
+ *
+ * The column heads are formatted HERE, from each bucket's `start_utc`/`end_utc`,
+ * and that is a third rule with a bug behind it. They used to be a `label`
+ * string the backend baked in the site's own zone, which meant they were the one
+ * clock on the board the display-zone picker could not reach: with Tokyo picked,
+ * a reader saw the ShiftChip above this table say `Day 10:00-22:00` and the
+ * table's first column say `08:00-09:00` - the same shift, two hours apart, on
+ * one screen. A pre-formatted timestamp in a payload cannot be re-zoned by the
+ * client that receives it, so the field is gone rather than merely unused.
+ *
+ * The bucket BOUNDARIES do not move: they are still cut on `start_utc`, still
+ * the site's own shift, and every figure under them is the figure it was. Only
+ * the clock the heads are read on changes, which is exactly what the time
+ * panel's footer promises.
  */
-export function HourlyOutputTable({ output }: { output: ShiftOutput }) {
+export function HourlyOutputTable({
+  output,
+  timeZone,
+}: {
+  output: ShiftOutput;
+  /** The clock to print the heads on, resolved by the caller through
+      `useDisplayZone` - never the site's zone directly. */
+  timeZone: string;
+}) {
   const { t, lang } = useI18n();
   const { buckets } = output;
 
@@ -30,15 +52,40 @@ export function HourlyOutputTable({ output }: { output: ShiftOutput }) {
   const dash = <span style={{ color: 'var(--status-nodata-ink)' }}>-</span>;
   const totalMin = buckets.reduce((a, b) => a + b.duration_min, 0);
 
+  /*
+   * The label column's width, reserved out of the table before the hours share
+   * what is left.
+   *
+   * The hour columns each declare a percentage of their duration, and those
+   * percentages sum to 100 - so they claimed the whole table and the label
+   * column was left with whatever the browser could squeeze it into. At
+   * `table-layout: auto` that means its minimum content width, which broke
+   * "Output (Pcs)" over two lines and "Pcs / hr" over three; told not to wrap
+   * (see `.hourly th[scope='row']`), the same squeeze made the labels overlap
+   * the first hour's figures instead. Neither is a width problem the stylesheet
+   * can solve, because the number that is wrong is in the percentages.
+   *
+   * So the hours divide `100% - LABEL_W` rather than 100%, and the label column
+   * asks for exactly LABEL_W. Wide enough for the longest label in either
+   * locale - Thai's "ผลผลิต (Shot)" is the one that sets it.
+   */
+  const LABEL_W = '7.5rem';
+
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table className="rank-table" style={{ minWidth: `${buckets.length * 4.5}rem` }}>
+    <div className="hourly">
+      <table
+        className="rank-table"
+        /* The floor the hour columns need before the container starts
+           scrolling, plus the label column that is no longer part of their
+           share. */
+        style={{ minWidth: `calc(${buckets.length * 4.5}rem + ${LABEL_W})` }}
+      >
         <caption className="visually-hidden">
           {output.shift_label} - {buckets.length} buckets
         </caption>
         <thead>
           <tr>
-            <th scope="col" style={{ minWidth: '7rem' }}>
+            <th scope="col" style={{ width: LABEL_W }}>
               {output.shift_label}
             </th>
             {buckets.map((b) => (
@@ -48,13 +95,14 @@ export function HourlyOutputTable({ output }: { output: ShiftOutput }) {
                 // Width tracks duration, so an unequal bucket is visibly
                 // narrower rather than silently comparable.
                 style={{
-                  width: `${(b.duration_min / totalMin) * 100}%`,
+                  width: `calc((100% - ${LABEL_W}) * ${b.duration_min / totalMin})`,
                   background: b.is_partial ? 'var(--status-warn-tint)' : undefined,
                   textAlign: 'right',
                 }}
               >
                 <span className="mono" style={{ fontSize: 'var(--fs-nano)' }}>
-                  {b.label.replace('-', '–')}
+                  {formatClock(b.start_utc, timeZone, lang)}–
+                  {formatClock(b.end_utc, timeZone, lang)}
                 </span>
                 {b.is_partial ? (
                   <span

@@ -49,7 +49,7 @@ function describe(
   info: ConnectionInfo,
   t: TFunction,
   lang: Lang,
-  referenceTimezone: string,
+  timeZone: string,
 ): Notice | null {
   if (info.state === 'live' && !info.degraded) return null;
   if (info.state === 'cold' || info.state === 'cold_fail') return null;
@@ -63,7 +63,7 @@ function describe(
       retry: true,
       title: t('banner.frozen.title'),
       body: t('banner.frozen.body', {
-        time: formatDateTime(info.snapshotAt, referenceTimezone, lang),
+        time: formatDateTime(info.snapshotAt, timeZone, lang),
       }),
     };
   }
@@ -77,7 +77,7 @@ function describe(
       retry: true,
       title: t('banner.stale.title'),
       body: t('banner.stale.body', {
-        time: formatDateTime(info.snapshotAt, referenceTimezone, lang),
+        time: formatDateTime(info.snapshotAt, timeZone, lang),
         age: formatAge(info.ageSec ?? 0, lang),
       }),
     };
@@ -131,12 +131,19 @@ function describeRecovery(recovery: Recovery, t: TFunction, lang: Lang): Notice 
 
 export function ConnectionBanner({
   info,
-  referenceTimezone,
+  timeZone,
   onRetry,
   recovery,
 }: {
   info: ConnectionInfo;
-  referenceTimezone: string;
+  /**
+   * The clock to print `snapshotAt` on, resolved by the caller through
+   * `useDisplayZone()` with no site - the fleet-wide rule, because when the
+   * backend last built a payload is a fact about the payload and not about any
+   * one base. It was `referenceTimezone` and so was pinned to Bangkok in every
+   * mode, which made this banner disagree with the time panel's own footer.
+   */
+  timeZone: string;
   onRetry: () => void;
   /** The outage that just ended, from useRecovery. Null when there was none. */
   recovery?: Recovery | null;
@@ -152,7 +159,7 @@ export function ConnectionBanner({
    * recovery" is the direction it has to fall.
    */
   const notice =
-    describe(info, t, lang, referenceTimezone) ??
+    describe(info, t, lang, timeZone) ??
     (recovery ? describeRecovery(recovery, t, lang) : null);
   if (!notice || notice.key === dismissed) return null;
 

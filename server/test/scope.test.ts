@@ -338,6 +338,38 @@ describe('buildPlantDetail', () => {
       expect(buckets[i].start_utc).toBe(buckets[i - 1].end_utc);
     }
   });
+
+  /*
+   * The regression this locks: buckets used to carry a `label` the service
+   * formatted as `HH:MM-HH:MM` in the site's own zone, and it was the only
+   * pre-formatted timestamp in any payload. A formatted string has already
+   * discarded the offset it was formatted at, so the client could not re-zone
+   * it - which made the hourly table the one clock on the board the
+   * display-zone picker could not move, and a reader on Tokyo time saw the
+   * shift header two hours away from the columns under it.
+   *
+   * Asserted against the SERVICE's own object rather than the parsed contract,
+   * because zod strips unknown keys: `zOutputBucket` dropping the field would
+   * hide a service that had started emitting it again. Written as a scan for
+   * any clock-shaped string rather than for `label` by name, so the next field
+   * to make this mistake under a different name fails here too.
+   */
+  it('emits bucket bounds as instants, never as a pre-formatted clock string', () => {
+    const payload = plant(snapshot({ [PLANT]: [['I1', 'Mass Pro', null]] }));
+
+    const buckets = payload?.output?.buckets ?? [];
+    expect(buckets.length).toBeGreaterThan(0);
+    for (const b of buckets) {
+      for (const [key, value] of Object.entries(b)) {
+        if (typeof value !== 'string') continue;
+        expect(
+          value,
+          `output bucket carries a formatted local time in '${key}' - the UI ` +
+            `cannot re-zone that, so the bounds have to stay ISO instants`,
+        ).not.toMatch(/^\d{2}:\d{2}/);
+      }
+    }
+  });
 });
 
 describe('the drill-downs reconcile with the board above them', () => {

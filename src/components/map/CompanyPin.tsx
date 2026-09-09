@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { CompanySummary } from '../../api/contract';
-import { absenceTooltip, quietCaption } from '../../domain/absence';
+import { quietCaption } from '../../domain/absence';
 import { toMeasure } from '../../domain/measure';
 import { isReporting, siteToken, tierToken } from '../../domain/status';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -96,21 +96,18 @@ export const CompanyPin = memo(function CompanyPin({
   const alert = reporting && company.kpi.oa_tier === 'critical';
 
   /*
-   * What a pin with no numbers says instead, and what hovering it explains.
+   * What a pin with no numbers says instead.
    *
    * The server sends `absence` for any site that is genuinely unreachable, and
    * its presence alone is the signal - the caption states what the query
    * established, "no telemetry received", without needing anything from config.
-   * The hover adds what config knows on top, where there is room for a
-   * sentence: whether the claim in master data contradicts the data, and, for
-   * the sites where a human knows more than the query, why and whose.
+   *
+   * This line is now the whole of what an unreachable pin says. A hover used to
+   * add config's side on top of it - the contradiction, the reason, the owner -
+   * and it was removed on 2026-09-09; see the note on the `title` attribute
+   * below for why, what it costs, and where it would go if it comes back.
    */
   const caption = quietCaption(company.status, t);
-  const absenceTitle = absenceTooltip(
-    company.absence,
-    { code: company.code, statusLabel: t(site.labelKey as TKey) },
-    t,
-  );
 
   return (
     /*
@@ -180,10 +177,29 @@ export const CompanyPin = memo(function CompanyPin({
           country: company.country_code,
           status: t(site.labelKey as TKey),
         })}
-        /* An unreachable base explains itself on hover; every other base keeps
-           the plain "open this" hint, because its numbers are already on the
-           card and a tooltip repeating them is noise. */
-        title={absenceTitle ?? t('drawer.open', { company: company.code })}
+        /*
+         * The same plain hint on every card, unreachable bases included.
+         *
+         * An unconnected base used to explain itself here instead, in a four-line
+         * tooltip built by absenceTooltip: identity and status, "no telemetry
+         * yet", whether master data contradicts that, then the reason and its
+         * owner. Removed at the design owner's request on 2026-09-09 - hovering a
+         * pin dropped a black panel over the map that covered the neighbouring
+         * cards and the ranking beside them, and its bottom two lines were
+         * master-data prose ("No IoT installation scheduled yet (DESIGN.md 11)")
+         * that names an internal document at a viewer who cannot open it.
+         *
+         * What the card itself says is unchanged and is the part that mattered:
+         * the glyph, the status line and quietCaption's "no telemetry yet" are
+         * all still on it. What is gone from the UI entirely is `reason`,
+         * `owner` and `contradicts_config` - the drawer does not show them
+         * either - so the STJ case (config says live, nothing has ever arrived)
+         * is now computed by the backend and displayed nowhere. That is a
+         * deliberate trade, not an oversight; if it needs a home again, the
+         * drawer is the surface with room for a sentence, and absenceTooltip is
+         * still there to build it.
+         */
+        title={t('drawer.open', { company: company.code })}
       >
         <span className="pin__oa">
           <MeasureValue

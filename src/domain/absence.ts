@@ -51,12 +51,22 @@ export function quietCaption(status: SiteStatus, t: TFunction): string | null {
 }
 
 /**
- * The full explanation, for a hover or any surface with room for a sentence.
+ * The full explanation, for any surface with room for a sentence.
  *
  * Ordered so the first line survives truncation: identity and status, then how
  * long, then - for the one case that is nobody's rollout stage and somebody's
  * open problem - that config and the data disagree, then the cause and its
- * owner. Newline-joined because its first consumer is a `title` attribute.
+ * owner. Newline-joined because its first consumer was a `title` attribute.
+ *
+ * **Nothing calls this at the moment, and that is worth knowing before you
+ * rely on it.** The map pin was its only consumer and dropped it on 2026-09-09
+ * (see the note on `title` in CompanyPin): the tooltip covered the pins around
+ * it, and its last two lines put master-data prose naming an internal document
+ * in front of a viewer. Kept rather than deleted because the data behind it is
+ * still served on every payload and still has nowhere to be read - `reason`,
+ * `owner` and `contradicts_config` are currently computed and shown to no one.
+ * The drawer is the surface that has room for them; this is the function that
+ * would fill it, and it is tested, so wiring it up is a one-liner there.
  */
 export function absenceTooltip(
   absence: Absence | null,

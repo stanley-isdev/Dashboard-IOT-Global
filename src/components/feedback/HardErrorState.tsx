@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { isApiError, type ApiErrorKind } from '../../api/ApiError';
 import { useConfig } from '../../config/AppContext';
+import { useDisplayZone } from '../../state/useDisplayZone';
 import { useI18n, useT } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/en';
 import { formatClockSeconds } from '../../i18n/format';
@@ -158,6 +159,7 @@ export function HardErrorState({
 }) {
   const { t, lang } = useI18n();
   const cfg = useConfig();
+  const displayZone = useDisplayZone();
   const [copied, setCopied] = useState(false);
 
   const api = isApiError(error) ? error : null;
@@ -178,7 +180,12 @@ export function HardErrorState({
         api?.kind === 'timeout' ? `${api.timeoutMs ?? cfg.requestTimeoutMs} MS` : null,
         api?.kind === 'notfound' ? detail : null,
         retry?.failedAt
-          ? formatClockSeconds(new Date(retry.failedAt).toISOString(), cfg.referenceTimezone, lang)
+          ? /* When the request failed, not when anything happened at a base -
+               so `displayZone()` with no site, the fleet-wide rule. This is a
+               line somebody reads aloud to whoever is asked to fix it, and on
+               a reader's own machine "it failed at 17:04" beats an hour they
+               have to convert before it means anything. */
+            formatClockSeconds(new Date(retry.failedAt).toISOString(), displayZone(), lang)
           : null,
       ]
         .filter(Boolean)

@@ -279,7 +279,7 @@ export function buildPlantDetail(
     shift: shift ? stripInternals(shift) : null,
     zones: buildZones(observations, oa, seed, asOf),
     machines: buildMachines(observations, oa, plant.grafana_url),
-    output: buildOutput(shift, opts.snapshot.trend, [seed.code], asOf, master.timezone),
+    output: buildOutput(shift, opts.snapshot.trend, [seed.code], asOf),
     trend: overview.trend,
     alerts: overview.alerts,
   };
@@ -343,8 +343,31 @@ function buildMachines(
         plan_qty: o?.planQty ?? null,
         actual_qty: o?.actualQty ?? null,
         shot_count: o?.shotCount ?? null,
+        /*
+         * `_`, not `|` - and that one character is why this array never held
+         * more than one order.
+         *
+         * `groupPo` is assembled in domain/oa.ts as `slots.join('_')`, because
+         * DESIGN.md's `Group_PO` is `PO0_PO1_PO2_PO3` by definition. Split on a
+         * pipe, the join never came apart: a machine running two orders arrived
+         * as ONE slot whose `production_order` was the literal
+         * `110000992269_110000992268`, and the card captioned it "1 of 4 PO".
+         *
+         * That is wrong exactly where it is load-bearing. D-27 records that %OA
+         * scales with the number of loaded slots - THS 6332 I4 reads 57% on one
+         * order and 114% on the same order paired with a second - so the slot
+         * count is the fact a reader needs in order to interpret the figure
+         * beside it, and the card was reporting one slot for every machine on
+         * the floor.
+         *
+         * The split is the inverse of the join and rests on the same assumption
+         * the join already makes: a production order carries no underscore of
+         * its own. They are 12-digit numbers in every sample in this repo and on
+         * the operator board, which writes the same group as
+         * `110000961179 (+1)`.
+         */
         po_slots: (o?.groupPo ?? '')
-          .split('|')
+          .split('_')
           .filter((po) => po.length > 0)
           .map((po, i) => ({
             slot: i,
@@ -529,10 +552,6 @@ function buildOutput(
   trend: MachineHourOa[],
   plants: string[],
   asOf: Date,
-  /* The site's own zone, from master data. `ResolvedShift` carries the bounds
-     but not the zone they were resolved in, and a bucket labelled in UTC on a
-     Thai plant board is the one thing these labels must never be. */
-  timeZone: string,
 ): PlantDetail['output'] {
   if (!shift) return null;
 
@@ -551,7 +570,14 @@ function buildOutput(
 
     buckets.push({
       index,
-      label: `${clock(t, timeZone)}-${clock(bucketEnd, timeZone)}`,
+      /*
+       * No `label` here any more. This built one - `${clock(t, tz)}-...` in the
+       * site's own zone - and it was the only pre-formatted timestamp the API
+       * emitted. That made the hourly table the one clock on the board the
+       * display-zone picker could not move, because formatting had already
+       * discarded the offset the client needed to re-zone it. The bounds below
+       * are the instants; the UI formats them per reader. See zOutputBucket.
+       */
       start_utc: from,
       end_utc: to,
       duration_min: durationMin,
@@ -594,16 +620,6 @@ function buildOutput(
   }
 
   return { shift_code: shift.code, shift_label: shift.label, buckets };
-}
-
-/** `HH:MM` in the site's own zone - what the bucket labels and shift rows read. */
-function clock(ms: number, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(ms));
 }
 
 /** An ISO instant with the site's own offset, which is what zIsoOffset wants. */

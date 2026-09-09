@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useI18n } from '../../i18n/I18nProvider';
 import { zoneOffsetShort } from '../../i18n/format';
-import { useConfig } from '../../config/AppContext';
+import { useDisplayZone } from '../../state/useDisplayZone';
 import { useExportDoc } from '../../state/exportStore';
 import { downloadDashboardPdf } from '../../domain/exportPdf';
 import { useMastheadCrumbs } from './useMastheadCrumbs';
@@ -52,9 +52,12 @@ import { useMastheadCrumbs } from './useMastheadCrumbs';
  */
 export function ExportButton() {
   const { t, lang } = useI18n();
-  const cfg = useConfig();
   const doc = useExportDoc((s) => s.doc);
   const crumbs = useMastheadCrumbs();
+  /* Resolved during render, not inside `run`: hooks cannot be called from an
+     event handler, and the zone the reader is looking at when they press the
+     button is the one the file should be stamped in. */
+  const exportZone = useDisplayZone()();
 
   /*
    * Rasterising 1180 x 820 at 2x takes about half a second on the iPad, and the
@@ -95,21 +98,25 @@ export function ExportButton() {
           exportedLabel: t('export.exported'),
           generatedAt: doc.generatedAt,
           /*
-           * The reference zone, in both time modes.
+           * `displayZone()` with no site - the fleet-wide rule.
            *
            * This stamps when the FILE was made, which is a fact about the
-           * export and not about any one base - so there is no site clock for
-           * site-local mode to resolve it against, and it takes the same
-           * fallback every fleet-wide timestamp on the board takes. See
-           * src/state/useDisplayZone.ts for the rule.
+           * export and not about any one base, so there is no site clock for
+           * site-local mode to resolve it against and it falls back to the
+           * reference zone there. In the other two modes it follows the reader,
+           * which is the point: somebody in Japan who exports the board and
+           * mails it should not have to explain that the header is Bangkok
+           * time. See src/state/useDisplayZone.ts for the rule.
            *
-           * It is not silent about it either: `timeZoneLabel` prints the offset
-           * beside the stamp, so a header on GMT+07 over a picture of nine
-           * local clocks says which of the two it is rather than leaving the
-           * reader to assume they match.
+           * It is not silent about which one it landed on either:
+           * `timeZoneLabel` prints the offset beside the stamp, so a header
+           * over a picture of nine local clocks says which clock it is rather
+           * than leaving the reader to assume they match. Both come from the
+           * same resolved zone - they were two reads of `cfg` and could not
+           * disagree, and now they must not be able to.
            */
-          timeZone: cfg.referenceTimezone,
-          timeZoneLabel: `GMT${zoneOffsetShort(cfg.referenceTimezone)}`,
+          timeZone: exportZone,
+          timeZoneLabel: `GMT${zoneOffsetShort(exportZone)}`,
           lang,
         },
         doc.name,

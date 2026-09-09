@@ -117,11 +117,13 @@ export const en = {
   'kiosk.on': 'Kiosk mode',
   'kiosk.off': 'Exit kiosk mode',
   'time.siteLocal': 'Site local',
-  'time.reference': 'HQ time',
-  'time.referenceNote': 'Timestamps in {tz} · metrics still use each site’s own shift',
+  'time.viewer': 'My time',
+  'time.pickZone': 'Pick a time zone',
   /* The footer's other half: the same promise about the metrics, for the mode
      where there is no single zone to name. */
   'time.siteLocalNote': 'Timestamps in each site’s own clock · metrics use each site’s own shift',
+  'time.viewerNote': 'Timestamps on your own clock, {tz} · metrics use each site’s own shift',
+  'time.fixedNote': 'Timestamps in {tz} · metrics use each site’s own shift',
 
   /* ------------------------------------------------------- time picker ----
      Grafana's wording, deliberately: this board is read beside one, and the
@@ -662,6 +664,10 @@ export const en = {
      trend beside it. See the note in RankingTable where the branch used to be. */
   'table.base': 'Plant',
   'table.plant': 'Plant',
+  /* The plant page's census panel, which listed machines under the head
+     'table.plant' - "Plant" over a grid of machine tiles, on the one page in
+     the app where the plant is not the subject but the container. */
+  'table.machines': 'Machines',
   'table.dateTime': 'Date/Time',
   'table.shift': 'Shift',
   'table.runStop': 'Run/Stop',
@@ -669,6 +675,10 @@ export const en = {
   'table.achv': '%ACHV',
   'table.down': 'Downtime',
   'table.output': 'Output',
+  /* The hourly output table's span. It printed the literal "buckets" in both
+     locales - an implementation word, and untranslated. The columns are clock
+     hours, so that is what it counts. */
+  'table.hours': '{count} hours',
   'table.run': '{count} Run',
   'table.stop': '{count} Stop',
   /* A downtime column reading "0m" invites the reader to wonder whether the

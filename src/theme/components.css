@@ -1540,23 +1540,104 @@ button.filter {
 }
 
 /*
- * The anchor switch: a track with a thumb, the same idiom as the language
- * tiles in the masthead and for the same reason - two states, one of which is
- * always in force, is a switch and not two buttons.
+ * The display-zone control: one button for per-site, one select for every
+ * reading that IS a single zone.
  *
- * It sits on --panel, a step *up* from the footer it is on, where the masthead's
- * version sits on --panel-2, a step down from the white band. Same relationship
- * either way: the track has to separate from whatever is behind it.
+ * Two elements rather than a segmented set of three, because the two halves are
+ * different kinds of choice - "no single clock" is not a zone, and a list is the
+ * only shape that can also carry the eight the fleet spans without the footer
+ * growing a row of buttons per country. They share the frame so they still read
+ * as one control.
  */
-.timepanel__seg {
+/*
+ * The track the two halves sit in - a button and a select, one segmented
+ * control.
+ *
+ * Type is declared HERE and nowhere below, and that is the fix for a real
+ * defect rather than tidying. The button read `--fs-micro` at weight 500 and
+ * the select a hardcoded `0.8125rem` at 400, so two labels a quarter-inch apart
+ * were 11px and 13px in different weights and different inks - visibly
+ * mismatched, and the first thing anybody said about this control.
+ *
+ * Kiosk is what makes it a defect and not just untidy: `--fs-micro` becomes
+ * 22px on the wall panel (see tokens.css) and a hardcoded rem does not follow,
+ * so the pair would have opened 22px beside 13px at three metres. Both children
+ * carry `font: inherit`, so declaring it once here is enough and any future
+ * child of this track is right by default.
+ */
+.timepanel__zonepick {
   display: inline-flex;
   align-items: stretch;
   flex-shrink: 0;
+  gap: 0.375rem;
   height: var(--ctl-h);
   padding: 0.1875rem;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r-control);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--sub);
+}
+.timepanel__zonesel {
+  appearance: none;
+  min-width: 0;
+  max-width: 13rem;
+  padding: 0 1.5rem 0 0.625rem;
+  border: 0;
+  border-radius: calc(var(--r-control) - 0.1875rem);
+  background-color: transparent;
+  /* No size, weight or colour here - `font: inherit` takes all three off the
+     track above, which is what keeps this matched to the button beside it. */
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  /* The caret, drawn rather than left to the platform: a native select arrow
+     sits at a different weight and colour in every browser, and this control is
+     read beside a Grafana panel that draws its own. */
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    right 0.75rem center,
+    right 0.5rem center;
+  background-size:
+    0.3125rem 0.3125rem,
+    0.3125rem 0.3125rem;
+  background-repeat: no-repeat;
+}
+/*
+ * The zone in force, drawn the way the button beside it draws the same state.
+ *
+ * `aria-pressed='true'` fills the button orange; this is that, for the half of
+ * the control a `<button>` cannot express. Without it exactly one of two
+ * mutually exclusive settings showed which one was chosen, so a reader who had
+ * picked a zone saw an orange-less track and no answer to "which of these am I
+ * on". `background-color` and not the shorthand, deliberately: the caret above
+ * is a `background-image` pair and the shorthand would erase it. The caret is
+ * `currentColor`, so it inverts with the text and needs no rule of its own.
+ */
+.timepanel__zonesel.is-on {
+  background-color: var(--accent-fill);
+  color: var(--accent-on-fill);
+  font-weight: 600;
+}
+/* Only the quiet half has a hover reading - the filled one is already at full
+   contrast, and `:not()` here is what stops this overriding `.is-on` on the way
+   past, since the two selectors otherwise weigh the same. */
+.timepanel__zonesel:not(.is-on):hover {
+  color: var(--ink);
+}
+.timepanel__zonesel:focus-visible {
+  /* The project's ring, not an outline: base.css draws focus as a two-layer
+     box-shadow so it follows the radius instead of squaring the corner. */
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+/* The options themselves are painted by the platform, which does not inherit
+   the panel's tokens - naming both keeps a dark-theme list from opening white. */
+.timepanel__zonesel option {
+  background: var(--panel);
+  color: var(--ink);
 }
 .timepanel__segbtn {
   appearance: none;
@@ -1564,10 +1645,10 @@ button.filter {
   background: none;
   border-radius: var(--r-control);
   padding: 0 0.6875rem;
+  /* Size, weight and colour come off `.timepanel__zonepick`, so this and the
+     select cannot drift apart again. See the note on that rule. */
   font: inherit;
-  font-size: var(--fs-micro);
-  font-weight: 500;
-  color: var(--sub);
+  color: inherit;
   white-space: nowrap;
   cursor: pointer;
   display: inline-flex;
@@ -1999,14 +2080,22 @@ button.filter {
   display: flex;
   flex-direction: column;
   /*
-   * The three rows - a heading, a reading, a caveat - stay a tight block
-   * (small gap) and that block sits centred in the card's extra height,
-   * rather than `space-between` stretching gaps between the rows themselves.
-   * A tight block with even air above and below reads as one composed card;
-   * three lines pushed apart to fill the box reads as gaps nobody meant to
-   * leave.
+   * The rows start at the top edge, so every card on a strip puts its label on
+   * one line and its figure on one line whatever it carries underneath. The
+   * caption still sits on the bottom edge - see `.kpi__foot`'s auto margin - so
+   * a card with all three rows looks exactly as it did.
+   *
+   * This read `center` until now, on the argument that a tight block with even
+   * air above and below reads as one composed card. It never did that, and the
+   * reason is worth keeping: an auto margin absorbs all the free space in a
+   * flex line, and `justify-content` is then ignored entirely. So the centring
+   * only ever reached the cards with NO caption - which is precisely the set
+   * that must not move. On the base page's four-card strip TOTAL MACHINE
+   * carries no caption, and its label and its figure sat 11px below the three
+   * cards beside it; the plant page's census grid drifted the same way, per
+   * bucket, according to whether that bucket's status line came back empty.
    */
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.375rem;
   box-shadow: var(--shadow-panel);
   min-width: 0;
@@ -2628,6 +2717,16 @@ button.filter {
  * there is height to spare.
  */
 .kpi__definition {
+  /*
+   * Pinned to the bottom edge, exactly as `.kpi__foot` is, and that is the
+   * whole point: the plant page's strip mixes the two - a real KpiCard for the
+   * census total, which captions with `.kpi__foot`, and five hand-built bucket
+   * tiles, which caption with this - and the cards are grid siblings stretched
+   * to one height. With only one of the two classes pinned, TOTAL's caption sat
+   * on the card's bottom edge while the five beside it sat directly under their
+   * figures, which is the same row of captions at two different heights.
+   */
+  margin-top: auto;
   font-size: var(--fs-micro);
   color: var(--sub);
   line-height: var(--lh-tight);
@@ -2770,6 +2869,24 @@ button.filter {
 .kpi__mark {
   flex: none;
   color: var(--accent-fill);
+}
+
+/*
+ * A mark that lives INSIDE the label instead of in the slot above.
+ *
+ * The plant page's five bucket tiles are hand-built, and their mark is the
+ * bucket's own status glyph tinted by its tier - not one of KpiMark's six
+ * decorative shapes - so it is emitted by StatusGlyph as part of the label
+ * rather than as a `.kpi__mark` sibling. That means `.kpi__title`'s 4px gap
+ * never reaches it, and the tiles read "⊘Idle" with the shape welded to the
+ * word. This is the same 4px, applied where the mark actually is.
+ *
+ * A margin and not `display: flex` on the label: the label ellipsises, and a
+ * flex container drops the text-overflow the six cards depend on at a narrow
+ * viewport.
+ */
+.kpi__label .glyph {
+  margin-inline-end: 0.25rem;
 }
 
 /*
@@ -3347,15 +3464,33 @@ button.filter {
 }
 
 /*
- * The identity strip: flag, code and name at one end; at the other, the three
+ * The page's heading: flag, code and name at one end; at the other, the three
  * facts that qualify every figure below it - whether this site is reporting,
  * which shift is on, and the way out to Grafana.
  *
- * It is no longer a `.panel` with a `.panel-head` inside it. It was, with the
- * head's bottom margin zeroed, which left the head's full-width hairline drawn
- * across the bottom of a card with nothing underneath it - a rule that reads as
- * a table head above a table that failed to render. What this row needs is a
- * card with two ends, so that is what it is now.
+ * Drawn as a heading, which means NOT drawn as a card. It carried a --panel
+ * fill, a hairline, a shadow and the deck's own 1.5rem corner - the same
+ * treatment as the KPI cards under it and the deck under those - so what a
+ * reader met at the top of a drill-down was a third card that happened to hold
+ * a name. Three faults at once, and unboxing answers all three:
+ *
+ *   1. A title inside a box reads as a panel whose contents are a title, not as
+ *      the heading of the page. The overview has no card in this slot at all -
+ *      it runs straight from the toolbar into the KPI strip - so the box was
+ *      also the one element here with no counterpart on the board this page is
+ *      reached from.
+ *   2. The card's inline padding inset the name by 20px, so "ASI" did not sit
+ *      on the same left margin as the cards below it. Little makes a title look
+ *      less like the title of a page than being out of alignment with it.
+ *   3. Most of the row's width was empty, and an empty card reads as a card
+ *      that failed to load. The identical emptiness on the page ground is just
+ *      margin, which is what a heading row is meant to have.
+ *
+ * What separates it from the strip below is a rule, not an edge. A hairline
+ * under a title is the oldest way of saying "everything below belongs to this",
+ * and it is the same hairline `.panel-head` draws under every panel title on
+ * the board - so the page's heading and its panels' headings are now the same
+ * device at two scales.
  */
 .scope-head {
   display: flex;
@@ -3363,20 +3498,10 @@ button.filter {
   justify-content: space-between;
   gap: var(--sp-4);
   flex-wrap: wrap;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  /* The deck's corner, so the page reads as two cards of one family rather
-     than a --r-lg strip sitting above a 1.5rem board. */
-  border-radius: 1.5rem;
-  box-shadow: var(--shadow-panel);
-  padding: var(--sp-3) var(--sp-5);
-}
-
-.scope-head__id {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  min-width: 0;
+  /* Flush left and right with everything below it: #main sets the page's side
+     margins and this row adds none of its own. */
+  padding: 0 0 var(--sp-3);
+  border-bottom: 1px solid var(--line);
 }
 
 /*
@@ -3395,17 +3520,39 @@ button.filter {
   min-width: 0;
 }
 .scope-head__code {
+  /* The masthead's own title token. This is the second title on the screen and
+     the more specific of the two - the brand names the group, this names the
+     base whose figures fill the rest of the page. */
   font-size: var(--fs-h1);
-  font-weight: 650;
+  font-weight: 700;
   line-height: var(--lh-tight);
+  /*
+   * Safe on this string and on no other in the block. Company codes are never
+   * translated - see the head of en.ts - so this is always three Latin capitals
+   * and the tracking can never land on a Thai tone mark, which is the reason
+   * --ls-caps has to be zeroed for Thai elsewhere in this file.
+   */
+  letter-spacing: var(--ls-tight);
   color: var(--text);
 }
+/*
+ * The caption line: the flag, then the legal name.
+ *
+ * A flex row rather than bare text, so the flag sits on the name's optical
+ * centre instead of on its baseline - Flag draws an `img`, and an image aligned
+ * to a text baseline hangs below it by its own descender space.
+ */
 .scope-head__name {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
   font-size: var(--fs-micro);
   line-height: var(--lh-body);
   color: var(--sub);
-  /* One line. A two-line wrap here grows the strip and shoves the whole page
-     down by a row of type, for a fact nobody reads twice. */
+  /* One line. A two-line wrap here grows the heading and shoves the whole page
+     down by a row of type, for a fact nobody reads twice. The min-width is what
+     lets the ellipsis happen inside a flex row at all. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3476,15 +3623,28 @@ button.filter {
 }
 
 /*
+ * One column, for a deck whose panels are each too wide to share a row.
+ *
+ * The plant page's two are: a shift's hourly output, which is one column per
+ * hour and thirteen columns at a twelve-hour shift, and the machine census,
+ * which is an auto-filling grid of 15rem tiles. Neither has a sensible half
+ * width, so the deck stacks them and the page scrolls - the same card, the same
+ * bands, one track instead of two.
+ */
+.deck--stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/*
  * Row heights.
  *
- * Both panels in a grid row stretch to the taller of the two, and on this page
- * that meant the %OA chart was as tall as the stop list happened to be: four
- * open stops gave it about 90px of plot, which cannot show a shift-sized dip,
- * and forty stops would have handed it a screen and a half. So the panels with
- * no natural height of their own are told what they are worth - a floor under
- * the chart, and a ceiling over the tables and the list, which scroll inside
- * themselves past that instead of growing the page.
+ * Both panels in a grid row stretch to the taller of the two, and on the base
+ * page that meant the %OA chart was as tall as the stop list happened to be:
+ * four open stops gave it about 90px of plot, which cannot show a shift-sized
+ * dip, and forty stops would have handed it a screen and a half. So the panels
+ * with no natural height of their own are told what they are worth - a floor
+ * under the chart, and a ceiling over the tables and the list, which scroll
+ * inside themselves past that instead of growing the page.
  */
 .deck > .panel--trend {
   min-height: 17rem;
@@ -3535,6 +3695,193 @@ button.filter {
   .kpis {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* ================================================ the machine census */
+
+/*
+ * The plant page's own content: machines as tiles, grouped by the zone tag they
+ * report.
+ *
+ * All of this was inline styles at the call site - a margin on every zone
+ * section, a hand-set font on every zone heading, the grid template, and the
+ * tile drawn as a `.panel`. It comes into the stylesheet because the census now
+ * sits inside a deck panel, which makes a tile the THIRD card deep (deck card,
+ * panel, tile) and a `.panel`'s shadow and fill at that depth reads as cards
+ * stacked on cards. A tile is not a panel; it needed to stop borrowing one.
+ */
+
+/* Space between groups, not after each one. A margin-bottom on every section -
+   which is what this was - left a --sp-5 hanging under the last zone, inside a
+   panel that had already padded its own bottom edge. */
+.zonegroup + .zonegroup {
+  margin-block-start: var(--sp-5);
+}
+.zonegroup__title {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--sub);
+  margin-bottom: var(--sp-2);
+}
+
+/* Auto-filling, so a plant with two machines does not stretch them to half the
+   panel and one with twenty-six wraps at a readable tile width. */
+.machinegrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--sp-3);
+}
+
+/*
+ * A machine tile. The step down from the panel holding it is carried by the
+ * fill - --panel-2, the same surface the base drawer's tiles take - rather than
+ * by another shadow, and it keeps the hairline so the tiles read as separate
+ * objects on a busy grid.
+ */
+.machine-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--sp-3) var(--sp-4);
+  /*
+   * A flex column, not a grid, and the difference is what makes the row line
+   * up.
+   *
+   * Tiles in a `.machinegrid` row stretch to the tallest of them, and a grid
+   * hands the leftover height to its own auto ROWS - so a tile with no PO block
+   * has one fewer row to share it between and every line in it sits lower than
+   * the same line on the tile beside it. That is what put "Mass Pro" on one
+   * machine ten pixels below "Mass Pro" on its neighbour.
+   *
+   * A flex column keeps its rows at their content height and leaves the slack
+   * in one place, which is then spendable: the head packs to the top, and
+   * `.machine-card__figures` claims the rest with an auto margin. Two anchored
+   * edges instead of none.
+   */
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.machine-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.machine-card__id {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  /* The id is the tile's identity and the one thing that must not be cut, but a
+     machine name is short and a mode badge beside it is not always: this keeps
+     the id whole and lets the row itself run out of width instead. */
+  white-space: nowrap;
+}
+/*
+ * The status pill, ranged left rather than stretched across the tile: it is a
+ * label for the machine, not a progress bar.
+ *
+ * `align-self` is the cross axis of a flex column, so this is now exactly the
+ * `alignSelf: 'start'` the tile carried inline all along. It never worked,
+ * because the tile was a single-column GRID: there `align-self` is the block
+ * axis, so the declaration asked a full-height item not to stretch vertically
+ * while the axis that actually stretched went unaddressed - and `.badge` is
+ * `inline-flex`, which a grid blockifies to `flex`. Every machine wore its
+ * status as a tinted bar the full width of the card.
+ */
+.machine-card__status {
+  align-self: flex-start;
+}
+.machine-card__po {
+  font-size: var(--fs-micro);
+  color: var(--sub);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * One order per line: the mark, then the number.
+ *
+ * A flex row rather than bare text, so the glyph sits on the digits' optical
+ * centre instead of their baseline - an SVG has no baseline of its own and
+ * aligning its box to one drops it below the cap height. Same reason
+ * `.kpi__title` centres its mark.
+ */
+.machine-card__poline {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  min-width: 0;
+}
+.machine-card__poline .mono {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The count lines up with the numbers rather than with the marks, so the block
+   reads as a list with a caption under it instead of three ragged lines. One
+   mark's width plus its gap. */
+.machine-card__pocount {
+  padding-inline-start: calc(1em + 0.3125rem);
+}
+
+/* Quieter than the digits it labels. It is a category mark, and at 11px a
+   full-strength outline competes with the number that is the point. */
+.po-mark {
+  flex: none;
+  opacity: 0.7;
+}
+/*
+ * %OA and output side by side, wrapping when the tile is at its 15rem floor.
+ *
+ * Pinned to the bottom edge, which is the second half of the alignment above:
+ * the PO block is real content and a machine with no order loaded genuinely has
+ * none, so the middle of these tiles cannot line up. The two figures a reader
+ * actually scans down the grid can, and this is what makes them - the same auto
+ * margin `.kpi__foot` uses on the strip, for the same reason. Anything after it
+ * (the cycle-time note, the timing details) rides down with it.
+ */
+.machine-card__figures {
+  margin-top: auto;
+  display: flex;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+.machine-card__note {
+  font-size: var(--fs-nano);
+  color: var(--sub);
+}
+/* The cycle-time breakdown, folded away. `details` renders a marker and a
+   pointer cursor of its own; all this adds is the caption size. */
+.machine-card__more {
+  font-size: var(--fs-nano);
+  color: var(--sub);
+}
+
+/* ---------------------------------------------- hourly output table */
+
+/* The scroll container. One column per hour of the shift, so a twelve-hour
+   shift is thirteen columns and wider than the panel at the iPad viewport. */
+.hourly {
+  overflow-x: auto;
+}
+
+/*
+ * The row labels, on one line each.
+ *
+ * The hour columns carry explicit percentage widths that sum to 100, so
+ * `table-layout: auto` squeezes the label column to its minimum content width
+ * and the labels come apart: "Output (Pcs)" over two lines and "Pcs / hr" over
+ * three, which turned four rows of data into ten rows of text and pushed the
+ * figures out of line with their own headers. A `min-width` on the cell - which
+ * is what this had - is only advisory against percentage siblings; refusing to
+ * wrap is not. The table scrolls sideways in the container above, so the width
+ * this claims costs the panel nothing.
+ */
+.hourly th[scope='row'] {
+  white-space: nowrap;
 }
 
 /* ======================================================== count badge */
