@@ -402,10 +402,18 @@ export function countFinishedOrders(machines: MachineOa[], since: Date): number 
  * universal.
  *
  * The split survives because the verdict is still worth SAYING. It feeds
- * `orderShiftWarnings`, which names the carried-over machines on the envelope:
- * the production board does blank them, so this figure can now differ from the
- * board by exactly those machines, and a reader should not have to work that
- * out by subtraction.
+ * `orderShiftWarnings`, which names the carried-over machines on the envelope -
+ * naming a fact about the data, not a claim about the production board. **That
+ * claim - "the board blanks these" - held on 2026-08-27 (`MACHINE-STATUS-V2.md`
+ * §4) and stopped holding some time before 2026-09-10, when the live panel's
+ * SQL and JS were re-captured and neither contains a shift comparison anymore
+ * (`MACHINE-STATUS-V2.md` §0).** `Order End` on the current board is written by
+ * an operator's own button press (`production_machine_status.Result`, via
+ * Node-RED), not inferred from `vCreateDateTxt` versus the clock. Whatever gap
+ * this figure now has with that board is not this split - see `oaWarnings`'s
+ * neighbour `orderShiftWarnings` and F-18 in `MACHINE-STATUS-V2.md` for the
+ * mechanism that plausibly is: the board drops a machine sitting in operator-set
+ * `Pending` from its average, and nothing here knows what `Pending` is.
  *
  * Measured at THS on 2026-08-27, when the verdict still moved the number: 13
  * machines `current`, 2 `ended` (`I5` and `IC5`, on orders created 20:06
@@ -441,6 +449,15 @@ export function splitByOrderShift(
  *
  * Both groups are IN %OA. These sentences name them; since 2026-09-08 neither
  * reports a removal, because neither causes one.
+ *
+ * **The "production board blanks these" claim these two sentences used to make
+ * is retracted, 2026-09-10.** The panel's live SQL and JS (captured that day,
+ * docs/grafana/MACHINE-STATUS-V2.md §0) carry no shift comparison at all - the
+ * board does not blank a machine for running an order created in an earlier
+ * shift, full stop. So this split no longer describes a known difference from
+ * that board; it is kept only because "which machines have an order this old"
+ * is still a fact worth stating on its own, with no claim about what anything
+ * else does with it.
  */
 export function orderShiftWarnings(
   node: string,
@@ -454,7 +471,7 @@ export function orderShiftWarnings(
       `${node}: ${ended.length} machine(s) are running an order created in an earlier shift (${ended
         .map((m) => `${m.machine} ${m.oaPct}%`)
         .sort()
-        .join(', ')}) - KEPT in %OA: an order ends when its PO slots clear, not because it predates the current shift (design owner, 2026-09-08). The production \`Machine Status V2.0\` board blanks these, so this figure can differ from that board by exactly these machines (DESIGN.md §8.4 layer 2)`,
+        .join(', ')}) - KEPT in %OA: an order ends when its PO slots clear, not because it predates the current shift (design owner, 2026-09-08)`,
     );
   }
 
@@ -464,7 +481,7 @@ export function orderShiftWarnings(
       `${node}: ${unknown.length} machine(s) carry an order whose creation time could not be read (${unknown
         .map((m) => m.machine)
         .sort()
-        .join(', ')}) - kept in %OA rather than dropped, so this figure can read higher than the production board, which blanks them`,
+        .join(', ')}) - kept in %OA rather than dropped`,
     );
   }
 
@@ -487,6 +504,25 @@ export function averageOa(machines: MachineOa[]): number | null {
   const usable = machines.filter((m) => m.oaPct !== null);
   if (usable.length === 0) return null;
   return round1(usable.reduce((a, m) => a + (m.oaPct as number), 0) / usable.length);
+}
+
+/**
+ * Machines a plant's own status observations say are `Pending` right now - an
+ * operator has parked the job on purpose, via the widget button
+ * `production_machine_status.Result` gets written through
+ * (`docs/grafana/MACHINE-STATUS-V2.md` §0).
+ *
+ * Exists so the %OA average can be handed a machine set with these already
+ * removed, matching the production board's `EXCLUDE_FROM_OA`. Confirmed
+ * against IOT, 2026-09-10: a parked machine's %OA should not count, even
+ * though it is still computable from the shot it produced before being
+ * parked. Takes a structural shape rather than `MachineObservation` itself so
+ * this module does not need to import from `services/liveSnapshot.ts`.
+ */
+export function pendingMachineNames(
+  observations: readonly { machine: string; status: string }[],
+): ReadonlySet<string> {
+  return new Set(observations.filter((m) => m.status === 'Pending').map((m) => m.machine));
 }
 
 /** Sums a machine field, `null` only when not one machine reported it (R2). */

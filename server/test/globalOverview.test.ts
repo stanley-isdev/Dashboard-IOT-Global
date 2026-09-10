@@ -470,19 +470,20 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
 
   it('states on the payload which rules it follows and where it still differs', () => {
     // A consumer that never reads the source must still be able to learn from
-    // the response what scope produced these numbers, and the three places they
+    // the response what scope produced these numbers, and the places they
     // deliberately part company with the board.
     const warnings = build(snapshot({ '6332': 10 })).meta.warnings.join(' ');
     expect(warnings).toMatch(/24 h window/);
     expect(warnings).toMatch(/TOTAL excludes `Order End` only/);
+    // %OA's own window, confirmed against IOT 2026-09-10 to match the board's
+    // 3-day rule for an order older than a day - not the census's 24 h.
+    expect(warnings).toMatch(/71 h, not 24/);
+    expect(warnings).toMatch(/Pending.*excluded from %OA/);
     // The plant card reading higher than its own drill-down needs saying.
     expect(warnings).toMatch(/Counted across ALL processes/);
-    // The three named divergences. The last is the widest of them - it is why
-    // this board can read BELOW the production board, so it is stated as a
-    // standing rule and not only when a machine happens to trip it.
+    // The two remaining named divergences.
     expect(warnings).toMatch(/keeps its last known status instead of reading `Offline`/);
-    expect(warnings).toMatch(/created in an EARLIER shift also stays in %OA/);
-    expect(warnings).toMatch(/an order counts as finished when its PO slots clear/);
+    expect(warnings).toMatch(/order-creation time cannot be parsed stays in %OA/);
     expect(warnings).toMatch(/machineExclusions is empty by decision/);
   });
 
@@ -959,8 +960,8 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
 
   it('still says on the envelope when a window is wider than the reconciled one', () => {
     // The gate is gone; the caveat is not. The board's 69.8% was measured over
-    // a rolling 24 h, and a week is not that - which is worth saying even now
-    // that no machine leaves the average for it.
+    // OA_WINDOW_HOURS (71 h, 2026-09-10), and a week is not that - which is
+    // worth saying even now that no machine leaves the average for it.
     const week = buildGlobalOverview({
       snapshot: snapshot({ '6332': 10 }, { '6332': boardMachines }, [
         onOrder('6332', 'IC4', 48.9, 137, 220),
@@ -971,7 +972,7 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
       now: NOW,
     });
     expect(week.meta.warnings.join(' ')).toMatch(
-      /this window spans 168 h, wider than the 24 h that %OA was reconciled/,
+      /this window spans 168 h, wider than the 71 h that %OA was reconciled/,
     );
   });
 
@@ -1142,6 +1143,40 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
     const payload = build(snapshot({ '6332': 10 }, {}, [onOrder('9999', 'Z1', 80)]));
     expect(
       payload.meta.warnings.some((w) => w.includes('9999') && w.includes('absent from master data')),
+    ).toBe(true);
+  });
+
+  it('DROPS a machine an operator has parked in `Pending` from %OA, and names it', () => {
+    /*
+     * Confirmed against IOT, 2026-09-10: a parked machine's %OA should not
+     * count, even though `I5` still has a computable 47.5% from its last shot.
+     * Matches the production board's `EXCLUDE_FROM_OA`
+     * (docs/grafana/MACHINE-STATUS-V2.md §0) - unlike `Order End` layer 2,
+     * this one is a real, live rule, not a retired one.
+     */
+    const machinesWithI5Pending: [string, MachineStatus][] = [
+      ['IC4', 'Mass Pro'],
+      ['I5', 'Pending'],
+      ['IA1', 'Mass Pro'],
+      ['P1I1', 'Mass Pro'],
+    ];
+    const payload = build(
+      snapshot({ '6332': 10 }, { '6332': machinesWithI5Pending }, [
+        ...boardOa,
+        idle('6332', 'I1'),
+        idle('6332', 'I3'),
+        idle('6332', 'IC6'),
+      ]),
+    );
+    const ths = payload.companies.find((c) => c.code === 'THS')!;
+    const p6332 = ths.plants.find((p) => p.code === '6332')!;
+
+    // Mean of IC4/IA1/P1I1 only (48.9, 89.9, 93) - I5's 47.5% is out.
+    expect(p6332.kpi.oa_pct).toBe(77.3);
+    expect(
+      payload.meta.warnings.some(
+        (w) => w.includes('I5') && w.includes('Pending') && w.includes('excluded from %OA'),
+      ),
     ).toBe(true);
   });
 });

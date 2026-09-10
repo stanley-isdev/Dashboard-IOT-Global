@@ -7,6 +7,7 @@ import {
   foldMachineOa,
   oaFromPoGroup,
   oaWarnings,
+  pendingMachineNames,
   planFromSlots,
   sumMachineField,
   type MachineOa,
@@ -353,6 +354,23 @@ describe('averageOa - the "Avg %OA" card', () => {
   it('sums output over the machines that reported any', () => {
     expect(sumMachineField([...board], (m) => m.actualQty)).toBe(544);
     expect(sumMachineField([], (m) => m.actualQty)).toBeNull();
+  });
+});
+
+describe('pendingMachineNames - the board`s EXCLUDE_FROM_OA, confirmed against IOT 2026-09-10', () => {
+  it('names only the machines currently Pending', () => {
+    const observations = [
+      { machine: 'I1', status: 'Mass Pro' },
+      { machine: 'I5', status: 'Pending' },
+      { machine: 'I6', status: 'Pending' },
+      { machine: 'I2', status: 'Stop' },
+    ];
+    expect([...pendingMachineNames(observations)].sort()).toEqual(['I5', 'I6']);
+  });
+
+  it('is empty when nothing is parked', () => {
+    expect(pendingMachineNames([{ machine: 'I1', status: 'Mass Pro' }]).size).toBe(0);
+    expect(pendingMachineNames([]).size).toBe(0);
   });
 });
 

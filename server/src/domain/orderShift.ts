@@ -1,8 +1,21 @@
 import { zonedToUtc, type ResolvedShift } from '@dashboard/domain-shared';
 
 /**
- * DESIGN.md §8.4's **`Order End` layer 2**, ported from the panel source now
- * recorded in docs/grafana/MACHINE-STATUS-V2.md §4.2.
+ * DESIGN.md §8.4's **`Order End` layer 2**, ported from the panel source
+ * recorded in docs/grafana/MACHINE-STATUS-V2.md §4.2 (captured 2026-08-27).
+ *
+ * **STALE AS OF 2026-09-10 - the live panel no longer contains this layer at
+ * all.** The SQL and `afterRender` JS pulled from the panel that day (see
+ * docs/grafana/MACHINE-STATUS-V2.md §0) have zero shift comparison anywhere -
+ * not `getProductionShiftInfo`, not `isCurrentShift`, no `now()` against
+ * `vCreateDateTxt` in the SQL either. What replaced it is a manually-set
+ * `Pending`/`Order End` written to `production_machine_status.Result` by
+ * Node-RED when an operator presses a widget button - not a timestamp guess.
+ * This function's verdict is therefore not a description of what the
+ * production board does today; do not cite it as one (the warnings it feeds
+ * used to, and that wording needs fixing - see `oaWarnings`'s caller). Left in
+ * place because removing it would remove nothing load-bearing: since
+ * 2026-09-08 it only reports, never excludes (see below).
  *
  * ## What it does
  *

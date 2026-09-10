@@ -194,9 +194,9 @@ function assertWindow(windowHours: number): void {
  * Statuses that describe what a machine is DOING. A machine's bucket comes from
  * the most recent of these, not from the most recent row.
  *
- * The three left out - `Warning`, `Alarm`, `Pending` - are flags that flap on
- * and off a machine that never stopped producing. Measured on 2026-08-27, THS
- * 6332 machine `HC2` over 71 h: `Warning` 78 rows, `Mass Pro` 63, `Alarm` 14,
+ * `Warning` and `Alarm` are the ones left out - flags that flap on and off a
+ * machine that never stopped producing. Measured on 2026-08-27, THS 6332
+ * machine `HC2` over 71 h: `Warning` 78 rows, `Mass Pro` 63, `Alarm` 14,
  * `Stop` 2, and the last twelve rows read
  *
  *     Warning <- Mass Pro <- Warning <- Mass Pro <- Warning <- Mass Pro ...
@@ -214,6 +214,22 @@ function assertWindow(windowHours: number): void {
  * `4M Change`, `No Plan`, `Order End` and `Offline` stay IN: those are things a
  * machine is doing, not flags raised over it, and D-21 is about which bucket
  * `4M Change` belongs in - not about whether it happened.
+ *
+ * **`Pending` moved from the flapping group to here, 2026-09-10.** It used to
+ * be measured alongside `Warning`/`Alarm` (2026-08-27, before it meant
+ * anything held): the same 71 h THS survey read `Pending` 62 rows against the
+ * same machine, which looked like the same kind of flicker. It is not. The
+ * panel's v4 added a widget button that writes `Result='Pending'` to
+ * deliberately park a job (`docs/grafana/MACHINE-STATUS-V2.md` §0) - a state
+ * an operator holds on purpose, for as long as the job stays parked, not one
+ * that flickers under it. Filtering it out here used to mean a parked machine
+ * silently read whatever it was doing before, while the production board's own
+ * `EXCLUDE_FROM_TOTAL`/`EXCLUDE_FROM_OA` (`MACHINE-STATUS-V2.md` §0) both drop
+ * it on purpose - a real, un-reconciled divergence for plant 6051's %OA,
+ * confirmed against IOT 2026-09-10: a `Pending` machine's %OA should not be
+ * counted. Reading `Pending` here is step one of matching that - see
+ * `domain/oa.ts`'s `pendingMachineNames` for step two, where it is actually
+ * dropped from the average.
  */
 const SUBSTANTIVE_STATUSES = [
   'Mass Pro',
@@ -223,6 +239,7 @@ const SUBSTANTIVE_STATUSES = [
   'Order End',
   '4M Change',
   'Offline',
+  'Pending',
 ];
 
 /* ------------------------------------------------------------ windows */
@@ -428,19 +445,44 @@ export interface PlantEverSeenRow {
 /**
  * Q-03's window for %OA.
  *
- * Longer than the status window on purpose: %OA is an aggregate over a PO's
- * run, and a 2 h window would clip every order that started before it and
- * report a partial figure as if it were the whole. 24 h reproduces the
- * production board's per-machine numbers exactly (see machineOaSql).
+ * **71, not 24 - changed 2026-09-10, confirmed against IOT.** 24 h reproduced
+ * the OLD (v3) production board's per-machine numbers exactly, because that
+ * panel's `TotalOutput_Per_PO` CTE also read `now() - INTERVAL '1 days'`
+ * (docs/grafana/MACHINE-STATUS-V2.md, captured 2026-08-27). The v4 panel
+ * widened that CTE to `INTERVAL '3 days'` (§0 of the same doc, captured
+ * 2026-09-10), and IOT confirmed the business rule behind it directly: at ASI,
+ * any machine whose current order has run past 24 h is meant to have its %OA
+ * figured over 3 days, not clipped to the last day.
  *
- * Note this is NOT a shift-relative window (D-26). Every order live at the
- * time of the reconciliation had started inside the current day shift, so 24 h,
- * "today" and "current shift" all gave the same answer and the data could not
- * tell them apart. 24 h is the choice that matches the window the old
- * dashboard's own output figures agree with; revisit when an order that spans
- * two shifts is available to test against.
+ * Proven against live data the same day at plant 6051, both machines on
+ * orders ~26.8 h old: `M-ID-02` read 49.1% over 24 h and 46.4% over 3 d, and
+ * the production board showed 46.3-46.4% - the 24 h figure was the wrong one.
+ * `M-ID-06`, same order age, read 112% and 111% - a small gap where `M-ID-02`
+ * had a large one, because what changes between the two windows is not "is
+ * the order old" (both were) but whether the ~2.7 h a 24 h window clips off
+ * the front of that order happens to run at a different efficiency than the
+ * rest of it.
+ *
+ * 71 rather than a literal 72 (3 x 24) because `MAX_WINDOW_HOURS` is a real
+ * InfluxDB file-scan cap a single query may not cross - see its own comment.
+ * 71 covers all but the oldest hour of the intended 3-day rule; the missing
+ * hour is the earliest one, which is also the one an order's own creation
+ * time bounds away as soon as it is under 71 h old. A window this wide costs
+ * more per query, but the live poller already treats a failed %OA query as
+ * "serve the last known figures, mark the source degraded, retry in
+ * `oaIntervalMs`" (`services/liveSnapshot.ts`) rather than blanking anything,
+ * so an occasional rejected poll costs staleness for a few seconds, not a
+ * wrong or missing number.
+ *
+ * Longer than the status window on the same grounds as before: %OA is an
+ * aggregate over a PO's run, and a narrower window clips every order that
+ * started before it and reports a partial figure as if it were the whole.
+ *
+ * Note this is NOT a shift-relative window (D-26) - see machineOaSql for what
+ * a wider one now costs the `Order End` layer-2 verdict, which is nothing:
+ * that rule stopped subtracting anything from %OA on 2026-09-08.
  */
-export const OA_WINDOW_HOURS = 24;
+export const OA_WINDOW_HOURS = 71;
 
 /**
  * One row per (plant, machine, PO slots) inside the window. Everything the

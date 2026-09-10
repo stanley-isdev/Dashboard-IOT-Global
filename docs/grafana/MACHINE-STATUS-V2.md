@@ -20,6 +20,88 @@
 
 ---
 
+## 0. อัปเดต 2026-09-10 - panel ขึ้น v4 แล้ว, `Order End` ชั้นที่ 2 (เทียบกะ) ถูกถอดออกจริง
+
+> ยืนยันจาก SQL + `afterRender` JS ที่ดึงจาก panel สดวันนี้ (ผู้ใช้ส่งมาให้ตรง ๆ ระหว่างคุยเคส
+> plant 6051) เทียบกับต้นฉบับที่บันทึกไว้ใน §2-4 ด้านล่าง (จับภาพ 2026-08-27)
+
+**สิ่งที่หายไปทั้งหมด**: บล็อก `// 0. ตรวจสอบกะ (Shift Logic)` ในสคริปต์เก่า (`getProductionShiftInfo`,
+`isCurrentShift`, การ clone การ์ดเป็น `Order End` เมื่อ `vCreateDateTxt` ไม่ตรงกะปัจจุบัน) **ไม่มีอยู่ใน
+SQL หรือ JS เวอร์ชันปัจจุบันเลยสักบรรทัด** ไม่ใช่แค่ JS - ตรวจ SQL แล้วก็ไม่มี `now()` เทียบกับ
+`vCreateDateTxt` ที่ไหนเช่นกัน `Order End` **ชั้นที่ 2 แบบเทียบกะไม่เคยมีอยู่ในระบบที่ใช้งานจริง ณ วันนี้**
+
+**สิ่งที่แทนที่มันคือกลไกใหม่ทั้งหมด - "Pending" ที่คนกดเอง:**
+
+```sql
+CASE
+    WHEN P.global_machine_seq > 1 AND SP."Result" = 'Pending' THEN 'Pending'
+    WHEN P.global_machine_seq > 1 THEN 'Order End'
+    ELSE R."RealTimeStatus"
+END AS "MachineStatusRealTime"
+```
+
+- `Order End` ชั้นที่ 1 (`global_machine_seq > 1`) เหมือนเดิมทุกประการ - เครื่องมีกลุ่ม PO ใหม่กว่าคุมอยู่แล้วจริง ๆ
+- ของใหม่คือ `production_machine_status.Result` เอง **เขียนโดย Node-RED ตอนมีคนกดปุ่มบน widget**
+  (คอมเมนต์ในคิวรี่บอกตรง ๆ) ค่าที่เป็นไปได้อย่างน้อยคือ `'Pending'` / `'Order End'` / `'Mass Pro'` -
+  นี่คือสถานะที่ **operator เป็นคนตั้งเอง** ไม่ใช่การเดาจากเวลา ตรงกับที่ฝ่าย IOT ยืนยัน (ASI ไม่ auto-cut
+  ตามกะ ต้องรอคนไปกดตัดจริง)
+- `Pending` เป็นสถานะที่ **ค้างได้ยาว** (คนพักงานไว้) ต่างจาก `Order End` ที่เกิดจากมีออเดอร์ใหม่มาแทนจริง
+
+**ผลต่อ Avg %OA และ Total ในเวอร์ชันนี้ (จาก JS v4, `EXCLUDE_FROM_TOTAL` / ตัวแปรเดียวกันใน `buildSummaryBar`):**
+
+```js
+var EXCLUDE_FROM_TOTAL = ['Order End', 'Pending'];
+var EXCLUDE_FROM_OA    = ['Order End', 'Pending', 'Offline', 'No Plan'];
+```
+
+เครื่องที่สถานะปัจจุบันเป็น `Pending` (ถูกพักงานไว้) **ถูกตัดออกจากทั้ง Total และ Avg %OA ของบอร์ด** แม้ว่า
+การ์ดนั้นจะยังมี `%OA` คำนวณได้จาก shot ล่าสุดก็ตาม - เดิมใน v3 exclude list มีแค่ `Order End` / `Offline` /
+`No Plan`, `Pending` เป็นของใหม่ที่เพิ่มเข้ามาพร้อม feature นี้
+
+**HTML template ก็เปลี่ยน**: `href` ปลายทาง drill-down จาก 4 สาขา (`t01`/`t02`/`t03`/`{{else}}`, suffix
+`0581t01..t03`) เหลือ 2 สาขา (`t01` กับ `{{else}}` ทั้งคู่ชี้ suffix ใหม่ `0581t200`) และเพิ่ม badge
+`{{#if CheckSheetWarningFlag}}...No Checksheet...{{/if}}` ที่ไม่เคยมีมาก่อน
+
+**นัยต่อ backend (`server/`) ตอนนี้:**
+
+1. **`server/src/domain/orderShift.ts` ทั้งไฟล์พอร์ตมาจาก layer ที่ตายไปแล้ว.** ฟังก์ชันไม่ได้พังอะไร (ตาม
+   กฎ 2026-09-08 มันแค่รายงาน ไม่ตัดเครื่องออกจาก %OA อยู่แล้ว) แต่ **ข้อความใน `orderShiftWarnings`
+   ("the production board blanks these") เป็นเท็จ** ต้องแก้ - ดูหมายเหตุในไฟล์นั้น
+2. **`SUBSTANTIVE_STATUSES` ใน `server/src/influx/queries.ts` ยังจัด `Pending` เป็น "flag ที่กระพริบ"
+   เหมือน `Warning`/`Alarm`** - ข้อสรุปนั้นวัดไว้ก่อนที่ widget ของ v4 จะมีจริง (2026-08-27, ตอนที่
+   `Pending` ยังไม่ใช่ค่าที่คนตั้งค้างไว้ได้) ต้องวัดใหม่ว่าเครื่องที่ operator กด Pending ค้างไว้จริง จะ
+   ยังโผล่เป็น `Mass Pro`/สถานะเก่าในเซตของเราไหม
+3. **นี่คือผู้ต้องสงสัยที่น่าเชื่อที่สุดตอนนี้สำหรับช่องว่าง plant 6051 (51.2% ของเรา vs 50.9% ของ Grafana):**
+   `server/src/domain/oa.ts` ไม่รู้จักสถานะ `Pending`/`Offline` เลย - มันคำนวณจาก
+   `production_machine_io` (PO/qty/cycle) ล้วน ๆ ไม่ join กับ `production_machine_status.Result` ที่ไหน
+   เลย ถ้าเครื่องไหนที่ 6051 ถูกกด `Pending` ค้างไว้ตอนนี้ แต่ shot ล่าสุดยังคำนวณ %OA ได้ - **ฝั่งเรานับ
+   เข้าค่าเฉลี่ย ฝั่ง Grafana ไม่นับ** สูตร %OA ต่อเครื่องเหมือนกันเป๊ะทั้งสองฝั่ง (§9.1) ต่างกันแค่ "เซตของ
+   เครื่องที่เข้าตัวหาร"
+
+ดู §6 ตารางข้อค้นพบ - แถว **F-13** ปิดเป็น "ล้าสมัย" และเพิ่มแถวใหม่ **F-18** สำหรับข้อ 3 ด้านบน
+
+**อัปเดต 2026-09-10 ต่อ - ยืนยันแล้วว่า `TotalOutput_Per_PO` (ตัวคำนวณ `OA_percent`) อ่าน
+`now() - INTERVAL '3 days'` จริง ไม่ใช่ `'1 days'` เหมือน v3** และพี่ IOT ยืนยันกฎธุรกิจตรง ๆ:
+เครื่องของ ASI ที่ออเดอร์ปัจจุบันรันมาเกิน 24 ชม. ให้คิด %OA จากหน้าต่าง 3 วัน ไม่ใช่ 1 วัน
+
+พิสูจน์ด้วยข้อมูลสดที่ plant 6051 (Explore, datasource `iot_data_master`, 2026-09-10):
+`M-ID-02` และ `M-ID-06` มีออเดอร์อายุเท่ากัน (~26.8 ชม.) แต่ %OA ต่างกันคนละขนาด -
+
+| เครื่อง | 24h (คำนวณแบบเราตอนนั้น) | 3d (คำนวณแบบ v4) | Grafana จริง |
+|---|---|---|---|
+| M-ID-02 | 49.1% | 46.4% | 46.3-46.4% ✅ |
+| M-ID-06 | 112% | 111% | 111.5% |
+
+เลข 3d ตรงกับ Grafana เป๊ะ ยืนยันว่าหน้าต่าง 24h เดิมของเราผิด **`server/src/influx/queries.ts`'s
+`OA_WINDOW_HOURS` แก้จาก `24` เป็น `71` แล้ว** (71 ไม่ใช่ 72 เพราะ `MAX_WINDOW_HOURS` เป็นเพดาน
+scan ไฟล์จริงของ InfluxDB ต่อ 1 query - ดูคอมเมนต์ของค่านั้น) ผลข้างเคียงที่ต้องแก้ตามคือ
+`server/src/services/windowedSnapshot.ts`'s fast-path (`isDefault`) เคยผูกกับ
+`OA_WINDOW_HOURS` โดยบังเอิญ (ทั้งคู่เคยเป็น 24) ต้องแยกออกมาเป็นการเทียบ `request.range === '24h'`
+ตรง ๆ ไม่งั้นทุก request ปกติ (ที่ front end ส่ง `range=24h` เป็นค่า default) จะพลาด fast path
+และคำนวณ %OA ใหม่ด้วยหน้าต่างแคบกว่าที่ poller ถืออยู่ ทำให้การแก้ครั้งนี้ไม่มีผลกับ request ส่วนใหญ่
+
+---
+
 ## 1. ภาพรวม pipeline
 
 ```
@@ -1021,7 +1103,7 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 |---|---|---|---|
 | **F-01** | **drill-down param ว่างเปล่า 11 ตัว** | href ส่ง `mainGroup`, `process`, `shift`, `mode`, `status`, `cycle_time`, `avr_cycle_time`, `time_mold_opening`, `time_mold_end`, `time_injection`, `qty`, `cavity` แต่ **ไม่มีชื่อเหล่านี้ใน `SELECT`** → ได้ค่าว่างเสมอ · `std_time` ยิ่งพลาดซ้อน เพราะ SQL ส่งชื่อ `STD_Time` (Handlebars case-sensitive) | ขยายจาก DESIGN.md §10 ที่ระบุไว้แค่ `mainGroup` |
 | **F-02** | **`{{QtyColor}}` ไม่มีอยู่จริง** | ใช้เป็น class ของ OUTPUT ACTUAL แต่ไม่มีใน `SELECT` → class ว่างเปล่าตลอด | ใหม่ |
-| **F-03** | **time picker แทบไม่มีผลกับตัวเลข** | `$__timeFrom/$__timeTo` ใช้ใน `POs_To_Show` เท่านั้น · `TotalOutput_Per_PO` และ `RealtimeStatus_Latest` ใช้ `now() - INTERVAL '1 days'` ตายตัว → **เลื่อน time picker แล้ว Output/%OA ไม่เปลี่ยน** เปลี่ยนแค่ว่ามีการ์ด `Order End` เก่ากี่ใบ | DESIGN.md §10 "Time window hardcode" |
+| **F-03** | **time picker แทบไม่มีผลกับตัวเลข** | `$__timeFrom/$__timeTo` ใช้ใน `POs_To_Show` เท่านั้น · `TotalOutput_Per_PO` และ `RealtimeStatus_Latest`/`StatusPerPO_Latest` ใช้ `now() - INTERVAL` ตายตัว → **เลื่อน time picker แล้ว Output/%OA ไม่เปลี่ยน** เปลี่ยนแค่ว่ามีการ์ด `Order End`/`Pending` เก่ากี่ใบ · **v4 (2026-09-10): ค่าตายตัวนั้นขยับจาก `'1 days'` เป็น `'3 days'`** ยืนยันเป็นกฎธุรกิจจริงจาก IOT ไม่ใช่บั๊ก - พอร์ตมาแล้วที่ `server/src/influx/queries.ts`'s `OA_WINDOW_HOURS` (24→71, ดู §0) | DESIGN.md §10 "Time window hardcode" |
 | **F-04** | **`AR_percent` คืน `0` เมื่อ `TotalPlan = 0`** | ขัดกับ rule R2 "ไม่มีข้อมูล ≠ ศูนย์" · THS 6338 ส่ง `plan_qty = 0` ทุกแถว → บอร์ดขึ้น 0% ทั้งที่ควรขึ้น "ไม่มีแผน" | DESIGN.md §9.2 ข้อ 2 |
 | **F-05** | **`StatusStartTime` ไม่ถูกบังคับเป็น UTC** | โค้ดขั้น 0 ระมัดระวังมากกับ `vCreateDateTxt` (เติม `Z` เอง) แต่ `data-start` ของ timer ส่งเข้า `new Date(startStr)` ตรงๆ · ถ้า `CAST(... AS VARCHAR)` ให้ string ที่ไม่มี `Z`/offset เบราว์เซอร์จะตีความเป็น **local time** → ที่ไทยจะเพี้ยน 7 ชม. และ `Math.max(0, …)` จะทำให้ timer ค้างที่ `00:00:00` · **ต้องตรวจ output จริงของ cast ก่อนสรุป** | ใหม่ - ต้องยืนยัน |
 | **F-06** | **Avg %OA มี bias สูงเกินจริง** | เงื่อนไข `oaVal > 0` ตัดเครื่องที่ %OA เป็น 0 จริงๆ ออกจากตัวหาร → ค่าเฉลี่ยสูงกว่าความจริง · และเป็น simple average ต่อการ์ด ไม่ถ่วงน้ำหนักด้วยชิ้น/เวลา | DESIGN.md D-20 |
@@ -1031,11 +1113,12 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 | **F-10** | **`MIN` vs `MAX` std_time** | `OA_percent` ใช้ `MIN(std_time)` แต่คอลัมน์ `STD_Time` ใช้ `MAX(std_time)` - ถ้า std เปลี่ยนกลาง PO ผลจะเพี้ยน | DESIGN.md §9.1 ข้อ 4 |
 | **F-11** | **dead column 4 ตัว** | `ModeStatus`, `STD_Time`, `SumCycle` คำนวณแล้วไม่มีใครใช้ · `_sort_weight`/`_sort_time` ใช้แค่ `ORDER BY` แต่ยังถูกส่งลง client | ใหม่ |
 | **F-12** | **`FULL JOIN` ด้วย `machine` อย่างเดียว** | ปลอดภัยเพราะ query กรอง 1 plant · **แต่ query ระดับ global ต้อง join ด้วย `(codeCompany, plant, machine)`** ไม่งั้นเครื่องชื่อซ้ำข้ามโรงงานจะปนกัน | DESIGN.md §10 |
-| **F-13** | **กะ hardcode 08:00–20:00 สองกะ** | อยู่ใน `getProductionShiftInfo()` - ใช้กับ STJ ที่มี 3 กะ และกะ B ที่จบ 22:15 ไม่ได้ | DESIGN.md §9.5, D-23…D-26 |
+| **F-13** | ~~กะ hardcode 08:00–20:00 สองกะ~~ **ล้าสมัย 2026-09-10** | เดิมอยู่ใน `getProductionShiftInfo()` ของ v3 - **ทั้งฟังก์ชันและ layer 2 ที่มันรองรับถูกถอดออกจาก panel จริงแล้ว** (§0) ไม่มีการเทียบกะที่ไหนใน SQL หรือ JS ของเวอร์ชันปัจจุบันอีกต่อไป | §0, DESIGN.md §9.5 (ปิดประเด็น ไม่ใช่แก้ไข) |
 | **F-14** | **SQL variable interpolate ตรงๆ** | `'${Lamp_var}'`, `${Zone_var:singlequote}` ต่อ string เข้า SQL - ใน Grafana รับได้ แต่ **web app ต้อง parameterize** | ใหม่ |
 | **F-15** | **HTML/CSS สร้างจาก string ที่มาจาก DB** | `legendHTML` เอาค่าสถานะไปต่อเป็น HTML · `cssRules` เอา `machine`/`PO` ไปต่อเป็น CSS โดย escape แค่ `"` และ `\` - React จะแก้ให้เองแต่ควรรู้ไว้ | ใหม่ |
 | **F-16** | **ต้องใช้ CSS `:has()`** | filter ทั้งระบบพึ่ง `:has()` → เบราว์เซอร์เก่าใช้ไม่ได้ | ใหม่ |
-| **F-17** | **`hardcode machine exclusion` ไม่ปรากฏใน query นี้** | DESIGN.md §10 บันทึกว่ามี `machine != 'lA1','lA2','D2','D3','D4','P1l4'` ฝังใน SQL - **query ที่ได้มาชุดนี้ไม่มี** → อาจอยู่ใน panel อื่นหรือถูกถอดออกแล้ว ต้องตรวจอีกรอบ | DESIGN.md §10 |
+| **F-17** | **`hardcode machine exclusion` ไม่ปรากฏใน query นี้** | DESIGN.md §10 บันทึกว่ามี `machine != 'lA1','lA2','D2','D3','D4','P1l4'` ฝังใน SQL - v4 มี `AND "machine" != 'lA1' AND ... != 'P1l4'` อยู่ใน `RealtimeStatus_Latest`/`StatusPerPO_Latest` เท่านั้น ไม่อยู่ใน `All_IO_Ranked`/`TotalOutput_Per_PO` → เครื่องพวกนี้ยังมีผลต่อ `%OA`/output แม้จะไม่มีการ์ดสถานะ | DESIGN.md §10 |
+| **F-18** | **`Pending` (v4) ไม่ถูกกันออกจาก `%OA` เฉลี่ยฝั่ง backend** | Grafana v4 ตัด `Pending` ออกจากทั้ง Total และ Avg %OA (`EXCLUDE_FROM_TOTAL`/`EXCLUDE_FROM_OA` ใน §0) แต่ `server/src/domain/oa.ts` ไม่รู้จักสถานะเครื่องเลย - คำนวณจาก `production_machine_io` ล้วน ไม่ join กับ `production_machine_status.Result` จึงนับเครื่องที่ถูกกด `Pending` ค้างไว้เข้าค่าเฉลี่ยด้วย ทั้งที่ Grafana ไม่นับ ผู้ต้องสงสัยหลักของช่องว่าง %OA plant 6051 (51.2% vs 50.9%, 2026-09-10) | §0, `server/src/domain/oa.ts`, `server/src/influx/queries.ts` `SUBSTANTIVE_STATUSES` |
 
 ---
 
@@ -1056,8 +1139,11 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 > แต่ exec board ต้องนับทุกเครื่องในไซต์ · 6332 มี `Injection` 26 + `Surface` 2 (`BP6`, `HC2`)
 > ถ้ากรองจะได้ THS = 27 ทั้งที่หน้างานมี 29 (เหตุผลเต็มใน `server/src/config/policy.ts`)
 
-1. **ย้าย `Order End` ชั้นที่ 2 ไป backend** - ตัดสินกะด้วย IANA timezone ต่อ company (ไม่ใช่ fixed offset)
-   แล้วเทียบ `vCreateDateTxt` ทุก slot กับกะปัจจุบัน ผลลัพธ์ต้องออกมาใน contract ไม่ใช่คำนวณที่ browser
+1. ~~ย้าย `Order End` ชั้นที่ 2 ไป backend~~ **ยกเลิก 2026-09-10 - ไม่มีของให้ย้ายแล้ว** ยืนยันจาก panel
+   สดว่า layer 2 (เทียบกะ) ถูกถอดออกจากทั้ง SQL และ JS จริง (§0) สิ่งที่ควรพอร์ตแทนคือกลไกใหม่: `Pending`
+   จาก `production_machine_status.Result` (คนกดปุ่มเอง) ต้องกันออกจาก Avg %OA เหมือนที่ Grafana v4 ทำ
+   (ดู F-18) - `server/src/domain/orderShift.ts` ที่พอร์ต layer 2 เก่ามาควรถูกทำเครื่องหมายว่าอิงข้อมูล
+   ที่ล้าสมัยแล้ว ไม่ใช่ลบทิ้งทันที เพราะยังไม่กระทบตัวเลข (มันแค่รายงาน ไม่ตัดออก)
 2. **ตัดสินใจว่า contract จะแทน "การ์ดที่แตกเป็น 2 ใบ" อย่างไร** - ตัวเลือกที่ตรงไปตรงมาคือ
    ให้เครื่องหนึ่งมี `currentOrder: null` + `lastEndedOrder: {...}` แทนการส่ง 2 record
 3. **นิยาม "Total Machines" ใหม่** - บอร์ดเดิมนับ *การ์ด* (derive จากข้อมูลที่วิ่ง) จึงพลาดเครื่องที่ offline

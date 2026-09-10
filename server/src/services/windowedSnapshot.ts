@@ -11,7 +11,6 @@ import {
   MAX_ASSEMBLED_HOURS,
   MAX_WINDOW_HOURS,
   NARROW_WINDOW_HOURS,
-  OA_WINDOW_HOURS,
   type LatestMachineStatusRow,
   type MachineHourOaRow,
   type MachineOaRow,
@@ -69,8 +68,26 @@ import {
  * response rather than from a log nobody has.
  */
 
-/** The default window - what the poller already holds, in hours. */
-export const DEFAULT_WINDOW_HOURS = OA_WINDOW_HOURS;
+/**
+ * The quick-range value the front end sends when the reader has not picked
+ * anything - `zQuery.range` defaults to it in `routes/globalOverview.ts` -
+ * and the one value `isDefault` below may fast-path.
+ *
+ * **No longer derived from `OA_WINDOW_HOURS`, 2026-09-10.** This used to be
+ * `DEFAULT_WINDOW_HOURS = OA_WINDOW_HOURS` (both 24), and `isDefault` compared
+ * `RANGE_HOURS[request.range] === DEFAULT_WINDOW_HOURS`. That equality only
+ * ever held by the two constants having the same number, not by any
+ * connection between them, and it broke the moment `OA_WINDOW_HOURS` widened
+ * to 71 to match the production board's own 3-day rule for old orders (see
+ * that constant): every ordinary page load - `range: '24h'`, nothing picked -
+ * would have missed the fast path, paid for an extra `windows.get` round trip
+ * on every request, and had that request recompute %OA over a narrower
+ * window than the one the poller already holds correctly, undoing the fix.
+ * "The reader asked for nothing in particular" was always what this meant,
+ * not "the reader's range is as many hours wide as some internal constant" -
+ * so it is checked directly against the range value now.
+ */
+const DEFAULT_RANGE: Range = '24h';
 
 const HOUR_MS = 3_600_000;
 
@@ -196,10 +213,7 @@ export function resolveWindow(opts: {
        * numbers.
        */
       isDefault:
-        source === 'range' &&
-        !clamped &&
-        RANGE_HOURS[request.range] === DEFAULT_WINDOW_HOURS &&
-        toMs === nowMs,
+        source === 'range' && !clamped && request.range === DEFAULT_RANGE && toMs === nowMs,
       rejection: why,
     };
   }

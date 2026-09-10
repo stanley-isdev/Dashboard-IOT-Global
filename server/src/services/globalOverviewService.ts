@@ -37,6 +37,7 @@ import {
   countFinishedOrders,
   oaWarnings,
   orderShiftWarnings,
+  pendingMachineNames,
   splitByOrderShift,
   sumMachineField,
   type MachineOa,
@@ -107,26 +108,43 @@ import type { LiveSnapshot } from './liveSnapshot.ts';
  *      6 points of the %OA gap. **Reversed on 2026-09-08 by the design owner:
  *      the rule may classify but not exclude, so this divergence is back and
  *      is now deliberate.** See the fourth bullet below and the call site.
+ *      **Overtaken by events, 2026-09-10: the panel this was reconciled
+ *      against no longer has a layer 2 at all.** Its live SQL and JS, recaptured
+ *      that day (`MACHINE-STATUS-V2.md` §0), carry no shift comparison
+ *      anywhere - `Order End` there is decided by `global_machine_seq > 1`
+ *      (a genuinely newer order loaded) or by an operator's own button press,
+ *      never by comparing `vCreateDateTxt` to the clock. The reversal above
+ *      turned out to be moot rather than wrong: there was nothing left on the
+ *      other side to diverge from either way.
  *
  * A fourth was tried and **reverted**: filtering to `process = 'Injection'` the
  * way the per-process board does. It undercounts - THS has 29 machines and only
  * 27 of them are injection. See `config/policy.ts` for why no process filter
  * belongs on an exec board.
  *
- * Two known, named divergences remain, both on the envelope:
+ * A fifth, **`Pending`**, was found on 2026-09-10 (F-18 in `MACHINE-STATUS-V2.md`)
+and **closed the same day, confirmed against IOT**: a machine an operator has
+parked keeps a computable %OA from its last shot, but the board
+(`EXCLUDE_FROM_OA`, §0 of that doc) drops it from the average anyway. `oa.ts`'s
+`pendingMachineNames` reads the same `Pending` this file's census now sees
+(`SUBSTANTIVE_STATUSES` in `influx/queries.ts`) and this function subtracts
+those machines from `observedOa` before anything is averaged.
+
+Two known, named divergences remain, both on the envelope:
  *
  *   - **Stale machines keep their last known status** rather than becoming
  *     `Offline`, because the board does the same (T-11 / F-07). A machine
  *     silent for 8 h still reads `Mass Pro`. Accepted by the design owner on
  *     2026-08-27; closing it is a staleness cutoff in `domain/counts.ts`.
- *   - **An unreadable order-creation time keeps the machine in %OA**, where the
- *     board would blank it. Zero occurrences measured - see `splitByOrderShift`.
- *   - **A carried-over order keeps the machine in %OA too**, where the board
- *     blanks it. The design owner's rule of 2026-09-08: an order ends when its
- *     PO slots clear, and nothing here may declare it ended sooner. This one is
- *     not rare - it is every ASI machine, every day, and it is the difference
- *     between that plant reporting 75.0% and reporting nothing at all. The
- *     machines are named per plant on the envelope.
+ *   - **An unreadable order-creation time keeps the machine in %OA.** Zero
+ *     occurrences measured - see `splitByOrderShift`. (This and the next bullet
+ *     used to say "where the board blanks it" - retracted 2026-09-10, see the
+ *     third numbered item above: the board has no such rule to diverge from.)
+ *   - **A carried-over order keeps the machine in %OA too.** The design owner's
+ *     rule of 2026-09-08: an order ends when its PO slots clear, and nothing
+ *     here may declare it ended sooner. Not rare - it is every ASI machine,
+ *     every day. The machines are named per plant on the envelope, without a
+ *     claim about what the production board does with them.
  *
  * `machineExclusions` stays empty, and that remains a decision rather than a
  * gap: DESIGN.md §10's hardcoded list was decoded, the plant owner confirmed
@@ -152,7 +170,7 @@ const ACHIEVEMENT_SCOPE_WARNING =
   '%Achievement is output against the LOT SIZE of the order each machine has loaded now (plan_qty0..3 of the current PO group), not against a shift or daily target - a machine early in a large order reads low by construction. An order shared across machines would be counted once per machine; none were observed (26 orders, 0 shared)';
 
 const RECONCILIATION_WARNING =
-  'counts and %OA follow the `Machine Status V2.0` board: 24 h window, TOTAL excludes `Order End` only. Counted across ALL processes, unlike that board, which shows one `process_var` at a time - THS has 29 machines and only 27 are Injection, so a plant card here can read higher than the drill-down it links to. Three deliberate differences remain: a machine that has not reported for hours keeps its last known status instead of reading `Offline` - the board does the same, and closing it would move RUNNING away from it (T-11); a machine whose order-creation time cannot be parsed stays in %OA rather than being blanked; and, per the design owner on 2026-09-08, a machine whose loaded order was created in an EARLIER shift also stays in %OA, where the board blanks it - an order counts as finished when its PO slots clear, never by inference from its creation time (DESIGN.md §8.4 layer 2). That last one is why this board can read below the production board, and the machines responsible are named per plant. machineExclusions is empty by decision: the recovered panel query carries no machine exclusion';
+  'counts follow the `Machine Status V2.0` board: 24 h window, TOTAL excludes `Order End` only. %OA follows the same board\'s own window for a machine\'s current order - 71 h, not 24: the panel itself now reads 3 days once an order is older than a day, confirmed against IOT 2026-09-10, and 71 is the widest a single query here may scan (see OA_WINDOW_HOURS). A machine an operator has parked in `Pending` is excluded from %OA, matching the board\'s own EXCLUDE_FROM_OA. Counted across ALL processes, unlike that board, which shows one `process_var` at a time - THS has 29 machines and only 27 are Injection, so a plant card here can read higher than the drill-down it links to. Two known differences remain: a machine that has not reported for hours keeps its last known status instead of reading `Offline` - the board does the same, and closing it would move RUNNING away from it (T-11); and a machine whose order-creation time cannot be parsed stays in %OA rather than being blanked, with zero occurrences measured. machineExclusions is empty by decision: the recovered panel query carries no machine exclusion';
 
 /**
  * The KPI block for a node, from the machines beneath it.
@@ -314,35 +332,36 @@ function buildCompany(
   const dayStart = startOfLocalDay(asOf, company.timezone);
 
   const built = base.map((b) => {
+    /*
+     * Gated on the COMPANY reporting, not on this plant's freshness label.
+     *
+     * It used to be gated on both, so a plant that had aged past
+     * `no_data_after_sec` (15 min) contributed nothing even while its
+     * machine rows sat inside the query window. With the window now 24 h
+     * that gap is hours wide, and it cost real machines: THS 6338's
+     * freshest row was 310 min old on 2026-08-27, so the board showed its
+     * one machine and we showed none.
+     *
+     * The board has no freshness concept at all - it counts whatever is in
+     * its 24 h window - so matching it means the census follows the window
+     * and the freshness LABEL travels beside it instead of erasing it.
+     * `last_seen` and the plant's `status` still say the site is quiet, so
+     * the row reads "no data · 1 running", which is strictly more than the
+     * board says rather than less.
+     *
+     * The company-level gate stays, and it is what keeps the
+     * `unconnected-site-contributes-nothing` invariant true: a company
+     * whose plants have ALL gone silent rolls up to `no_data` and zeroes
+     * here. Read regardless of `reporting` - cheap, and `pendingMachines`
+     * below needs it even though `observedOa` will end up empty when the
+     * company is not reporting.
+     */
+    const observations = (snapshot.machines[b.master.code] ?? [])
+      .filter(scope.process)
+      .filter(scope.zone);
+
     const census = reporting
-      ? buildPlantCensus({
-          /*
-           * Gated on the COMPANY reporting, not on this plant's freshness label.
-           *
-           * It used to be gated on both, so a plant that had aged past
-           * `no_data_after_sec` (15 min) contributed nothing even while its
-           * machine rows sat inside the query window. With the window now 24 h
-           * that gap is hours wide, and it cost real machines: THS 6338's
-           * freshest row was 310 min old on 2026-08-27, so the board showed its
-           * one machine and we showed none.
-           *
-           * The board has no freshness concept at all - it counts whatever is in
-           * its 24 h window - so matching it means the census follows the window
-           * and the freshness LABEL travels beside it instead of erasing it.
-           * `last_seen` and the plant's `status` still say the site is quiet, so
-           * the row reads "no data · 1 running", which is strictly more than the
-           * board says rather than less.
-           *
-           * The company-level gate stays, and it is what keeps the
-           * `unconnected-site-contributes-nothing` invariant true: a company
-           * whose plants have ALL gone silent rolls up to `no_data` and zeroes
-           * here.
-           */
-          observations: (snapshot.machines[b.master.code] ?? [])
-            .filter(scope.process)
-            .filter(scope.zone),
-          machineExclusions: b.master.machineExclusions,
-        })
+      ? buildPlantCensus({ observations, machineExclusions: b.master.machineExclusions })
       : null;
 
     // `Order End` is the board's only exclusion from TOTAL, and it exists there
@@ -352,6 +371,23 @@ function buildCompany(
     if (census && census.notCounted > 0) {
       warnings.push(
         `${company.code}/${b.master.code}: ${census.notCounted} of ${census.observed} reporting machines are in \`Order End\` and are excluded from TOTAL, as they are on the production board`,
+      );
+    }
+
+    /*
+     * A machine an operator has parked in `Pending` (`production_machine_status`,
+     * via the panel's v4 widget button - MACHINE-STATUS-V2.md §0) has its %OA
+     * dropped below, matching the production board's `EXCLUDE_FROM_OA`.
+     * Confirmed against IOT, 2026-09-10: a parked machine's %OA should not
+     * count even though it is still computable from its last shot. Read off
+     * the census's own observations rather than the IO table, because
+     * "parked or not" is a fact about `production_machine_status`, not about
+     * `production_machine_io`.
+     */
+    const pendingMachines = pendingMachineNames(observations);
+    if (pendingMachines.size > 0) {
+      warnings.push(
+        `${company.code}/${b.master.code}: ${pendingMachines.size} machine(s) are \`Pending\` (parked by an operator) and are excluded from %OA, as they are on the production board (${[...pendingMachines].sort().join(', ')})`,
       );
     }
 
@@ -379,6 +415,10 @@ function buildCompany(
           // is the defect the whole filter row exists to prevent.
           .filter(scope.process)
           .filter((m) => scope.zone({ zone: scope.zoneOf(m.plant, m.machine) }))
+          // Parked machines stay OUT of %OA, matching the production board -
+          // see `pendingMachines` above for why this one is a real, intentional
+          // exclusion rather than the layer-2 kind that stopped applying.
+          .filter((m) => !pendingMachines.has(m.machine))
       : [];
 
     /*
@@ -642,7 +682,9 @@ export function buildGlobalOverview(opts: {
    * against. Since 2026-09-08 that rule excludes nothing at any width, so there
    * is no behaviour left to gate. What survives is the honest caveat: the
    * reconciliation against the production board was measured over a rolling
-   * 24 h, and this window is not that.
+   * `OA_WINDOW_HOURS` (71 h as of 2026-09-10, matching the board's own 3-day
+   * rule for orders older than a day - see that constant's comment), and this
+   * window is not that.
    *
    * Measured on the SERVED window rather than on `range`, so a clamped or
    * absolute window is judged on what was actually read.

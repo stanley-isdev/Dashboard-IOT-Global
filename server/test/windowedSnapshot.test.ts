@@ -8,6 +8,7 @@ import {
   machineOaInSql,
   MAX_WINDOW_HOURS,
   NARROW_WINDOW_HOURS,
+  OA_WINDOW_HOURS,
   type MachineOaRow,
   type LatestMachineStatusRow,
   type Window,
@@ -107,6 +108,22 @@ describe('resolveWindow', () => {
   });
 
   it('serves the default 24h window straight from the poller', () => {
+    expect(resolveWindow({ ...base, request: { range: '24h' } }).isDefault).toBe(true);
+  });
+
+  /**
+   * Regression for the 2026-09-10 break: `isDefault` used to compare
+   * `RANGE_HOURS[request.range]` against `OA_WINDOW_HOURS`, which only ever
+   * held because both happened to equal 24. Once %OA's window widened past a
+   * day, that equality broke for the ONE range value the fast path exists
+   * for - the front end's actual default - and every ordinary page load
+   * would have missed it: an extra `windows.get` round trip per request, and
+   * that request's %OA silently recomputed over a narrower window than the
+   * poller already holds correctly. `request.range === '24h'` must stay true
+   * regardless of whatever `OA_WINDOW_HOURS` is now.
+   */
+  it("keeps the default fast path even though %OA's own window is wider than 24h", () => {
+    expect(OA_WINDOW_HOURS).not.toBe(24);
     expect(resolveWindow({ ...base, request: { range: '24h' } }).isDefault).toBe(true);
   });
 

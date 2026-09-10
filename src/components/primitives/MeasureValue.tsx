@@ -72,12 +72,16 @@ export function MeasureValue({
          * number or the caveat alone. The scenario that does it is site-offline,
          * the one that exists to prove T-11.
          *
-         * So the cell gets the clock shape and the words go to the tooltip and to
-         * assistive technology; the KPI cards and the map pin, which have a line
-         * of their own, keep them visible.
+         * The KPI card's figure row has the same problem in miniature: the
+         * caveat sits beside the target/plan pill in a column barely wider than
+         * the pill itself, so "as of 5 minutes ago" wrapped onto its own line and
+         * pushed the card taller than its neighbours. So the KPI card gets the
+         * same clock-and-tooltip treatment as the cell; only the map pin, which
+         * has a whole line to itself and nothing competing for it, keeps the
+         * words visible.
          */}
         {measure.kind === 'stale' ? (
-          emphasis === 'cell' ? (
+          emphasis === 'cell' || emphasis === 'kpi' ? (
             <span className="last-seen" title={lastSeen ?? undefined}>
               <StatusGlyph token={measureToken('stale')} />
               <span className="visually-hidden">{lastSeen}</span>
