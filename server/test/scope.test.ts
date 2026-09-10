@@ -97,6 +97,7 @@ function onOrder(plant: string, machine: string, oaPct: number | null, qty = 100
     poSlots: 1,
     createdRaw: [null],
     gap: null,
+    finishedOrders: [],
   };
 }
 

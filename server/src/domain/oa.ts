@@ -88,6 +88,29 @@ export interface MachineOa {
   createdRaw: readonly (string | null)[];
   /** Set when the machine had an order but %OA could not be computed from it. */
   gap: OaGap | null;
+  /**
+   * When each order this machine has ALREADY finished stopped producing, ISO
+   * UTC, newest first - the production board's `Order End` cards for it.
+   *
+   * Layer 1 of DESIGN.md §8.4: every PO group of this machine except the newest
+   * one is an order it has moved on from, and the board draws each as a second
+   * card beside the live one. `foldMachineOa` used to drop those groups on the
+   * floor, which is why `Order End` could only ever be 0 anywhere on this board
+   * - the status table never carries the value (measured over 24 h at THS 6332
+   * on 2026-09-10: `Stop`, `Mass Pro` and `Dandori`, nothing else).
+   *
+   * Instants and not a count, for the same reason `createdRaw` is unparsed:
+   * which of them count is a question about the SITE's calendar day, and this
+   * function has neither a clock nor a timezone. `countFinishedOrders` answers
+   * it one level up, where the timezone is known.
+   *
+   * Groups holding no real order are left out - a machine idling with `-` in
+   * every slot has not finished anything. The board tests slot 0 alone where
+   * this tests all four; measured across every plant over 24 h on 2026-09-10,
+   * no group has an empty slot 0 and a loaded one after it, so the two rules
+   * pick the same groups on live data.
+   */
+  finishedOrders: readonly string[];
 }
 
 /**
@@ -213,9 +236,15 @@ export function achievementFrom(plan: number | null, actual: number | null): num
  * back at `-` and drops out of the average, exactly as it does on the board.
  * That is worth stating plainly: this card is an instantaneous read of the
  * machines currently on an order, not a shift-long average.
+ *
+ * The groups it does NOT keep are no longer discarded silently. Each one is an
+ * order the machine has finished - the board draws them as `Order End` cards -
+ * so their instants travel on `finishedOrders` for `countFinishedOrders` to
+ * judge against the site's day. Dropping them is what made that figure
+ * unreachable from this payload.
  */
 export function foldMachineOa(rows: MachineOaRow[]): MachineOa[] {
-  const newest = new Map<string, { row: MachineOaRow; at: string }>();
+  const byMachine = new Map<string, { row: MachineOaRow; at: string }[]>();
 
   for (const row of rows) {
     // Without both tags the row cannot be attributed to a machine, and putting
@@ -225,11 +254,26 @@ export function foldMachineOa(rows: MachineOaRow[]): MachineOa[] {
     if (!at) continue;
 
     const key = `${row.plant}|${row.machine}`;
-    const held = newest.get(key);
-    if (!held || at > held.at) newest.set(key, { row, at });
+    const held = byMachine.get(key) ?? [];
+    held.push({ row, at });
+    byMachine.set(key, held);
   }
 
-  return [...newest.values()].map(({ row }) => {
+  /* Newest group first, so the head is the loaded order and the tail is
+     everything the machine has already been through. One sort per machine over
+     a handful of groups - 75 groups across 25 machines at THS 6332. */
+  const folded = [...byMachine.values()].map((groups) => {
+    const sorted = [...groups].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    return {
+      current: sorted[0]!,
+      finishedOrders: sorted
+        .slice(1)
+        .filter(({ row }) => orderSlots([row.po0, row.po1, row.po2, row.po3]).length > 0)
+        .map(({ at }) => at),
+    };
+  });
+
+  return folded.map(({ current: { row }, finishedOrders }) => {
     const active = activeSlots(row);
     const slots = slotsOf(row);
     const base = {
@@ -253,6 +297,11 @@ export function foldMachineOa(rows: MachineOaRow[]): MachineOa[] {
         poSlots: 0,
         createdRaw: [],
         gap: null,
+        /* A machine with nothing loaded now is the ordinary case for one that
+           finished an order an hour ago - its slots go back to `-`. So this is
+           carried on the empty branch too, and it is the branch most of the
+           board's `Order End` cards come from. */
+        finishedOrders,
       };
     }
 
@@ -298,8 +347,36 @@ export function foldMachineOa(rows: MachineOaRow[]): MachineOa[] {
       shotCount: finite(row.shot_count),
       poSlots: slots.length,
       createdRaw: active.map((i) => created[i] ?? null),
+      finishedOrders,
     };
   });
+}
+
+/**
+ * The board's `Order End` count for a set of machines: orders finished since
+ * `since`, DESIGN.md §8.4 layer 1.
+ *
+ * `since` is midnight of the site's calendar day (`startOfLocalDay`), because
+ * that is the window the board's own picker is pinned to - `from=now/d` in the
+ * stored 6332 drill-down URL. Counted here rather than in `foldMachineOa` for
+ * the reason `finishedOrders` records: the fold has no timezone.
+ *
+ * Orders and not machines. A machine that ran three orders since midnight
+ * contributes three, which is exactly what the board draws - three cards.
+ * Reconciled against the live instance on 2026-09-10 at 09:45 Bangkok: 19
+ * orders across 14 machines at 6332, against 37 over a flat 24 h and 0 over the
+ * production day, whose 08:00 anchor is a different clock (see
+ * `startOfLocalDay`).
+ */
+export function countFinishedOrders(machines: MachineOa[], since: Date): number {
+  const from = since.toISOString();
+  /* String comparison, not Date.parse per instant: both sides are ISO UTC with
+     the same shape, so lexical order IS chronological order, and this runs over
+     every machine on every poll. */
+  return machines.reduce(
+    (n, m) => n + m.finishedOrders.filter((at) => at >= from).length,
+    0,
+  );
 }
 
 /**

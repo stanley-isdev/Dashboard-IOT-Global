@@ -237,6 +237,7 @@ describe('splitByOrderShift - the verdict, which is now reported and not applied
     poSlots: 1,
     createdRaw: ['2026/09/08 13:56:00'],
     gap: null,
+    finishedOrders: [],
     ...over,
   });
 

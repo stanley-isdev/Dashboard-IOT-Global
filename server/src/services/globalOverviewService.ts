@@ -5,18 +5,17 @@ import type {
   GlobalOverview,
   Kpi,
   PlantSummary,
-  Process,
 } from '@dashboard/contract';
 import { plantFilterActive, plantMatcher, regionMatcher, zoneMatcher } from '@dashboard/contract';
 import {
   addCounts,
-  DEFAULT_LINK_PROCESS,
+  companyDrilldownUrl,
   deriveTier,
   emptyCounts,
   isReporting,
-  machineStatusUrl,
-  representativePlant,
+  plantDrilldownUrl,
   resolveShift,
+  startOfLocalDay,
   stripInternals,
   toIsoOffset,
 } from '@dashboard/domain-shared';
@@ -35,6 +34,7 @@ import {
   achievementFrom,
   achievementWarnings,
   averageOa,
+  countFinishedOrders,
   oaWarnings,
   orderShiftWarnings,
   splitByOrderShift,
@@ -227,12 +227,6 @@ function buildCompany(
   warnings: string[],
   plantInScope: (p: { code: string }) => boolean,
   scope: MachineScope,
-  /**
-   * The one process the Grafana drill-down opens on. Not `all`: the board's
-   * SQL compares `"process"` to a single value, so a link has to choose even
-   * where this board does not (config/policy.ts).
-   */
-  linkProcess: Process,
 ): {
   company: CompanySummary;
   oaMachines: MachineOa[];
@@ -241,33 +235,6 @@ function buildCompany(
 } {
   const nowMs = asOf.getTime();
 
-  /**
-   * The zones this plant is reporting on the process the link opens on, so the
-   * board lands on rows instead of on its own default zone. Empty when the
-   * plant is silent - the shared grafana.ts then leaves `Zone_var` alone rather
-   * than inventing one.
-   */
-  const zonesOf = (plantCode: string): string[] => {
-    const zones = new Set<string>();
-    for (const m of snapshot.machines[plantCode] ?? []) {
-      // Narrowed by the Zone filter too, so a reader who has scoped this board
-      // to one zone lands on that zone rather than on the plant's whole list.
-      // Without the gate the link would widen the scope the click came from,
-      // which is the one thing a drill-down must never do.
-      if (m.zone && (m.process === null || m.process === linkProcess) && scope.zone(m)) {
-        zones.add(m.zone);
-      }
-    }
-    return [...zones].sort();
-  };
-
-  const grafanaUrlFor = (plant: PlantMasterData): string =>
-    machineStatusUrl({
-      plantCode: plant.code,
-      process: linkProcess,
-      timezone: company.timezone,
-      zones: zonesOf(plant.code),
-    });
 
   /*
    * The Lamp filter is applied HERE, before liveness, so every figure above it
@@ -329,6 +296,22 @@ function buildCompany(
    * on exactly the historical windows the date picker exists to serve.
    */
   const shift = resolveShift(company.shiftConfig, asOf);
+
+  /*
+   * Midnight of this company's own calendar day, which is the window the
+   * `Order End` cards are counted over - `Counts.finished_orders`.
+   *
+   * Not the shift and not the production date, both of which are resolved right
+   * above and are the wrong clock for this one figure: the production boards'
+   * pickers are pinned to Grafana's `now/d`, and at THS that is 00:00 while the
+   * production day opens at 08:00. Measured on 2026-09-10 at 09:45 Bangkok, the
+   * two answers were 19 orders and 0.
+   *
+   * As at `asOf` for the same reason the shift is: on a historical window the
+   * question is which orders ended on the day being looked at, not which ended
+   * today.
+   */
+  const dayStart = startOfLocalDay(asOf, company.timezone);
 
   const built = base.map((b) => {
     const census = reporting
@@ -453,9 +436,22 @@ function buildCompany(
       // Kept even when the plant has aged into `no_data`: "last seen 40 minutes
       // ago" is the fact that separates a quiet site from a dead one (T-11).
       last_seen: b.lastSeen,
-      grafana_url: grafanaUrlFor(b.master),
+      grafana_url: plantDrilldownUrl(b.master.code),
       target_oa: b.master.targetOa,
-      counts: census ? census.counts : emptyCounts(),
+      /*
+       * The census, plus the one figure in it that does not come from the
+       * census query at all.
+       *
+       * `Order End` is not a status any machine reports - it is derived from
+       * the ORDER rows, which is why it reaches the counts from `oaMachines`
+       * and not from `buildPlantCensus`. Same scope as everything else on this
+       * plant: `oaMachines` has already been through the process and zone
+       * filters and the machine exclusions, so a filtered board counts the
+       * finished orders of the machines it is showing and no others.
+       */
+      counts: census
+        ? { ...census.counts, finished_orders: countFinishedOrders(oaMachines, dayStart) }
+        : emptyCounts(),
       kpi: buildKpi(oaMachines),
     };
     return { plant, oaMachines, publishes, master: b.master };
@@ -524,15 +520,6 @@ function buildCompany(
    */
   const censusPlants = built.map((b) => b.master);
 
-  /*
-   * A company row links to a PLANT board, because there is no company one -
-   * see @dashboard/domain-shared. Chosen from the scoped plants, so the link follows
-   * the Lamp filter, and preferring one that is actually on the air: at THS
-   * that is 6332, the only one of its four reporting.
-   */
-  const companyLink = representativePlant(scopedPlants, (code) =>
-    Boolean(snapshot.plants[code]?.lastSeen),
-  );
 
   return {
     company: {
@@ -554,7 +541,13 @@ function buildCompany(
       data_readiness: company.readiness,
       last_seen:
         company.readiness === 'live' ? latestSeen(plants.map((p) => p.last_seen)) : null,
-      grafana_url: companyLink ? grafanaUrlFor(companyLink) : null,
+      /*
+       * A company row links to a PLANT board, because there is no company one -
+       * see @dashboard/domain-shared. Taken from the scoped plants, so the link
+       * follows the Lamp filter rather than pointing outside what the row is
+       * counting, and `null` for a site nobody has supplied a board for.
+       */
+      grafana_url: companyDrilldownUrl(scopedPlants),
       counts: reporting ? addCounts(plants.map((p) => p.counts)) : emptyCounts(),
       kpi: buildKpi(oaMachines),
       plants,
@@ -763,9 +756,6 @@ export function buildGlobalOverview(opts: {
       warnings,
       inPlantScope,
       machineScope,
-      // `all` is this board's scope, never a link's: the drill-down has to name
-      // one process, and Injection is the one it opens on.
-      wantProcess === 'all' ? DEFAULT_LINK_PROCESS : wantProcess,
     ),
   );
   // Filtered as pairs, so the machines behind the totals can never drift out of

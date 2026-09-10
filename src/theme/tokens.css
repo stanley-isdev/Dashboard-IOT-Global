@@ -476,6 +476,33 @@
   --accent-on-fill: #ffffff;
 
   /*
+   * The same on-state, one octave quieter.
+   *
+   * --accent-fill is the board's loudest surface, and on a control that carries
+   * nothing but a small glyph it was louder than the state it stands for: two
+   * solid orange squares beside the From/To fields read as the subject of the
+   * panel rather than as "this field's calendar is out". So the open calendar
+   * button takes a pastel ground with an orange glyph on it, not a white one.
+   *
+   * Its own pair rather than --accent-tint-strong with --accent-ink: that tint
+   * is the *hover* wash, and this button hovers. A wash and a state one shade
+   * apart are not two states. This ground sits far enough above the tint to
+   * read as a fill.
+   *
+   * The ground went a second step paler after the first was still read as too
+   * loud. It can go this far because the two states are never seen side by
+   * side: this rule sits after the hover and at equal specificity, so an open
+   * button under the pointer keeps the fill, and a wash is only ever on a
+   * button whose calendar is shut.
+   *
+   * #AA5708 on #FCE2C0 measures 4.12:1. That is short of the 4.5:1 a label
+   * would owe, and it owes nothing: what sits on it is a 1.05em icon, held to
+   * the 3:1 a non-text graphic is held to, the same rule as the mark tokens.
+   */
+  --accent-fill-soft: #fce2c0;
+  --accent-on-fill-soft: #aa5708;
+
+  /*
    * A deep white-labelled ground was the other way to reach a white label, and
    * it is not what shipped.
    *
@@ -993,6 +1020,14 @@ html[lang='th']:root[data-density='tv'] {
   --accent-fill: #ffb366;
   --accent-fill-strong: #f2a94a;
   --accent-on-fill: #0a1020;
+
+  /* The quiet fill, inverted the way the loud one is. "Pastel" against a
+     near-black board is a muted ground rather than a pale one, so this is the
+     brand hue taken down with --accent-ink's value on it - lifted a step when
+     the light ground was paled, so the two themes stay the same distance from
+     their own page. 4.52:1, comfortably past the 3:1 an icon owes. */
+  --accent-fill-soft: #6b4a25;
+  --accent-on-fill-soft: #ffb366;
 
   /* The %OA trend series, lightened for the dark ground the way an ink is.
      8.13:1 on --panel, 6.78:1 on the lightest surface. */

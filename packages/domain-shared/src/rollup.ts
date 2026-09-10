@@ -30,6 +30,11 @@ export function emptyCounts(): Counts {
       Alarm: 0,
       Warning: 0,
     },
+    /* Orders, not machines - see the field's note in the contract. Zero here
+       means "none finished today", which is also the honest answer for a site
+       whose order rows never arrived: no order can be shown as ended by data
+       that is missing. */
+    finished_orders: 0,
     running: 0,
     stopped: 0,
     idle: 0,
@@ -42,6 +47,11 @@ export function addCounts(list: Counts[]): Counts {
   const base = emptyCounts();
   for (const c of list) {
     base.total += c.total;
+    /* Each part counted its own local day, so a roll-up across zones adds up
+       exactly, and one across timezones adds up to "orders finished on each
+       site's own today" - which is the only reading of a group figure that
+       every site in it would recognise. */
+    base.finished_orders += c.finished_orders;
     base.running += c.running;
     base.stopped += c.stopped;
     base.idle += c.idle;

@@ -14,13 +14,14 @@ import type {
 import {
   BUCKET_OF,
   resolveShift,
+  startOfLocalDay,
   stripInternals,
   type ResolvedShift,
 } from '@dashboard/domain-shared';
 import type { Env } from '../config/env.ts';
 import { COMPANIES, type CompanyMasterData, type PlantMasterData } from '../config/masterData.ts';
 import { buildPlantCensus } from '../domain/counts.ts';
-import { achievementFrom, round1, type MachineOa } from '../domain/oa.ts';
+import { achievementFrom, countFinishedOrders, round1, type MachineOa } from '../domain/oa.ts';
 import { sumHours, sumPlans, type MachineHourOa } from '../domain/trend.ts';
 import type { LiveSnapshot, MachineObservation } from './liveSnapshot.ts';
 import { buildGlobalOverview, buildKpi } from './globalOverviewService.ts';
@@ -148,7 +149,11 @@ function buildZones(
   oa: MachineOa[],
   plant: PlantMasterData,
   asOf: Date,
+  /* The company's, not the plant's: a zone has no clock of its own, and
+     `finished_orders` below is counted over the site's calendar day. */
+  timeZone: string,
 ): ZoneSummary[] {
+  const dayStart = startOfLocalDay(asOf, timeZone);
   const byZone = new Map<string, MachineObservation[]>();
   for (const m of observations) {
     if (!m.zone) continue;
@@ -165,6 +170,7 @@ function buildZones(
         observations: members,
         machineExclusions: plant.machineExclusions,
       });
+      const zoneOa = oa.filter((m) => ids.has(m.machine));
       const lastSeen = latestSeen(members);
       return {
         code,
@@ -182,8 +188,10 @@ function buildZones(
            arriving - these rows are built FROM those rows - so a zone can never
            be the site nobody can reach, and has no absence to explain. */
         absence: null,
-        counts: census.counts,
-        kpi: buildKpi(oa.filter((m) => ids.has(m.machine))),
+        /* `Order End` comes from the order rows rather than the status rows -
+           see the same line on the plant summary in globalOverviewService. */
+        counts: { ...census.counts, finished_orders: countFinishedOrders(zoneOa, dayStart) },
+        kpi: buildKpi(zoneOa),
       };
     });
 }
@@ -227,7 +235,7 @@ export function buildCompanyDetail(opts: ScopeInput & { company: string }): Comp
     const seed = master.plants.find((mp) => mp.code === p.code);
     const observations = seed ? observationsFor(opts.snapshot, seed, opts.filters.process) : [];
     const oa = oaFor(opts.snapshot, p.code, opts.filters.process);
-    return { ...p, zones: seed ? buildZones(observations, oa, seed, asOf) : [] };
+    return { ...p, zones: seed ? buildZones(observations, oa, seed, asOf, master.timezone) : [] };
   });
 
   return {
@@ -277,7 +285,7 @@ export function buildPlantDetail(
     },
     plant,
     shift: shift ? stripInternals(shift) : null,
-    zones: buildZones(observations, oa, seed, asOf),
+    zones: buildZones(observations, oa, seed, asOf, master.timezone),
     machines: buildMachines(observations, oa, plant.grafana_url),
     output: buildOutput(shift, opts.snapshot.trend, [seed.code], asOf),
     trend: overview.trend,

@@ -146,6 +146,29 @@ export function TimeRangePicker() {
   const list = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
+  /*
+   * The zone picker's own open state.
+   *
+   * It was a native <select> until 2026-09-09, and what it dropped was the
+   * platform's list: square corners, the OS highlight, system type, opening a
+   * hand's width from a Region menu drawn in the board's panel, radius, ink and
+   * orange disc. Two dropdowns side by side in two design languages read as two
+   * applications, and none of it was fixable from CSS - `option` honours a
+   * background and a colour and nothing else, which is why the rule that used to
+   * sit here could keep the list from opening white and could do nothing at all
+   * about the shape of it.
+   *
+   * So this is the Region filter's menu (.regionmenu, in its compact width),
+   * with the same rows, the same disc, the same roving arrows and the same ways
+   * out. The trigger keeps the segmented track it shares with the Per-site
+   * button beside it, because that pair is one control and always was.
+   */
+  const [zoneOpen, setZoneOpen] = useState(false);
+  const zoneWrap = useRef<HTMLDivElement>(null);
+  const zoneTrigger = useRef<HTMLButtonElement>(null);
+  const zoneMenu = useRef<HTMLDivElement>(null);
+  const zoneMenuId = useId();
+
   const range = filters.range;
   const served = meta.data?.ranges?.length ? meta.data.ranges : SERVED;
   /* The calendar's bounds and the query cap, from the server. Undefined until
@@ -158,10 +181,41 @@ export function TimeRangePicker() {
      an unset To field stands for. */
   const today = todayIn(cfg.referenceTimezone);
 
-  const close = useCallback((focusTrigger: boolean) => {
+  /*
+   * ---- the two ways this panel closes ----
+   *
+   * `hide` puts it away and takes the calendar layer with it. Both layers,
+   * always: the grid is drawn beside the panel rather than inside it, so a
+   * panel that closed on its own left the calendar's open state set, and the
+   * next time the reader opened the control the grid was already out - a
+   * two-click date picker offered to somebody who came for "Last 8h".
+   *
+   * `dismiss` is `hide` plus throwing the draft away, and it is what every
+   * exit that is NOT Apply goes through: a tap on the board behind, Escape, Tab
+   * out, a second press on the capsule.
+   *
+   * Why the draft has to die there. Half a range is a normal state of this
+   * control - the grid passes through "start, no end" on the way to every pick
+   * - and it used to survive the panel closing, so a reader who opened the
+   * calendar, clicked one day and then clicked the board to get out of the way
+   * came back to a panel whose From field had changed under them and whose
+   * Apply button was live against a window they never asked for. Nothing on the
+   * board had moved, which is right, but the panel no longer agreed with it.
+   * Reseeding from the applied pair is what makes closing mean "never mind".
+   */
+  const hide = useCallback((focusTrigger: boolean) => {
     setOpen(false);
+    setCalOpen(false);
     if (focusTrigger) trigger.current?.focus();
   }, []);
+
+  const dismiss = useCallback(
+    (focusTrigger: boolean) => {
+      setAbs({ start: filters.from, end: filters.to });
+      hide(focusTrigger);
+    },
+    [filters.from, filters.to, hide],
+  );
 
   /*
    * Re-seed the draft whenever the applied window changes underneath it.
@@ -192,11 +246,11 @@ export function TimeRangePicker() {
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+      if (!wrap.current?.contains(e.target as Node)) dismiss(false);
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
-  }, [open]);
+  }, [open, dismiss]);
 
   /* Focus opens on the window in force, which is both the useful default and
      where a reader who opened this with the keyboard expects to land. */
@@ -213,7 +267,7 @@ export function TimeRangePicker() {
    * board is how a popover ends up covering the ranking nobody can see.
    */
   const onFocusOut = (e: React.FocusEvent) => {
-    if (!wrap.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+    if (!wrap.current?.contains(e.relatedTarget as Node | null)) dismiss(false);
   };
 
   /*
@@ -236,7 +290,7 @@ export function TimeRangePicker() {
     }
     if (!open) return;
     e.stopPropagation();
-    close(true);
+    dismiss(true);
   };
 
   /*
@@ -261,6 +315,101 @@ export function TimeRangePicker() {
     items[next].focus();
   };
 
+  /*
+   * A tap anywhere else closes the zone menu and leaves the panel standing.
+   *
+   * The panel's own dismissal handler only fires for taps outside the whole
+   * control, and everything this menu covers - the quick ranges, the fields,
+   * the sentence beside it - is inside that. Without this the menu stayed open
+   * over the panel it belongs to.
+   */
+  useEffect(() => {
+    if (!zoneOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!zoneWrap.current?.contains(e.target as Node)) setZoneOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [zoneOpen]);
+
+  /* Focus opens on the zone in force - the region menu's rule, for its reason:
+     opening the list is how a reader checks what is selected, and the answer
+     belongs under the cursor rather than somewhere below it. */
+  useEffect(() => {
+    if (!zoneOpen) return;
+    const items = zoneItemsOf(zoneMenu.current);
+    (items.find((el) => el.getAttribute('aria-checked') === 'true') ?? items[0])?.focus();
+  }, [zoneOpen]);
+
+  const closeZone = (focusTrigger: boolean) => {
+    setZoneOpen(false);
+    if (focusTrigger) zoneTrigger.current?.focus();
+  };
+
+  /* Roving focus, and an Escape that closes one layer at a time: the panel's
+     own handler sits on the wrapper above this one and would otherwise take the
+     whole panel with it. */
+  const onZoneMenuKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeZone(true);
+      return;
+    }
+    if (e.key === 'Tab') {
+      setZoneOpen(false);
+      return;
+    }
+    const items = zoneItemsOf(zoneMenu.current);
+    if (items.length === 0) return;
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next = -1;
+    if (e.key === 'ArrowDown') next = (i + 1) % items.length;
+    else if (e.key === 'ArrowUp') next = (i - 1 + items.length) % items.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    items[next].focus();
+  };
+
+  /* Picking any real zone leaves per-site behind - `setFixedZone` sets the mode
+     with it - which is exactly what the select's onChange did. Unlike the region
+     menu this one closes on the choice: there is one zone in force, so there is
+     never a second tick to make. */
+  const pickZone = (value: string) => {
+    if (value === 'viewer') setTimeMode('viewer');
+    else setFixedZone(value);
+    closeZone(true);
+  };
+
+  /*
+   * The zone in force: the value its row carries, and the label the trigger
+   * reads.
+   *
+   * One string for both, so opening the list shows the reader the label they
+   * were already looking at rather than a second spelling of it. The `||`
+   * fallbacks are the footer sentence's, for the same case: a mode restored from
+   * storage can name a zone the browser will not resolve, or none at all, and
+   * the board is on the reference zone in either event.
+   */
+  const zoneValue =
+    timeMode === 'site_local'
+      ? ''
+      : timeMode === 'viewer'
+        ? 'viewer'
+        : fixedZone || cfg.referenceTimezone;
+  const zoneName = zoneValue === 'viewer' ? (viewerZone ?? cfg.referenceTimezone) : zoneValue;
+  /* Per-site is what the button beside the trigger holds, so there is no zone to
+     print and the control asks for one instead. */
+  const zoneText =
+    zoneValue === ''
+      ? t('time.pickZone')
+      : `${
+          zoneValue === 'viewer'
+            ? t('time.viewer')
+            : (zones.find((z) => z.zone === zoneValue)?.label ?? zoneValue)
+        } (${zoneOffsetShort(zoneName)})`;
+
   /** True while the board is showing a window the calendar picked. */
   const absoluteApplied = filters.from !== null && filters.to !== null;
 
@@ -276,7 +425,9 @@ export function TimeRangePicker() {
   const pick = (choice: Range) => {
     if (choice !== range || absoluteApplied) setFilters({ range: choice, from: null, to: null });
     setAbs({ start: null, end: null });
-    close(true);
+    /* `hide`, not `dismiss`: the line above IS this control's new draft, and
+       dismiss would reseed it from a `filters` that has not been rewritten yet. */
+    hide(true);
   };
 
   /*
@@ -317,8 +468,11 @@ export function TimeRangePicker() {
   const applyAbsolute = () => {
     if (!canApply) return;
     setFilters({ from: abs.start, to: draftEnd });
-    setCalOpen(false);
-    close(true);
+    /* The draft becomes the applied pair, spelled out rather than left to the
+       reseed below: `draftEnd` can be the `now` the To field stands for, which
+       is a date the reader never clicked and the draft did not hold. */
+    setAbs({ start: abs.start, end: draftEnd });
+    hide(true);
   };
 
   /** Back to the quick range, dropping the absolute window. */
@@ -377,7 +531,7 @@ export function TimeRangePicker() {
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-label={t('time.range')}
-        onClick={() => (open ? close(false) : setOpen(true))}
+        onClick={() => (open ? dismiss(false) : setOpen(true))}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
@@ -598,7 +752,7 @@ export function TimeRangePicker() {
               </button>
 
               {/*
-               * Everything that IS one zone goes in the select - the reader's
+               * Everything that IS one zone goes in the menu - the reader's
                * own first, then every clock the fleet spans, from `/meta`. This
                * replaced a second button for "HQ time": picking Thailand is the
                * same reading, and the list also answers "let me hold this
@@ -609,43 +763,74 @@ export function TimeRangePicker() {
                * half of `aria-pressed` on the button beside it. Without it this
                * was a segmented control where one tile filled orange when
                * chosen and the other showed no state at all, so the pair read
-               * as a button next to an unrelated field rather than as two
+               * as a button next to an unrelated control rather than as two
                * settings of one thing. A class rather than `:has()` on the
                * container: the state is the reader's mode, and the mode is
                * already here.
                */}
-              <select
-                className={`timepanel__zonesel${timeMode === 'site_local' ? '' : ' is-on'}`}
-                aria-label={t('time.pickZone')}
-                value={timeMode === 'site_local' ? '' : timeMode === 'viewer' ? 'viewer' : fixedZone}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === 'viewer') setTimeMode('viewer');
-                  else if (v) setFixedZone(v);
-                }}
-              >
-                {/* Only reachable while per-site is active; picking any real
-                    entry leaves it behind and it stops being selectable. */}
-                {timeMode === 'site_local' ? <option value="">{t('time.pickZone')}</option> : null}
-                {/*
-                 * The offset in parentheses, not after a dash. A hyphen is what
-                 * check-nodash asks for in place of an em dash, and it cannot
-                 * be used here: `fleetZones` already joins co-located countries
-                 * with " · ", so "Thailand · Vietnam - +07" puts two different
-                 * separators in one label and "Thailand · Vietnam · +07" reads
-                 * as a third country. Brackets are unambiguous either way.
-                 */}
-                {viewerZone ? (
-                  <option value="viewer">
-                    {t('time.viewer')} ({zoneOffsetShort(viewerZone)})
-                  </option>
+              <div className="timepanel__zonewrap" ref={zoneWrap}>
+                <button
+                  ref={zoneTrigger}
+                  type="button"
+                  className={`timepanel__zonesel${timeMode === 'site_local' ? '' : ' is-on'}`}
+                  aria-haspopup="menu"
+                  aria-expanded={zoneOpen}
+                  aria-controls={zoneOpen ? zoneMenuId : undefined}
+                  /* Named and answered in one string. A `<select>` had this
+                     for free - the platform reads the label and then the chosen
+                     option - and a button's accessible name is whatever is
+                     inside it, so an aria-label naming only the control would
+                     have replaced the one thing the reader wants to hear. */
+                  aria-label={`${t('time.pickZone')}: ${zoneText}`}
+                  /* The same string untruncated, for the zone whose label the
+                     track's width has ellipsized: "Thailand · Vietnam" and an
+                     offset do not both fit a control in a panel footer. */
+                  title={zoneText}
+                  onClick={() => (zoneOpen ? closeZone(false) : setZoneOpen(true))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setZoneOpen(true);
+                    }
+                  }}
+                >
+                  <span className="timepanel__zoneval">{zoneText}</span>
+                  <span className="timepanel__zonecaret" aria-hidden="true">
+                    ▼
+                  </span>
+                </button>
+
+                {zoneOpen ? (
+                  <div
+                    className="regionmenu regionmenu--compact timepanel__zonemenu"
+                    id={zoneMenuId}
+                    role="menu"
+                    aria-label={t('time.pickZone')}
+                    ref={zoneMenu}
+                    onKeyDown={onZoneMenuKey}
+                  >
+                    {viewerZone ? (
+                      <ZoneOption
+                        value="viewer"
+                        checked={zoneValue === 'viewer'}
+                        label={t('time.viewer')}
+                        zone={viewerZone}
+                        onPick={pickZone}
+                      />
+                    ) : null}
+                    {zones.map((z) => (
+                      <ZoneOption
+                        key={z.zone}
+                        value={z.zone}
+                        checked={zoneValue === z.zone}
+                        label={z.label}
+                        zone={z.zone}
+                        onPick={pickZone}
+                      />
+                    ))}
+                  </div>
                 ) : null}
-                {zones.map((z) => (
-                  <option key={z.zone} value={z.zone}>
-                    {z.label} ({zoneOffsetShort(z.zone)})
-                  </option>
-                ))}
-              </select>
+              </div>
             </div>
           </div>
         </div>
@@ -680,6 +865,59 @@ function chunksFor(
 
 function itemsOf(root: HTMLElement | null): HTMLButtonElement[] {
   return root ? Array.from(root.querySelectorAll<HTMLButtonElement>('[role="radio"]')) : [];
+}
+
+function zoneItemsOf(root: HTMLElement | null): HTMLButtonElement[] {
+  return root ? Array.from(root.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')) : [];
+}
+
+/**
+ * One zone in the menu, drawn as the region menu draws a base.
+ *
+ * `menuitemradio` and not the region menu's `menuitemcheckbox`: those rows are
+ * a set a reader adds to, and this is one clock for the whole board - picking
+ * Tokyo is picking away from Bangkok, which is what a radio says and a checkbox
+ * does not.
+ *
+ * The offset sits in its own column rather than after a dash in the label. A
+ * hyphen is what check-nodash asks for in place of an em dash and it cannot be
+ * used here: `fleetZones` already joins co-located countries with " · ", so
+ * "Thailand · Vietnam - +07" puts two separators in one line and
+ * "Thailand · Vietnam · +07" reads as a third country. Brackets are unambiguous
+ * either way, and are what the closed trigger prints.
+ */
+function ZoneOption({
+  value,
+  checked,
+  label,
+  zone,
+  onPick,
+}: {
+  value: string;
+  checked: boolean;
+  label: string;
+  /** The IANA name the offset is read off - for `viewer`, the browser's. */
+  zone: string;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={checked}
+      className="regionmenu__opt"
+      /* -1 so Tab leaves the menu instead of walking it; the arrows move
+         between rows, which is what the pattern promises a reader. */
+      tabIndex={-1}
+      onClick={() => onPick(value)}
+    >
+      <span className="regionmenu__label">{label}</span>
+      <span className="regionmenu__meta">({zoneOffsetShort(zone)})</span>
+      <span className="regionmenu__check" aria-hidden="true">
+        {checked ? '✓' : ''}
+      </span>
+    </button>
+  );
 }
 
 /**

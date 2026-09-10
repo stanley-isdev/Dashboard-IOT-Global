@@ -1,11 +1,6 @@
 import type { Meta, Process, SourceHealth } from '@dashboard/contract';
 import { zProcess } from '@dashboard/contract';
-import {
-  DEFAULT_LINK_PROCESS,
-  GRAFANA_BASE_URL,
-  machineStatusUrl,
-  representativePlant,
-} from '@dashboard/domain-shared';
+import { companyDrilldownUrl, GRAFANA_BASE_URL } from '@dashboard/domain-shared';
 import { toPlainDate } from '@dashboard/domain-shared';
 import { MAX_ASSEMBLED_HOURS, MAX_WINDOW_HOURS, RETENTION_DAYS } from '../influx/queries.ts';
 import type { CompanyMasterData } from '../config/masterData.ts';
@@ -140,16 +135,11 @@ export function buildMeta(
 
 /**
  * A company's link, from master data only. `null` for a site with no plants
- * yet - the rollout sites of §11 - where a link would land on an empty board
- * and `GrafanaLink` renders nothing instead.
+ * yet - the rollout sites of §11 - and for every site whose link nobody has
+ * supplied, which `companyDrilldownUrl` decides. `GrafanaLink` draws a dimmed
+ * arrow for a `null`, so the column reads "no board yet" rather than skipping
+ * the row.
  */
 function companyGrafanaUrl(company: CompanyMasterData): string | null {
-  // Nothing here knows what is reporting, so the first plant it is.
-  const plant = representativePlant(company.plants, () => false);
-  if (!plant) return null;
-  return machineStatusUrl({
-    plantCode: plant.code,
-    process: DEFAULT_LINK_PROCESS,
-    timezone: company.timezone,
-  });
+  return companyDrilldownUrl(company.plants);
 }

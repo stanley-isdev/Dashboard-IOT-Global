@@ -3,6 +3,7 @@ import {
   achievementFrom,
   achievementWarnings,
   averageOa,
+  countFinishedOrders,
   foldMachineOa,
   oaFromPoGroup,
   oaWarnings,
@@ -170,6 +171,7 @@ describe('foldMachineOa - one row per machine, the order it is running now', () 
       poSlots: 1,
       createdRaw: ['2026-08-25 09:12:00'],
       gap: null,
+      finishedOrders: [],
     });
 
     const paired = foldMachineOa([
@@ -189,6 +191,7 @@ describe('foldMachineOa - one row per machine, the order it is running now', () 
       // Two open slots, two dates, in slot order - what layer 2 then reads.
       createdRaw: ['2026-08-25 09:12:00', '2026-08-25 09:40:00'],
       gap: null,
+      finishedOrders: [],
     });
     // Reported, and named on the envelope so nobody reads 114% as a measurement.
     expect(oaWarnings('THS/6332', paired).join(' ')).toContain('I4');
@@ -212,12 +215,105 @@ describe('foldMachineOa - one row per machine, the order it is running now', () 
   });
 });
 
+/**
+ * `Order End` layer 1 - the figure that read 0 on every board until 2026-09-10.
+ *
+ * The cause was here: the fold kept the newest PO group per machine and dropped
+ * the rest, and those dropped groups ARE the board's `Order End` cards. The
+ * status table cannot supply them - measured over 24 h at THS 6332 the same
+ * day, `production_machine_status` carried `Stop`, `Mass Pro` and `Dandori` and
+ * nothing else - so `by_status['Order End']` is 0 on live data and the card had
+ * no other source.
+ */
+describe('foldMachineOa - the orders a machine has already finished', () => {
+  /* I5's real day: a 220-piece order finished at 04:11, a 400-piece one loaded
+     at 10:05. The card shows the second; the first is an `Order End` card. */
+  const twoOrders = [
+    row({ po0: '110000953255', plan0: 220, sum_qty: 173, last_row: '2026-08-25T04:11:02.000' }),
+    row({ po0: '110000962985', plan0: 400, sum_qty: 295, last_row: '2026-08-25T10:05:54.359' }),
+  ];
+
+  it('keeps the finished order the current card replaced', () => {
+    const folded = foldMachineOa(twoOrders);
+    expect(folded).toHaveLength(1);
+    expect(folded[0]!.finishedOrders).toEqual(['2026-08-25T04:11:02.000Z']);
+  });
+
+  it('is unaffected by the order the rows arrive in', () => {
+    expect(foldMachineOa([...twoOrders].reverse())[0]).toMatchObject({
+      groupPo: '110000962985',
+      finishedOrders: ['2026-08-25T04:11:02.000Z'],
+    });
+  });
+
+  it('counts a finished order for a machine that has nothing loaded now', () => {
+    // The ordinary case: the slots go back to `-` the moment an order ends, so
+    // most `Order End` cards belong to machines whose current card is idle.
+    const folded = foldMachineOa([
+      row({ po0: '110000953255', last_row: '2026-08-25T04:11:02.000' }),
+      row({ po0: '-', plan0: 0, last_row: '2026-08-25T10:05:54.359' }),
+    ]);
+    expect(folded[0]).toMatchObject({
+      groupPo: null,
+      finishedOrders: ['2026-08-25T04:11:02.000Z'],
+    });
+  });
+
+  it('does not count an idle stretch as a finished order', () => {
+    // A group with `-` in every slot is a machine sitting still, not an order.
+    const folded = foldMachineOa([
+      row({ po0: '-', plan0: 0, last_row: '2026-08-25T03:00:00.000' }),
+      row({ po0: '110000962985', last_row: '2026-08-25T10:05:54.359' }),
+    ]);
+    expect(folded[0]!.finishedOrders).toEqual([]);
+  });
+
+  it('counts orders and not machines, newest first', () => {
+    const folded = foldMachineOa([
+      row({ machine: 'I6', po0: 'A', last_row: '2026-08-25T02:00:00.000' }),
+      row({ machine: 'I6', po0: 'B', last_row: '2026-08-25T05:00:00.000' }),
+      row({ machine: 'I6', po0: 'C', last_row: '2026-08-25T09:00:00.000' }),
+    ]);
+    expect(folded[0]!.finishedOrders).toEqual([
+      '2026-08-25T05:00:00.000Z',
+      '2026-08-25T02:00:00.000Z',
+    ]);
+    // Three orders, one machine - which is the whole reason this is not part of
+    // the census. TOTAL would count I6 once.
+    expect(countFinishedOrders(folded, new Date('2026-08-25T00:00:00Z'))).toBe(2);
+  });
+});
+
+describe('countFinishedOrders - the board`s window, not ours', () => {
+  const folded = () =>
+    foldMachineOa([
+      row({ po0: 'A', last_row: '2026-08-24T20:00:00.000' }),
+      row({ po0: 'B', last_row: '2026-08-25T04:11:02.000' }),
+      row({ po0: 'C', last_row: '2026-08-25T10:05:54.359' }),
+    ]);
+
+  it('counts only what ended on or after the cut', () => {
+    // Bangkok midnight on the 25th is 17:00Z on the 24th, so all three of the
+    // machine's groups are in the day and two of them are finished orders.
+    expect(countFinishedOrders(folded(), new Date('2026-08-24T17:00:00Z'))).toBe(2);
+    // Midnight UTC drops the one that ended at 20:00 the previous evening.
+    expect(countFinishedOrders(folded(), new Date('2026-08-25T00:00:00Z'))).toBe(1);
+    // A cut after everything: the day has produced no finished order yet.
+    expect(countFinishedOrders(folded(), new Date('2026-08-25T12:00:00Z'))).toBe(0);
+  });
+
+  it('is 0 for machines that have finished nothing', () => {
+    expect(countFinishedOrders(foldMachineOa([row()]), new Date('2026-08-25T00:00:00Z'))).toBe(0);
+    expect(countFinishedOrders([], new Date('2026-08-25T00:00:00Z'))).toBe(0);
+  });
+});
+
 describe('averageOa - the "Avg %OA" card', () => {
   const board = [
-    { plant: '6332', machine: 'IC4', process: 'Injection', groupPo: 'a', oaPct: 48.9, actualQty: 137, planQty: null, shotCount: 137, poSlots: 1, createdRaw: [], gap: null },
-    { plant: '6332', machine: 'I5', process: 'Injection', groupPo: 'b', oaPct: 47.5, actualQty: 295, planQty: null, shotCount: 295, poSlots: 1, createdRaw: [], gap: null },
-    { plant: '6332', machine: 'IA1', process: 'Injection', groupPo: 'c', oaPct: 89.9, actualQty: 71, planQty: null, shotCount: 71, poSlots: 1, createdRaw: [], gap: null },
-    { plant: '6332', machine: 'P1I1', process: 'Injection', groupPo: 'd', oaPct: 93, actualQty: 41, planQty: null, shotCount: 41, poSlots: 1, createdRaw: [], gap: null },
+    { plant: '6332', machine: 'IC4', process: 'Injection', groupPo: 'a', oaPct: 48.9, actualQty: 137, planQty: null, shotCount: 137, poSlots: 1, createdRaw: [], gap: null, finishedOrders: [] },
+    { plant: '6332', machine: 'I5', process: 'Injection', groupPo: 'b', oaPct: 47.5, actualQty: 295, planQty: null, shotCount: 295, poSlots: 1, createdRaw: [], gap: null, finishedOrders: [] },
+    { plant: '6332', machine: 'IA1', process: 'Injection', groupPo: 'c', oaPct: 89.9, actualQty: 71, planQty: null, shotCount: 71, poSlots: 1, createdRaw: [], gap: null, finishedOrders: [] },
+    { plant: '6332', machine: 'P1I1', process: 'Injection', groupPo: 'd', oaPct: 93, actualQty: 41, planQty: null, shotCount: 41, poSlots: 1, createdRaw: [], gap: null, finishedOrders: [] },
   ] as const;
 
   it("matches the board's AVG %OA of 69.8%", () => {
@@ -238,6 +334,7 @@ describe('averageOa - the "Avg %OA" card', () => {
       poSlots: 0,
       createdRaw: [],
       gap: null,
+      finishedOrders: [],
     }));
     expect(averageOa([...board, ...idle])).toBe(69.8);
   });
@@ -262,8 +359,8 @@ describe('averageOa - the "Avg %OA" card', () => {
 describe('oaWarnings - every caveat is named on the envelope', () => {
   it('names the machines running several orders at once', () => {
     const warnings = oaWarnings('ASI/6051', [
-      { plant: '6051', machine: 'M-ID-02', process: 'Injection', groupPo: 'a_b_c', oaPct: 418.9, actualQty: 168, planQty: null, shotCount: 28, poSlots: 3, createdRaw: [], gap: null },
-      { plant: '6051', machine: 'M-ID-01', process: 'Injection', groupPo: 'd', oaPct: 110, actualQty: 32, planQty: null, shotCount: 16, poSlots: 1, createdRaw: [], gap: null },
+      { plant: '6051', machine: 'M-ID-02', process: 'Injection', groupPo: 'a_b_c', oaPct: 418.9, actualQty: 168, planQty: null, shotCount: 28, poSlots: 3, createdRaw: [], gap: null, finishedOrders: [] },
+      { plant: '6051', machine: 'M-ID-01', process: 'Injection', groupPo: 'd', oaPct: 110, actualQty: 32, planQty: null, shotCount: 16, poSlots: 1, createdRaw: [], gap: null, finishedOrders: [] },
     ]);
 
     expect(warnings.some((w) => w.includes('M-ID-02') && w.includes('more than one order'))).toBe(
@@ -276,7 +373,7 @@ describe('oaWarnings - every caveat is named on the envelope', () => {
   it('says nothing when every machine measured cleanly', () => {
     expect(
       oaWarnings('THS/6332', [
-        { plant: '6332', machine: 'I5', process: 'Injection', groupPo: 'a', oaPct: 47.5, actualQty: 295, planQty: null, shotCount: 295, poSlots: 1, createdRaw: [], gap: null },
+        { plant: '6332', machine: 'I5', process: 'Injection', groupPo: 'a', oaPct: 47.5, actualQty: 295, planQty: null, shotCount: 295, poSlots: 1, createdRaw: [], gap: null, finishedOrders: [] },
       ]),
     ).toEqual([]);
   });
@@ -407,6 +504,7 @@ describe('achievementWarnings', () => {
     poSlots: 1,
     createdRaw: ['2026-08-25 09:12:00'],
     gap: null,
+    finishedOrders: [],
     ...over,
   });
 

@@ -133,6 +133,7 @@ function onOrder(
      */
     createdRaw: ['2026-08-25 09:30:00'],
     gap: null,
+    finishedOrders: [],
   };
 }
 
@@ -151,6 +152,7 @@ function idle(plant: string, machine: string): MachineOa {
     poSlots: 0,
     createdRaw: [],
     gap: null,
+    finishedOrders: [],
   };
 }
 
@@ -1424,24 +1426,34 @@ describe('GET /api/v1/global-overview', () => {
     expect(oa(one)).toBe(90);
   });
 
-  it('points the drill-down at the zones in scope rather than the whole plant', async () => {
-    // A link that widened the scope the click came from is the one thing a
-    // drill-down must never do.
-    const snap = snapshot({ '6332': 10 }, { '6332': [] });
-    snap.machines['6332'] = [
-      { plant: '6332', machine: 'I1', process: 'Injection', zone: '2A-A', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
-      { plant: '6332', machine: 'I2', process: 'Injection', zone: '2A-B', status: 'Mass Pro', lastSeen: null, statusStartTime: null },
-    ];
+  it('hands out only the links somebody supplied, and null for every other site', async () => {
+    /*
+     * The rule this replaces a generated URL with. A constructed link looked
+     * right and opened an empty board on eight of the nine sites - STJ's
+     * pointed at a plant its instance has never heard of - so nothing is built
+     * any more and a site without a supplied URL reports `null`, which the
+     * ranking draws as a dimmed arrow.
+     *
+     * A consequence worth naming: the link no longer follows the Zone filter.
+     * Both supplied URLs carry `var-Zone_var=$__all`, so a reader who has
+     * narrowed this board to one zone still lands on the whole plant.
+     */
+    const payload = overview({ snapshot: snapshot({ '6332': 10 }, { '6332': [] }), filters: FILTERS, env: ENV, now: NOW });
+    const link = (code: string) => payload.companies.find((c) => c.code === code)!.grafana_url;
 
-    const url = (zone: string) =>
-      overview({ snapshot: snap, filters: { ...FILTERS, zone }, env: ENV, now: NOW })
-        .companies.find((c) => c.code === 'THS')!
-        .plants.find((x) => x.code === '6332')!.grafana_url!;
+    expect(link('THS')).toBe(
+      'http://10.200.129.66:3000/d/adz5fll/machine-status-v2-0?orgId=1&from=now%2Fd&to=now%2Fd&timezone=Asia%2FBangkok&var-Lamp_var=6332&var-process_var=Injection&var-Zone_var=$__all&refresh=10s',
+    );
+    expect(link('ASI')).toContain('machine-status-v1-0-asi');
+    // The one that was invented, and every site still waiting for a board.
+    expect(link('STJ')).toBeNull();
+    for (const code of ['SEH', 'VNS', 'ISE', 'SUS', 'IIS', 'SMX']) expect(link(code)).toBeNull();
 
-    expect(url('all')).toContain('var-Zone_var=2A-A');
-    expect(url('all')).toContain('var-Zone_var=2A-B');
-    expect(url('2A-A')).toContain('var-Zone_var=2A-A');
-    expect(url('2A-A')).not.toContain('var-Zone_var=2A-B');
+    // Plant level follows the same registry: THS's other plants have no link of
+    // their own, so the company row's link is 6332's and theirs is null.
+    const ths = payload.companies.find((c) => c.code === 'THS')!;
+    expect(ths.plants.find((x) => x.code === '6332')!.grafana_url).toBe(link('THS'));
+    expect(ths.plants.filter((x) => x.code !== '6332').every((x) => x.grafana_url === null)).toBe(true);
   });
 
   it('lists the zones a plant reports on /meta, so the Zone picker has choices', async () => {

@@ -839,7 +839,8 @@ button.filter {
  */
 .filter__caret,
 .refreshpicker__chev,
-.langpicker__chev {
+.langpicker__chev,
+.timepanel__zonecaret {
   box-sizing: border-box;
   flex-shrink: 0;
   width: 0.375rem;
@@ -1464,17 +1465,24 @@ button.filter {
   inline-size: 1.05em;
   block-size: 1.05em;
 }
+/* Hover darkens the glyph and leaves the ground alone. The open state below
+   is a faint wash, and a hover wash under it would have to be fainter still to
+   stay distinguishable - too faint to register. The glyph carries it instead. */
 @media (hover: hover) {
   .timepanel__cal:hover {
-    background: var(--accent-tint);
-    color: var(--accent-ink);
+    color: var(--ink-2);
   }
 }
-/* Filled while its calendar is out, like the filter capsules and the language
-   capsule - the hover above stays a wash, so the two states are told apart. */
+/* Washed while its calendar is out.
+   Grey, not the accent pair: both buttons carry this state at once, since
+   either one opens the same grid, and two orange plates read as the loudest
+   thing in the panel next to the Apply button and the ticked quick range,
+   which are the controls that actually do something. --panel-3 is one step off
+   the field's own --panel-2 ground in both themes - enough to see the state,
+   little enough that the button still reads as part of the field. */
 .timepanel__cal[aria-expanded='true'] {
-  background: var(--accent-fill);
-  color: var(--accent-on-fill);
+  background: var(--panel-3);
+  color: var(--ink-2);
 }
 
 .timepanel__list {
@@ -1579,11 +1587,30 @@ button.filter {
   font-weight: 500;
   color: var(--sub);
 }
+/* The trigger and its menu. Positioned, because the menu hangs off it - see
+   .timepanel__zonemenu for which way and why. */
+.timepanel__zonewrap {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+/*
+ * The zone in force, as a trigger.
+ *
+ * A `<button>` since 2026-09-09 and a `<select>` before it, which is why the
+ * caret here used to be a pair of background gradients: a native select arrow
+ * lands at a different weight and colour in every browser, so it was drawn over
+ * the top with 1.5rem of right padding holding the space. The chevron is now
+ * the row's own element (.timepanel__zonecaret), so the padding is even again
+ * and the gradients are gone with the control that needed them.
+ */
 .timepanel__zonesel {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
   min-width: 0;
   max-width: 13rem;
-  padding: 0 1.5rem 0 0.625rem;
+  padding: 0 0.625rem;
   border: 0;
   border-radius: calc(var(--r-control) - 0.1875rem);
   background-color: transparent;
@@ -1591,19 +1618,18 @@ button.filter {
      track above, which is what keeps this matched to the button beside it. */
   font: inherit;
   color: inherit;
+  text-align: left;
   cursor: pointer;
-  /* The caret, drawn rather than left to the platform: a native select arrow
-     sits at a different weight and colour in every browser, and this control is
-     read beside a Grafana panel that draws its own. */
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position:
-    right 0.75rem center,
-    right 0.5rem center;
-  background-size:
-    0.3125rem 0.3125rem,
-    0.3125rem 0.3125rem;
-  background-repeat: no-repeat;
+}
+/* The label ellipsizes and the chevron does not: "Thailand · Vietnam (+07)" is
+   longer than the 13rem this control gets, and a truncated caret would read as
+   a rendering fault rather than as a long name. The full string is on the
+   trigger's title in every state. */
+.timepanel__zoneval {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /*
  * The zone in force, drawn the way the button beside it draws the same state.
@@ -1625,7 +1651,7 @@ button.filter {
    contrast, and `:not()` here is what stops this overriding `.is-on` on the way
    past, since the two selectors otherwise weigh the same. */
 .timepanel__zonesel:not(.is-on):hover {
-  color: var(--ink);
+  color: var(--text);
 }
 .timepanel__zonesel:focus-visible {
   /* The project's ring, not an outline: base.css draws focus as a two-layer
@@ -1633,11 +1659,48 @@ button.filter {
   outline: none;
   box-shadow: var(--focus-ring);
 }
-/* The options themselves are painted by the platform, which does not inherit
-   the panel's tokens - naming both keeps a dark-theme list from opening white. */
-.timepanel__zonesel option {
-  background: var(--panel);
-  color: var(--ink);
+/*
+ * The zone list.
+ *
+ * It is .regionmenu - the Region filter's own menu, in the compact width Process
+ * and Lamp already borrow - and that is the whole change. What stood here was a
+ * rule painting `option` in the panel's tokens, because the platform draws a
+ * native list and does not inherit them; it kept a dark-theme list from opening
+ * white and could do nothing about the rest, since background and colour are the
+ * whole of what a browser honours on an option. So the board had two dropdowns
+ * a hand's width apart - one in its own radius, ink and orange disc, one in the
+ * OS highlight with square corners - and no way to close the gap from CSS.
+ *
+ * Only the position is this control's own. Everything else - the rows, the
+ * hover, the disc, the hairline - is the shared menu's, so the two cannot drift.
+ */
+.timepanel__zonemenu {
+  /*
+   * Upward, and anchored right.
+   *
+   * This trigger sits in the footer of a panel that is itself hanging off the
+   * toolbar, so a menu dropping downward from it would open near the bottom of
+   * a laptop viewport and be half scrolled off; and the panel is right-aligned
+   * to the end of the toolbar, so a left-anchored box would run past the board.
+   * Both of .regionmenu's anchors have to be unset, not just overridden.
+   */
+  top: auto;
+  bottom: calc(100% + 0.375rem);
+  left: auto;
+  right: 0;
+  /* The track above sets --fs-micro at 500 for its two labels, and `font:
+     inherit` on the rows would carry the weight down into the menu. These are
+     menu rows and read as the ones under Region do. */
+  font-weight: 400;
+  color: var(--text);
+}
+/*
+ * The chevron takes the trigger's ink rather than the shared muted one: this is
+ * the only one of the four inside a control that fills orange when it is in
+ * force, and `--sub` on `--accent-fill` is the one place that rule fails.
+ */
+.timepanel__zonecaret {
+  color: inherit;
 }
 .timepanel__segbtn {
   appearance: none;
@@ -1898,6 +1961,19 @@ button.filter {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
 }
+/* Which wash the band is drawn in, set once for the whole grid rather than per
+   cell: the half band under a disc has to be the same colour as the run of
+   cells beside it, and that is two rules apart in the sheet. See the band note
+   further down. */
+.calendar__grid {
+  --cal-band: var(--accent-tint);
+}
+/* While a range is being drawn: the quiet orange ground from tokens.css, the
+   same one the calendar button takes when it is open. Same role in both places
+   - orange as a surface, at a weight that does not shout. */
+.calendar__grid--railing {
+  --cal-band: var(--accent-fill-soft);
+}
 .calendar__weekday {
   padding-block: 0.25rem;
   text-align: center;
@@ -1932,6 +2008,11 @@ button.filter {
   justify-content: center;
   /* Square, so the range band meets cleanly; the ends round themselves. */
   border-radius: 0;
+  /* The anchor for the disc and the today ring, both of which are drawn behind
+     the cell's own background. `isolation` is what makes that safe - see the
+     note on --edge below. */
+  position: relative;
+  isolation: isolate;
 }
 /* A day belonging to the month either side of this one. Kept rather than
    blanked: a blank first row reads as a rendering fault, and a reader dragging a
@@ -1950,8 +2031,33 @@ button.filter {
   opacity: 0.32;
   cursor: default;
 }
-.calendar__day--inside {
-  background: var(--accent-tint);
+/*
+ * ---- the band, and how it meets the discs ----
+ *
+ * Two washes with one shape: --inside is the committed range, --rail is the
+ * range being drawn between the first click and the second. They share a custom
+ * property and the grid says which colour is in play, because a grid never
+ * shows both - the rail exists only while one end is picked, the band only once
+ * both are.
+ *
+ * The rail is deliberately the louder of the two. That looks backwards written
+ * down, and it is not: the rail is the thing under the reader's hand, moving as
+ * they move, and it carries the whole answer to "what am I about to pick" on
+ * its own. The committed band does not - it has a filled disc at each end and
+ * two filled fields above it saying the same thing.
+ */
+.calendar__day--inside,
+.calendar__day--rail {
+  background: var(--cal-band);
+}
+/* The far end of the rail, capped on the side it is growing towards. Square at
+   the other end, where it runs under the start's disc, and square where a week
+   wraps - a row break is not an end of the range and should not read as one. */
+.calendar__day--railend {
+  border-radius: 0 999px 999px 0;
+}
+.calendar__day--railstart {
+  border-radius: 999px 0 0 999px;
 }
 /*
  * The two ends of the range: a filled disc with reversed type.
@@ -1962,21 +2068,73 @@ button.filter {
  * exactly this case (see tokens.css and the FILL tables in
  * scripts/check-contrast.mjs), and it inverts correctly in the dark theme where
  * the fill is light and the type is the page.
+ *
+ * ---- why the disc is a pseudo-element ----
+ *
+ * It used to be the cell's own background at `border-radius: 50%`, and that is
+ * what kept the band from meeting it. A disc drawn that way IS the background,
+ * so the cell has none left to carry the half of the band that belongs under
+ * the circle - the band could only begin at the next cell along, tangent to the
+ * circle at a single point. A circle touching a rectangle at one point does not
+ * read as one object; it reads as a square band with a pinch in it and a disc
+ * parked beside it, which is exactly what was reported.
+ *
+ * With the disc lifted onto ::before, the cell's background is free again and
+ * runs from its centre out to the joining edge, so the band comes out from
+ * *behind* the circle at its widest point and the two are one shape.
+ *
+ * `isolation` on the cell is what makes `z-index: -1` safe here: it gives the
+ * button its own stacking context, so the disc sits behind the button's
+ * background and its number, but not behind the panel the calendar is drawn on
+ * - which is where an un-isolated negative z-index would put it.
  */
 .calendar__day--edge {
-  background: var(--accent-fill);
+  background: none;
   color: var(--accent-on-fill);
-  border-radius: 50%;
   font-weight: 600;
 }
-/* Today, when it is not itself an end of the range. A ring rather than a fill,
-   which is the difference between "this is where we are" and "this is picked". */
-.calendar__day--today:not(.calendar__day--edge) {
-  box-shadow: inset 0 0 0 0.0625rem var(--accent-line);
+.calendar__day--edge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
+  background: var(--accent-fill);
+  z-index: -1;
+}
+/* The half band under a disc: nothing to the cell's centre, band from there to
+   the edge it continues over. Both directions, because a rail can be drawn
+   backwards through the month and a range has a disc at each end. */
+.calendar__day--joinright {
+  background: linear-gradient(to right, transparent 50%, var(--cal-band) 50%);
+}
+.calendar__day--joinleft {
+  background: linear-gradient(to left, transparent 50%, var(--cal-band) 50%);
+}
+/*
+ * Today, when it is not itself an end of the range. A ring rather than a fill,
+ * which is the difference between "this is where we are" and "this is picked".
+ *
+ * On ::before for two reasons beyond tidiness. A ring set as the cell's own
+ * `box-shadow` would have to set `border-radius: 50%` to be round, and today is
+ * often a day the rail runs through or ends on - rounding that cell punches a
+ * notch in the band. And the global :focus-visible ring in base.css is also a
+ * box-shadow, so the two were overwriting each other on whichever cell had the
+ * keyboard.
+ */
+.calendar__day--today:not(.calendar__day--edge)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 0.0625rem var(--accent-line);
+  z-index: -1;
 }
 @media (hover: hover) {
-  .calendar__day:not(:disabled):not(.calendar__day--edge):hover {
+  /* Not over a band: a wash the width of one cell dropped into a range reads as
+     a hole in it, and the cell under the pointer is the rail's own end. */
+  .calendar__day:not(:disabled):not(.calendar__day--edge):not(.calendar__day--inside):not(
+      .calendar__day--rail
+    ):hover {
     background: var(--accent-tint-strong);
   }
 }
@@ -3518,8 +3676,30 @@ button.filter {
   flex-direction: column;
   gap: 0.125rem;
   min-width: 0;
+  /* No flag by default - the plant masthead uses this same block and has none,
+     and its label has to stay flush under its code. */
+  --flag-lead: 0px;
+}
+/*
+ * How far a flag ahead of the code carries the title's text edge inboard: its
+ * own width - the em is off --fs-h1 because that is what Flag's size is quoted
+ * against - plus the gap after it. The caption below is indented by the same
+ * amount, so the code and the legal name stand on one edge and only the flag
+ * hangs outside it. Both halves of the sum are tokens, so the block follows the
+ * density switch rather than pulling apart on a 4K wall.
+ */
+.scope-head__names--flagged {
+  --flag-lead: calc(var(--fs-h1) * 0.7 * 1.5 + var(--sp-2));
 }
 .scope-head__code {
+  /* The flag leads the title. A flex row rather than an inline image, so the
+     flag sits on the code's optical centre rather than hanging off its
+     baseline, and 0.7em puts its height on the cap height of the code beside
+     it - a flag as tall as the full em would sit visibly proud of three
+     capitals with no descenders. */
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   /* The masthead's own title token. This is the second title on the screen and
      the more specific of the two - the brand names the group, this names the
      base whose figures fill the rest of the page. */
@@ -3536,22 +3716,23 @@ button.filter {
   color: var(--text);
 }
 /*
- * The caption line: the flag, then the legal name.
+ * The caption line: the legal name, under the code and not under the flag.
  *
- * A flex row rather than bare text, so the flag sits on the name's optical
- * centre instead of on its baseline - Flag draws an `img`, and an image aligned
- * to a text baseline hangs below it by its own descender space.
+ * The flag moved up to lead the title, so this line starts where the code now
+ * starts rather than on the block's own left edge - one text edge down the
+ * masthead, with the flag the only thing standing outside it.
  */
 .scope-head__name {
-  display: flex;
-  align-items: center;
-  gap: 0.4375rem;
+  /* A plain block, not a flex row: the flag that used to share this line is
+     what needed one, and an anonymous text run inside a flex box is the one
+     place text-overflow below has nothing to bite on. */
+  display: block;
+  padding-left: var(--flag-lead);
   font-size: var(--fs-micro);
   line-height: var(--lh-body);
   color: var(--sub);
   /* One line. A two-line wrap here grows the heading and shoves the whole page
-     down by a row of type, for a fact nobody reads twice. The min-width is what
-     lets the ellipsis happen inside a flex row at all. */
+     down by a row of type, for a fact nobody reads twice. */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4464,6 +4645,28 @@ button.filter {
   white-space: nowrap;
 }
 /*
+ * The site code is the link to the site's own page - before there was a link at
+ * all, the ranking had no route to a drill-down and a reader had to find the
+ * base's pin on the map. It sits on the code rather than on the country line
+ * under it because the code names this one base and the country does not.
+ *
+ * Colour is inherited, not link blue, at the client's direction: the code keeps
+ * the --text 600 it has as a heading, and the hover underline is what marks it
+ * as a target. Worth stating plainly, because the deployment target is an iPad
+ * in a stand - a touchscreen has no hover, so on the board itself the link is
+ * discoverable only by trying it. It is focusable, keyboard-operable and
+ * correctly labelled; a persistent underline is the fix if that matters.
+ */
+.rank-id__link {
+  color: inherit;
+  text-decoration: none;
+}
+@media (hover: hover) {
+  a.rank-id__link:hover {
+    text-decoration: underline;
+  }
+}
+/*
  * The plant count, as a chip beside the code. It is the only cue on the row that
  * there is anything under the caret at all, and as a 9px superscript it was
  * losing that argument - a chip reads as a count of things rather than as a
@@ -4482,34 +4685,19 @@ button.filter {
 }
 
 /*
- * The country is still a link to the site's own page - before it, the ranking
- * had no route to a drill-down at all and a reader had to find the base's pin on
- * the map - but it is drawn as ordinary dark text at the client's direction
- * rather than in a link blue.
+ * The country under the code is plain text - the drill-down link moved up onto
+ * the code itself, where the name is specific to one base.
  *
  * --ink-2 rather than --text: the code on the line above is --text at 600, and
  * matching it exactly would flatten the two into one block. This still reads as
  * black at 10px while leaving the code the louder of the pair.
- *
- * Worth stating plainly, because the deployment target is an iPad in a stand:
- * with the colour gone, the hover underline below is the only thing advertising
- * that this text opens anything, and a touchscreen has no hover. The link works
- * - it is focusable, keyboard-operable and correctly labelled - but on the board
- * itself it is effectively undiscoverable. A persistent underline, or moving the
- * link onto the row's arrow, is the fix if that matters.
  */
 .rank-id__country {
   font-size: var(--fs-nano);
   color: var(--ink-2);
-  text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-@media (hover: hover) {
-  a.rank-id__country:hover {
-    text-decoration: underline;
-  }
 }
 
 /*
@@ -4533,6 +4721,131 @@ button.filter {
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------- shift breakdown table */
+
+/*
+ * The company page's per-shift rows. A .rank-table with a different job: two or
+ * three rows that are read one at a time, rather than nine that are scanned as
+ * a ranking.
+ *
+ * That difference is the whole of this block. The ranking's row is a fixed 42px
+ * because nine of them have to fit a panel that also holds a map; the shift
+ * table has spare height and an identity cell carrying two lines, so here the
+ * 42px is a floor and the padding is what sets the rhythm. Left at the ranking's
+ * 0.25rem the two lines of one shift sat closer to each other than the row
+ * border put them to the next shift's - which is what made a two-shift table
+ * read as one paragraph of eight caption lines.
+ */
+.shift-table td {
+  /* `height` on a table cell is already a minimum, so the ranking's --row-h is
+     inherited as-is and the padding is free to push past it. */
+  padding-block: var(--sp-2);
+  /*
+   * Baseline, not the ranking's `middle`. The figure belongs to the shift's
+   * NAME, not to the average of its two lines: centred against a two-line cell,
+   * "1,878 / 18,901" floated between the label and the hours and read as
+   * attached to neither.
+   */
+  vertical-align: baseline;
+}
+
+.shift-id {
+  display: flex;
+  flex-direction: column;
+  /* The gap the old three-line stack never had. Small, but it is the only thing
+     separating "what this shift is" from "when it runs". */
+  gap: 0.1875rem;
+  min-width: 0;
+}
+
+/*
+ * Line one: what the shift IS. Wraps rather than ellipsises, because the run
+ * that would be cut is the state word - "not started" truncated to "not sta…"
+ * is worse than a second line, and at the panel's narrow widths that second
+ * line is the only place it can go.
+ */
+.shift-id__top {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.375rem;
+  line-height: var(--lh-tight);
+}
+/*
+ * The label, and the track the state starts after.
+ *
+ * The min-width is the alignment. The state used to be pushed to the column's
+ * right edge with an auto margin, which lines up the ENDS of the two words -
+ * and since "กำลังดำเนินการ" and "ยังไม่เริ่ม" are 74px and 48px, that put
+ * their dots 26px apart, down the edge a reader actually scans. Ranged left off
+ * a fixed track they start at one x, which is what was asked for and the better
+ * reading either way: the dot is the mark, so the dots are what have to line up.
+ *
+ * 3.7em is cut from the same measurements as the colgroup: 44px at this line's
+ * --fs-body clears the label vocabulary the shift configs use (Day/Night,
+ * A/B/C, กะเช้า/กะดึก - "Night" is the widest at 32px) and still leaves the
+ * state inside the 143px this column gets at 1080. A label longer than the
+ * track pushes its own row's state right and the others stay put, which is the
+ * graceful way for this to fail: the row is still readable, only the column of
+ * dots is broken.
+ *
+ * em and not rem, because the track has to be measured in the type it is
+ * clearing. At kiosk density --fs-body is 22px, and 2.75rem - correct at 12px -
+ * was narrower than the word sitting in it, which put the two dots 16px apart
+ * on the one screen that is read from three metres away.
+ */
+.shift-id__label {
+  min-width: 3.7em;
+  font-weight: 600;
+}
+.shift-id__seq {
+  font-weight: 500;
+  color: var(--sub);
+  white-space: nowrap;
+}
+
+.shift-id__state {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-size: var(--fs-nano);
+  font-weight: 500;
+  color: var(--sub);
+  white-space: nowrap;
+}
+/*
+ * The dot is the state; the word repeats it. Same pair of tokens as the
+ * masthead's live badge - good-mark for running, nodata-mark for nothing yet -
+ * so "running" is one mark on this board rather than two. The mark tokens, not
+ * the ink ones: a dot is a non-text graphic and wants the brighter of the pair.
+ *
+ * Sized above the text it sits beside for the reason LiveBadge gives: the glyph
+ * inks well under its em box, so matched font sizes draw a dot that reads
+ * lighter than the word.
+ */
+.shift-id__dot {
+  font-size: 1.1em;
+  line-height: 1;
+  color: var(--status-nodata-mark);
+}
+.shift-id__state--live .shift-id__dot {
+  color: var(--status-good-mark);
+}
+
+/*
+ * Line two: the span. Mono because these are figures read against the row above
+ * and below - "08:00-20:00" over "20:00-08:00" only shows itself as a handover
+ * when the colons line up.
+ */
+.shift-id__hours {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-micro);
+  line-height: var(--lh-tight);
+  color: var(--sub);
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------ breadcrumb */
@@ -4798,17 +5111,79 @@ button.filter {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: var(--r-sm);
+  /*
+   * Sized in `em`, so the box and the mark inside it scale together. It was a
+   * fixed 1.25rem, which is right at 12px labels and wrong at the TV density's
+   * 24px ones - and a density that is set by viewport width, not only by
+   * ?kiosk=1, so a wide desktop window reached it with the arrows still on
+   * screen. A 0.9em mark in a 1.25rem box overflows there, and a circle its
+   * glyph pokes out of is not a circle.
+   */
+  width: 1.75em;
+  height: 1.75em;
+  /* A disc, not a rounded square: at this size a 4px radius on a 21px box reads
+     as neither one thing nor the other. */
+  border-radius: 50%;
   color: var(--sub);
   text-decoration: none;
   font-size: var(--fs-label);
 }
+/*
+ * The mark, in the same 16-unit box and at the same cap as `.drawer__close`'s.
+ * Sized in `em` so it tracks the cell's type rather than a second scale nobody
+ * remembers to keep in step.
+ */
+.rowlink svg,
+.chip--link svg {
+  width: 0.9em;
+  height: 0.9em;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+/*
+ * A pale grey disc on hover, not the accent wash this was.
+ *
+ * The accent tint is the board's *selection* colour - the process capsule, the
+ * open tab, the row the attention card is counting - and spending it on a
+ * pointer passing over a link had the ranking flashing orange down its right
+ * edge as the mouse crossed it, which reads as state changing rather than as a
+ * target being offered.
+ *
+ * --panel-2 rather than --panel-3: the gentler of the two surface steps, one
+ * shade off the row it sits on in light and one shade onto it in dark. The
+ * pointer is already telling the reader where they are; the disc only has to
+ * confirm the target's shape, and at --panel-3 it announced itself instead.
+ */
 @media (hover: hover) {
   .rowlink:hover {
-    background: var(--accent-tint);
-    color: var(--accent-ink);
+    background: var(--panel-2);
+    color: var(--text);
+  }
+}
+
+/*
+ * The arrow for a site with no board yet. Dimmed rather than absent, so the
+ * link column stays a column instead of a scatter of gaps - see GrafanaLink for
+ * why. Below AA on purpose and allowed to be: it is decoration, hidden from
+ * assistive tech, and carries nothing a reader has to read. No hover rule and
+ * no pointer, because there is nothing to click.
+ */
+.rowlink.is-pending {
+  color: var(--sub);
+  opacity: 0.35;
+  cursor: default;
+}
+/*
+ * Later than the hover rule and at higher specificity, so a dimmed arrow stays
+ * dimmed under the pointer. A hover wash on a mark with no destination is an
+ * offer the click cannot honour.
+ */
+@media (hover: hover) {
+  .rowlink.is-pending:hover {
+    background: none;
+    color: var(--sub);
   }
 }
 

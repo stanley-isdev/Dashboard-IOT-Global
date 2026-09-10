@@ -86,6 +86,25 @@ export function zonedToUtc(p: ZonedParts, timeZone: string): Date {
   return guess;
 }
 
+/**
+ * Midnight opening the calendar day that `instant` falls in, in `timeZone`.
+ *
+ * Grafana's `now/d`, which is what the production boards' time pickers are
+ * pinned to - so this is the window their `Order End` cards are counted over
+ * (see `Counts.finished_orders`).
+ *
+ * **Calendar midnight, deliberately not the production date.** The two are
+ * different clocks and both are in use on this board: a production date is
+ * anchored to a shift (§9.5), so at THS it turns over at 08:00 and a figure cut
+ * on it at 09:30 covers ninety minutes. Measured against the live instance on
+ * 2026-09-10, that cut left the finished-order count at 0 while the board
+ * showed 19. The board asks a calendar question and this answers the same one.
+ */
+export function startOfLocalDay(instant: Date, timeZone: string): Date {
+  const p = zonedParts(instant, timeZone);
+  return zonedToUtc({ ...p, hour: 0, minute: 0 }, timeZone);
+}
+
 /** ISO-8601 with the zone's own offset, e.g. `2026-08-04T22:15:00+09:00`. */
 export function toIsoOffset(instant: Date, timeZone: string): string {
   const p = zonedParts(instant, timeZone);

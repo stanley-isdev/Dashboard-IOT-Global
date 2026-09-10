@@ -23,8 +23,9 @@
     "check:contrast": "node scripts/check-contrast.mjs",
     "check:offline": "node scripts/check-offline.mjs",
     "check:nodash": "node scripts/check-nodash.mjs",
+    "check:tokens": "node scripts/check-tokens.mjs",
     "gen:favicon": "node scripts/make-favicon.mjs",
-    "verify": "npm run typecheck && npm run lint && npm run check:contrast && npm run check:nodash && npm run test"
+    "verify": "npm run typecheck && npm run lint && npm run check:contrast && npm run check:tokens && npm run check:nodash && npm run test"
   },
   "dependencies": {
     "@dashboard/contract": "*",

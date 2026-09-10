@@ -258,16 +258,17 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
                             <span className="rank-id__caret" aria-hidden="true" />
                             <Flag code={c.country_code} countryName={countryName(c.country_code)} />
                             <span className="rank-id__text">
-                              <span className="rank-id__code">{c.code}</span>
                               {/* Still a link. A site with no gateway still has
                                   a page, and it is where its commissioning state
                                   is explained. */}
-                              <Link
-                                className="rank-id__country"
-                                to={link(`/company/${c.code}`)}
-                              >
+                              <span className="rank-id__code">
+                                <Link className="rank-id__link" to={link(`/company/${c.code}`)}>
+                                  {c.code}
+                                </Link>
+                              </span>
+                              <span className="rank-id__country">
                                 {countryName(c.country_code)}
-                              </Link>
+                              </span>
                             </span>
                           </span>
                         </td>
@@ -413,13 +414,17 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
 
     /*
      * Two targets in one cell, so neither can wrap the other: the caret expands
-     * the plant list, and the country line navigates to the site's own page.
+     * the plant list, and the site code navigates to the site's own page.
      *
      * The whole identity block used to be the expander, which was a generous hit
      * area but left the drill-down reachable only from a map pin. Handing the
      * button to the caret alone costs nothing in practice - the .tap helper grows its 8px
-     * glyph to a 44px hit area without redrawing it - and turns the second line
-     * into the link its colour says it is.
+     * glyph to a 44px hit area without redrawing it.
+     *
+     * The link is on the code, not on the country line under it. A reader looking
+     * for ASI's page reaches for "ASI"; "ไทย" is what the base has in common with
+     * every other Thai base in the table, so it made a poor handle for exactly one
+     * of them. The plant-count chip stays outside the anchor.
      */
     const rowClass = [isOpen ? 'is-open' : null, attention ? 'row-attention' : null]
       .filter(Boolean)
@@ -454,9 +459,13 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
 
               <span className="rank-id__text">
                 <span className="rank-id__code">
-                  {company.code}
+                  <Link className="rank-id__link" to={link(`/company/${company.code}`)}>
+                    {company.code}
+                  </Link>
                   {/* The plant count is the only cue on the row that there is
-                      anything under the caret at all. */}
+                      anything under the caret at all. It sits beside the link
+                      rather than inside it - it describes the row, it is not a
+                      second name for the drill-down. */}
                   {hasPlants ? (
                     <span className="rank-id__plants">
                       {t(plantCount === 1 ? 'table.plants.one' : 'table.plants.other', {
@@ -465,9 +474,7 @@ export function RankingTable({ data }: { data: GlobalOverview | undefined }) {
                     </span>
                   ) : null}
                 </span>
-                <Link className="rank-id__country" to={link(`/company/${company.code}`)}>
-                  {country}
-                </Link>
+                <span className="rank-id__country">{country}</span>
               </span>
             </span>
           </td>

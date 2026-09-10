@@ -92,6 +92,17 @@ export function DateRangeCalendar({
   const [cursor, setCursor] = useState<PlainDate>(start ?? max);
   const view = partsOf(cursor);
 
+  /*
+   * The day the pointer is over, for the rail below. Null whenever the pointer
+   * is outside the grid, which is what makes the rail vanish when the reader
+   * takes their hand away rather than freezing on the last day they crossed.
+   *
+   * Separate from `cursor`, and it must stay separate: the cursor is what Enter
+   * commits and what holds the DOM focus, so moving it on hover would let a
+   * mouse passing over the grid change what the keyboard would pick.
+   */
+  const [hovered, setHovered] = useState<PlainDate | null>(null);
+
   const weekStart = weekStartFor(lang);
   const heads = useMemo(() => weekdayLabels(lang, weekStart), [lang, weekStart]);
   const days = useMemo(
@@ -155,6 +166,32 @@ export function DateRangeCalendar({
       shift(e.key === 'PageUp' ? -1 : 1);
     }
   };
+  /*
+   * ---- the rail ----
+   *
+   * Between the first click and the second there is a start and nothing else,
+   * and the grid used to say so with a single disc: the reader had told it one
+   * date and could not see the range they were in the middle of drawing. The
+   * rail is that range drawn before it exists - the band from the start to
+   * whatever day the second click would land on, in the same orange wash the
+   * committed band takes, so it previews the thing it will become.
+   *
+   * It follows the pointer when there is one and the cursor when there is not,
+   * which is the same day either way for a reader using the keyboard: the
+   * arrows move the cursor and the rail grows behind them.
+   *
+   * Null unless exactly one end is picked. With none there is nothing to draw
+   * from, and with both the committed band is already there.
+   */
+  const railTo = start && !end ? (hovered ?? cursor) : null;
+  /* One direction for the whole grid, so the cap below is a lookup rather than
+     a comparison repeated in every one of the 42 cells. */
+  const railForward = railTo !== null && start !== null && compare(railTo, start) > 0;
+  /* A rail or a band of zero length is a lone disc, and a disc joins nothing:
+     both flags gate the join classes below as well as the rail itself. */
+  const railing = railTo !== null && railTo !== start;
+  const banded = end !== null && end !== start;
+
   const pick = (date: PlainDate) => {
     /* No start, or a complete pair: begin a new range. One end: close it, and
        order the pair so a backwards pick is a range rather than a mistake. */
@@ -218,11 +255,17 @@ export function DateRangeCalendar({
        * knows how to activate.
        */}
       <div
-        className="calendar__grid"
+        className={'calendar__grid' + (railing ? ' calendar__grid--railing' : '')}
         role="grid"
         aria-label={t('time.selectRange')}
         ref={grid}
         onKeyDown={onKeyDown}
+        /* On the grid, not on each cell: leaving one day for the next fires a
+           leave before the enter, and clearing on the cell would blink the rail
+           off on every step across the month. A disabled day fires no mouse
+           events at all, so crossing one leaves the rail where it was - which
+           is right, since a disabled day is not a day the rail could end on. */
+        onMouseLeave={() => setHovered(null)}
       >
         {days.map((date) => {
           const own = isInMonth(date, view.year, view.month);
@@ -231,10 +274,31 @@ export function DateRangeCalendar({
           const isStart = date === start;
           const isEnd = date === end;
           const inside = start && end ? isBetween(date, start, end) : false;
+          /* The start's own cell is a disc and draws itself; the rail is only
+             the days between it and the far end. A rail of one day - the
+             pointer still on the start - is no rail at all. */
+          const onRail =
+            railTo !== null && start !== null && railTo !== start
+              ? isBetween(date, start, railTo) && date !== start
+              : false;
           const classes = ['calendar__day'];
           if (!own) classes.push('calendar__day--outside');
           if (inside) classes.push('calendar__day--inside');
+          if (onRail) classes.push('calendar__day--rail');
+          /* The cap goes on the outward side, so a rail drawn backwards through
+             the month rounds off on the left. */
+          if (onRail && date === railTo) {
+            classes.push(railForward ? 'calendar__day--railend' : 'calendar__day--railstart');
+          }
           if (isStart || isEnd) classes.push('calendar__day--edge');
+          /* The half of the band that runs under a disc, carried by the disc's
+             own cell so the two meet as one shape rather than at a tangent. */
+          if (isStart && (banded || (railing && railForward))) {
+            classes.push('calendar__day--joinright');
+          }
+          if ((isEnd && banded) || (isStart && railing && !railForward)) {
+            classes.push('calendar__day--joinleft');
+          }
           if (date === max) classes.push('calendar__day--today');
           return (
             <button
@@ -251,6 +315,7 @@ export function DateRangeCalendar({
                  nothing about which month they have paged to. */
               aria-label={formatDate(date, lang)}
               onFocus={() => setCursor(date)}
+              onMouseEnter={() => setHovered(date)}
               onClick={() => pick(date)}
             >
               {partsOf(date).day}

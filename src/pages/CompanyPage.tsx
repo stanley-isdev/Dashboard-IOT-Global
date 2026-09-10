@@ -185,25 +185,29 @@ export function CompanyPage() {
         aria-busy={isPending}
       >
         <header className="scope-head">
-          <div className="scope-head__names">
-            {/* The page's heading, and a real one: this is the only h2 on the
-                page that names the thing the whole screen is about. */}
-            <h2 className="scope-head__code">{c.code}</h2>
+          <div className="scope-head__names scope-head__names--flagged">
             {/*
-             * The flag rides the caption line rather than sitting ahead of the
-             * code, and that is a decision about the left edge. Ahead of the
-             * code it pushed "ASI" 44px inboard, so the page's own title was the
-             * one thing on the screen not standing on the margin the KPI cards
-             * and the deck below it share - which is most of what stops a title
-             * reading as a title. On this line the code is flush with them, and
-             * the flag is beside the thing it actually qualifies: the country of
-             * that legal entity, not the three letters of its code.
+             * The page's heading, and a real one: this is the only h2 on the
+             * page that names the thing the whole screen is about.
              *
-             * Sized in em off the caption, so it follows the density switch with
-             * the text rather than staying at a fixed pixel height on a wall.
+             * The flag leads the title rather than riding the caption, at the
+             * design owner's call. It is the first thing in the block and the
+             * code follows it, so the two read as one masthead - country, then
+             * base - instead of the country being a detail of the line
+             * underneath. What it costs is the left edge: the code no longer
+             * starts on the margin the KPI cards below share. `--flag-lead` in
+             * the stylesheet is the width it takes, and the caption is indented
+             * by the same amount, so the code and the name still stand on one
+             * text edge and only the flag hangs outside it.
+             *
+             * Sized in em off the title, so it follows the density switch with
+             * the type rather than staying at a fixed pixel height on a wall.
              */}
+            <h2 className="scope-head__code">
+              <Flag code={c.country_code} countryName={c.country_code} size="0.7em" />
+              {c.code}
+            </h2>
             <span className="scope-head__name">
-              <Flag code={c.country_code} countryName={c.country_code} size="1.3em" />
               {lang === 'th' ? (c.name_th ?? c.name) : c.name}
             </span>
           </div>
@@ -440,6 +444,14 @@ export function CompanyPage() {
           <section className="panel panel--alerts">
             <div className="panel-head">
               <h2>{t('alerts.title')}</h2>
+              {/* How many rows are below, because the head no longer promises a
+                  number the list cannot always reach. The panel is not a Top-N
+                  cut here - the drill-down asks the board for every open stop
+                  in scope (SCOPE_ALERT_LIMIT) - so this count IS the list, and
+                  it is the same STOP figure the base cards above report. */}
+              {data.alerts.length > 0 && (
+                <span className="sub">{t('alerts.sub', { n: data.alerts.length })}</span>
+              )}
             </div>
             {/* The scroll wrapper the overview's copy of this list has always
                 had, and `.alert-row` is already drawn for it: the row reserves

@@ -229,6 +229,39 @@ export const zCounts = z.object({
    * Read it as context beside a headline, never added to one.
    */
   not_counted: z.record(zMachineStatus, zCount),
+  /**
+   * Production orders finished inside the site's own calendar day - the
+   * production board's `Order End` cards.
+   *
+   * **Not a machine count, and that is the whole reason it is a field of its
+   * own.** Every other number in this census counts machines and the machine
+   * statuses partition; this counts ORDERS, and one machine finishing three
+   * orders since midnight contributes three. Adding it to `total` or to any
+   * bucket would break both invariants at once.
+   *
+   * Why it cannot be read off `by_status`: `Order End` is derived, not
+   * reported. Measured at THS 6332 on 2026-09-10, `production_machine_status`
+   * carried only `Stop`, `Mass Pro` and `Dandori` over 24 h - no machine's
+   * status is ever literally `Order End`, so `not_counted['Order End']` is 0
+   * on live data and always will be. The board makes those cards in SQL, from
+   * the ORDER table: every `(machine x PO group)` that is not the machine's
+   * newest group becomes one (`global_machine_seq > 1`, layer 1 of
+   * DESIGN.md §8.4, recorded in docs/grafana/MACHINE-STATUS-V2.md §2.1).
+   *
+   * **The window is the site's local day, not the payload's range.** That is
+   * the board's own picker: the stored drill-down URL for 6332 pins
+   * `from=now/d&to=now/d` in `Asia/Bangkok`, and F-03 in the panel notes says
+   * the picker moves nothing else - output and %OA are fixed at 24 h there. So
+   * this is the one figure on the board that its time control decides, and
+   * matching it means reading it on the same clock rather than on ours. A
+   * reader on a historical window gets the local day of the window's end.
+   *
+   * Rolls up by addition like the rest of the census (`addCounts`), which is
+   * what puts it here rather than on `Kpi`: a company's finished orders are
+   * its plants' finished orders summed, and every plant carries its own
+   * timezone into that sum.
+   */
+  finished_orders: zCount,
   /** Bucket roll-ups for the headline tiles. Derived from by_status server-side. */
   running: zCount,
   stopped: zCount,

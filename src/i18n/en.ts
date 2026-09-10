@@ -205,6 +205,40 @@ export const en = {
   // directly below prints "Actual 21,626 pcs" on the same card - so what came
   // off is the only word here that was already on screen twice.
   'kpi.achievement.gap': '{delta}',
+  /*
+   * The plant strip's name for the figure the overview calls %Achievement, at
+   * the design owner's call on 2026-09-10.
+   *
+   * It is the name the production board beside it already prints - `%AR
+   * (PROGRESS)` - and the plant page is the one screen read in the same room as
+   * that board, by people who reconcile the two by eye. The overview keeps
+   * '%Achievement': an executive reading nine bases at once has no board beside
+   * them and no reason to know the abbreviation.
+   *
+   * A separate key rather than a second value for 'kpi.achievement', so the two
+   * strips can differ on the NAME while sharing every string that explains the
+   * NUMBER - the plan pill, the actual caption and the whole info panel are the
+   * achievement card's own, passed in by the call site.
+   */
+  'kpi.ar': '%AR',
+  'kpi.ar.tooltip':
+    '%AR (Achievement Rate) is output against the quantity of the order each machine has loaded now, not against a shift or a daily target - so a machine an hour into an 800-piece order reads low while being perfectly on schedule. The overview strip calls the same figure %Achievement.',
+  /* The name the production board prints on these cards, so it stays English in
+     both locales - see the note at the top of th.ts. */
+  'kpi.orderEnd': 'Order End',
+  /* The caption carries the unit, because the label does not and the figure
+     beside three machine counts will otherwise be read as a fourth. "Today" is
+     the site's own calendar day, midnight to midnight, which is the window the
+     production board counts these over. */
+  'kpi.orderEnd.definition': 'Orders finished today',
+  'kpi.orderEnd.tooltip':
+    'Production orders finished since midnight, site clock - one card each on the production board. This counts ORDERS, not machines: a machine that ran three orders today is three here and one in Total machine. Nothing is wrong with a finished order; the machine has simply moved on, or is waiting for the next one.',
+  'kpi.orderEnd.source':
+    'Read from the production orders each machine has run today, not from its status: no machine ever reports the status “Order End”. An order counts as finished once the machine has started a newer one - the same rule the production board applies when it draws a second card beside the live one.',
+  'kpi.orderEnd.source.formula': 'Order End = orders finished since 00:00, site time',
+  'kpi.orderEnd.source.note':
+    'The count grows through the day and resets at midnight, which is why it can be higher than the machine count beside it.\n' +
+    'Total machine deliberately leaves these out. Counting them would count a machine that finished an order AND is running the next one twice.',
   'kpi.attention': 'Needing attention',
   // Two keys rather than one interpolated string: `t` does plain substitution,
   // so a single "{count} plants" prints "1 plants" for a single-plant base.
@@ -251,15 +285,24 @@ export const en = {
      "Mass Pro/Dandori" rather than "Mass Pro + Dandori": the plus is ten pixels
      wider than the TV card and the slash is not. */
   'kpi.running.definition': 'Mass Pro/Dandori',
+  /* "Not counted anywhere" until 2026-09-10, which was true only while STOP
+     meant the Stop status alone. STOP is now everything that is not running,
+     so 4M Change is counted - on the other card. */
   'kpi.running.tooltip':
-    'Machines in Mass Pro or Dandori. 4M Change is not counted as running, and since TOTAL is RUNNING + STOP it is not counted anywhere.',
+    'Machines in Mass Pro or Dandori. 4M Change does not count as running - nobody has decided yet whether it should - so it sits in Stop with everything else that is not producing.',
   /* Says which kind of stop, which is the question an executive is actually
      asking. It is the Stop status alone: a machine halted while it was scheduled
      to produce. No Plan and Order End are not stops and never were - that is the
      `stopped-means-stop` invariant, not a wording choice. */
   'kpi.stopped.definition': 'Unplanned stop',
+  /* The figure this describes stopped being the Stop status alone on
+     2026-08-27, when the design owner folded the remainder into it so that
+     RUNNING + STOP would equal TOTAL on screen. The tooltip was not moved with
+     it and spent until 2026-09-10 describing the old card. The payload's
+     `counts.stopped` is untouched and still means the Stop status exactly - the
+     fold is a presentation rule, and `stopped-means-stop` still holds. */
   'kpi.stopped.tooltip':
-    'The Stop status only: a machine halted while it was scheduled to produce. No Plan (nothing scheduled) and Order End (the order is complete) are not stops, so they are not counted here - nor anywhere else, since TOTAL is RUNNING + STOP.',
+    'Every counted machine that is not running - the Stop status plus anything else that is neither Mass Pro nor Dandori, such as No Plan or 4M Change. The card’s caption breaks the figure down by status. Order End is the one state outside this figure and outside Total machine, because the production board counts a finished order as a card of its own.',
   'kpi.machines.definition': '{total} bases · {countries} countries · {missing} not yet connected',
   /* The design prints a bare "88.9%" under Running. The denominator is the one
      thing that has to travel with it: six of nine bases have no gateway, so the
@@ -305,8 +348,16 @@ export const en = {
    */
   'kpi.machines.source': 'Counted from the latest status each machine reported to InfluxDB.',
   'kpi.machines.source.formula': 'TOTAL = RUNNING + STOP',
+  /*
+   * Corrected 2026-09-10. It used to say that No Plan and Pending were "not
+   * counted", which stopped being true the day STOP became everything that is
+   * not running - and it sat two cards away from `kpi.stopped.source.note`,
+   * which says the opposite and is right. One exclusion is left, and naming
+   * only that one is what makes TOTAL = RUNNING + STOP readable as a complete
+   * rule rather than as a slogan with a list of exceptions hidden behind it.
+   */
   'kpi.machines.source.note':
-    'A machine in any other state is not counted - No Plan (nothing scheduled), Order End (the order is complete), Pending (waiting) - and a site sending no telemetry contributes nothing.',
+    'Only Order End is left out: the production board draws a finished order as a second card beside the machine’s live one, so counting it would count one machine twice. Everything else that is not running is in Stop, including No Plan and 4M Change. A site sending no telemetry contributes nothing.',
 
   'kpi.running.source':
     'Machines whose latest status is Mass Pro or Dandori. Dandori is a mould change: the machine is manned and being worked on, which is why it counts as running rather than as a stop.',
@@ -772,8 +823,15 @@ export const en = {
   'trend.machines': 'Machines',
 
   /* ------------------------------------------------------------ alerts */
-  'alerts.title': 'Top 10 Active stops',
-  'alerts.sub': 'top 10 across reporting bases',
+  /* The drill-down panel head. It used to read "Top 10 Active stops" over a
+     list that is not a top ten and cannot become one: the server ranks EVERY
+     open stop in scope and the drill-down asks for the widest cut the picker
+     offers (SCOPE_ALERT_LIMIT = 50), so the panel already shows all of them.
+     A base with six machines down read as four missing rows rather than as a
+     complete list. The title now names the list, and the caption below counts
+     what is in it - which is also the STOP figure on the cards above. */
+  'alerts.title': 'Longest active stops',
+  'alerts.sub': '{n} stopped now',
   'alerts.none': 'No active alerts.',
   'alerts.owner': '{role}',
   'severity.critical': 'Critical',
@@ -802,6 +860,7 @@ export const en = {
   /* -------------------------------------------------------------- misc */
   'common.loading': 'Loading…',
   'common.grafana': 'Open in Grafana',
+  'common.grafanaPending': 'No Grafana board for this site yet',
   /* ------------------------------------------------------------ countries ----
      Shown under each base code in the ranking. Country names are UI text, not
      master data - SAP holds the company name, never the country's - so they

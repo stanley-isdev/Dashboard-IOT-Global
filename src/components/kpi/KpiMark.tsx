@@ -49,7 +49,7 @@
  * the root size - carries it along without a second rule.
  */
 
-export type KpiMarkName = 'gear' | 'play' | 'stop' | 'gauge' | 'target' | 'bell';
+export type KpiMarkName = 'gear' | 'play' | 'stop' | 'gauge' | 'target' | 'bell' | 'flag';
 
 /** The 24-unit box both marks below are drawn in. */
 const BOX = '0 0 24 24';
@@ -132,8 +132,8 @@ function Play() {
  *
  * Deliberately *not* the octagon that StatusIcon draws for critical and stopped.
  * That set means something - a mark from it beside a figure is a claim about
- * that figure's state - and this file's whole premise is that these six marks
- * mean nothing and decide nothing. Borrowing the octagon here would put a status
+ * that figure's state - and this file's whole premise is that these marks mean
+ * nothing and decide nothing. Borrowing the octagon here would put a status
  * glyph on a card as decoration, which is how a reader learns to stop trusting
  * the real ones.
  *
@@ -209,6 +209,40 @@ function Bell() {
   );
 }
 
+/**
+ * The flag, for ORDER END: a stroked pole with a solid pennant on it.
+ *
+ * The card's subject is an order that finished, and a flag is the one shape a
+ * reader already associates with the end of a run without it meaning anything
+ * about the machine's health - which is the constraint this whole set works
+ * under. A tick was the obvious alternative and is exactly what this set may
+ * not borrow: StatusIcon draws a tick for "good", so a tick here would say the
+ * figure was a pass, and these marks decide nothing.
+ *
+ * Solid banner against a hairline pole for the reason Play is solid: at 13px a
+ * stroked banner on a stroked pole is one texture, and the mark it sits nearest
+ * on this strip - the stroked target - is already an outline. The pole runs the
+ * full height of the box so the silhouette is unmistakably a flag and not a
+ * chevron pinned to a stub.
+ */
+function Flag() {
+  return (
+    <g>
+      <path
+        d="M6.2 3v18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      {/* The swallowtail is what stops the banner reading as a plain rectangle
+          once the pole is beside it - one notch, 2.6 units deep, which is the
+          shallowest that still survives 13px. */}
+      <path fill="currentColor" d="M7.6 3.9h10.8l-2.6 4.05 2.6 4.05H7.6Z" />
+    </g>
+  );
+}
+
 const MARKS: Record<KpiMarkName, () => React.ReactElement> = {
   gear: Gear,
   play: Play,
@@ -216,6 +250,7 @@ const MARKS: Record<KpiMarkName, () => React.ReactElement> = {
   gauge: Gauge,
   target: Target,
   bell: Bell,
+  flag: Flag,
 };
 
 /**
