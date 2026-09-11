@@ -285,6 +285,7 @@ export const en = {
      "Mass Pro/Dandori" rather than "Mass Pro + Dandori": the plus is ten pixels
      wider than the TV card and the slash is not. */
   'kpi.running.definition': 'Mass Pro/Dandori',
+  'kpi.running.definition.split': 'Mass Pro {massPro} · Dandori {dandori}',
   /* "Not counted anywhere" until 2026-09-10, which was true only while STOP
      meant the Stop status alone. STOP is now everything that is not running,
      so 4M Change is counted - on the other card. */

@@ -265,7 +265,20 @@ export function CompanyPage() {
             format={int}
             tier="good"
             coverage={coverage}
-            definitionKey="kpi.running.definition"
+            /* The split on the caption, as the plant page below it and the
+               global strip above it both print it - a company card that named
+               the two statuses without giving the numbers was the odd one out,
+               and the board's v4 counts Dandori on a tile of its own (F-20). */
+            definitionKey="kpi.running.definition.split"
+            definitionParams={{
+              massPro: int(c.counts.by_status['Mass Pro'] ?? 0),
+              dandori: int(c.counts.by_status.Dandori ?? 0),
+            }}
+            infoKey="kpi.running.source"
+            infoParams={{
+              massPro: int(c.counts.by_status['Mass Pro'] ?? 0),
+              dandori: int(c.counts.by_status.Dandori ?? 0),
+            }}
             mark="play"
           />
           <KpiCard

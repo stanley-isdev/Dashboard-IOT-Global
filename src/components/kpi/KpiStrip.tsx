@@ -185,11 +185,27 @@ export const KpiStrip = memo(function KpiStrip({ data }: { data: GlobalOverview 
         coverageNote="off"
         meta={runningShare === null ? undefined : pct(runningShare)}
         metaTone="good"
-        footKey="kpi.running.definition"
-        /* The two statuses behind the figure, and how many of each. The caption
-           already says "Mass Pro/Dandori", but the split is the part that
-           changes what the number means: twenty-four running with six of them
-           mid-mould-change is a different shift from twenty-four producing. */
+        /* The two statuses behind the figure, and how many of each - on the
+           card, not folded into the source panel behind it.
+
+           The caption used to read "Mass Pro/Dandori", which named the split
+           without giving it. The production board's v4 stopped folding the two
+           together (F-19/F-20 in MACHINE-STATUS-V2.md): its RUNNING tile is
+           Mass Pro alone and Dandori is a tile beside it, so a reader with both
+           screens open sees 37 here against 34 there and has no way to tell
+           whether that is the same fleet counted differently or a bug. Now the
+           caption answers it: "Mass Pro 34 · Dandori 3".
+
+           The figure itself stays Mass Pro + Dandori, on the design owner's
+           call of 2026-09-11 - a machine mid-mould-change is working, and the
+           split is the part that changes what the number means: twenty-four
+           running with six of them in Dandori is a different shift from
+           twenty-four producing. */
+        footKey="kpi.running.definition.split"
+        footParams={{
+          massPro: int(totals.counts.by_status['Mass Pro']),
+          dandori: int(totals.counts.by_status.Dandori),
+        }}
         infoKey="kpi.running.source"
         infoParams={{
           massPro: int(totals.counts.by_status['Mass Pro']),
