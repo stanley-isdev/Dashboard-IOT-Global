@@ -234,7 +234,7 @@ export const en = {
   'kpi.orderEnd.tooltip':
     'Production orders finished since midnight, site clock - one card each on the production board. This counts ORDERS, not machines: a machine that ran three orders today is three here and one in Total machine. Nothing is wrong with a finished order; the machine has simply moved on, or is waiting for the next one.',
   'kpi.orderEnd.source':
-    'Read from the production orders each machine has run today, not from its status: no machine ever reports the status “Order End”. An order counts as finished once the machine has started a newer one - the same rule the production board applies when it draws a second card beside the live one.',
+    'Read from the production orders each machine has run today, not from its status. An order counts as finished once the machine has started a newer one - the same rule the production board applies when it draws a second card beside the live one. A machine can also report the status “Order End” itself, when its order has run out and nothing newer has been loaded; that is one machine waiting, not an order finished, so it is left out of this figure - and out of %OA, as it is on the board.',
   'kpi.orderEnd.source.formula': 'Order End = orders finished since 00:00, site time',
   'kpi.orderEnd.source.note':
     'The count grows through the day and resets at midnight, which is why it can be higher than the machine count beside it.\n' +

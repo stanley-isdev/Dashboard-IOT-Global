@@ -272,6 +272,75 @@ describe('buildPlantDetail', () => {
     expect(m?.actual_qty).toBeNull();
   });
 
+  it('leaves a parked or finished machine out of a ZONE %OA, as the plant above it does', () => {
+    /*
+     * ASI 6051 zone F, 2026-09-11. The zone read 45.8% and the plant card
+     * above it 34.8% off the same machines, because the zone roll-up was the
+     * only %OA on the payload that did not apply the board's
+     * `EXCLUDE_FROM_OA`. `M-ID-06` was in `Order End` carrying a stale 111.6%
+     * off its last shot; the production board, narrowed to that same zone, read
+     * the plant's figure.
+     *
+     * `Order End` and not `Pending` only because it is the status that was
+     * measured moving the number - `oaExcludedMachines` holds the whole list.
+     */
+    const snap = snapshot(
+      {
+        [PLANT]: [
+          ['I1', 'Mass Pro', '2A-A'],
+          ['I2', 'Mass Pro', '2A-A'],
+          ['I3', 'Order End', '2A-A'],
+        ],
+      },
+      [onOrder(PLANT, 'I1', 80), onOrder(PLANT, 'I2', 20), onOrder(PLANT, 'I3', 200)],
+    );
+
+    const payload = plant(snap);
+    const zone = payload?.zones.find((z) => z.code === '2A-A');
+
+    // The mean of 80 and 20, not of 80, 20 and 200.
+    expect(zone?.kpi.oa_pct).toBe(50);
+    expect(zone?.kpi.oa_machine_count).toBe(2);
+    // The whole point: one plant, one zone, therefore one figure.
+    expect(zone?.kpi.oa_pct).toBe(payload?.plant.kpi.oa_pct);
+    expect(zone?.counts.finished_orders).toBe(payload?.plant.counts.finished_orders);
+  });
+
+  it('keeps the orders a parked machine finished today, while leaving it out of %OA', () => {
+    /*
+     * The two figures part company on purpose. The board draws a finished order
+     * as its own card off the ORDER rows (`global_machine_seq > 1`, §2.1 of
+     * MACHINE-STATUS-V2.md) and never asks what the machine is doing now -
+     * `EXCLUDE_FROM_OA` then keeps that card out of the average. So an operator
+     * parking a machine, or its order running out, may not retract the orders it
+     * already completed today.
+     */
+    const finished: MachineOa = {
+      ...onOrder(PLANT, 'I3', 200),
+      finishedOrders: ['2026-08-25T01:00:00.000Z'], // 08:00 Bangkok, today
+    };
+    const snap = snapshot(
+      {
+        [PLANT]: [
+          ['I1', 'Mass Pro', '2A-A'],
+          ['I2', 'Mass Pro', '2A-A'],
+          ['I3', 'Order End', '2A-A'],
+        ],
+      },
+      [onOrder(PLANT, 'I1', 80), onOrder(PLANT, 'I2', 20), finished],
+    );
+
+    const payload = plant(snap);
+    const zone = payload?.zones.find((z) => z.code === '2A-A');
+
+    // Out of the average - the mean of 80 and 20, not of 80, 20 and 200.
+    expect(payload?.plant.kpi.oa_pct).toBe(50);
+    expect(zone?.kpi.oa_pct).toBe(50);
+    // In the order count, at both levels, because the board's card exists.
+    expect(payload?.plant.counts.finished_orders).toBe(1);
+    expect(zone?.counts.finished_orders).toBe(1);
+  });
+
   it('is null for a plant that is not in the company', () => {
     expect(
       buildPlantDetail({

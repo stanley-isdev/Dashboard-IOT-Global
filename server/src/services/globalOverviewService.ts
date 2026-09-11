@@ -37,7 +37,7 @@ import {
   countFinishedOrders,
   oaWarnings,
   orderShiftWarnings,
-  pendingMachineNames,
+  oaExcludedMachines,
   splitByOrderShift,
   sumMachineField,
   type MachineOa,
@@ -122,13 +122,16 @@ import type { LiveSnapshot } from './liveSnapshot.ts';
  * 27 of them are injection. See `config/policy.ts` for why no process filter
  * belongs on an exec board.
  *
- * A fifth, **`Pending`**, was found on 2026-09-10 (F-18 in `MACHINE-STATUS-V2.md`)
-and **closed the same day, confirmed against IOT**: a machine an operator has
-parked keeps a computable %OA from its last shot, but the board
-(`EXCLUDE_FROM_OA`, §0 of that doc) drops it from the average anyway. `oa.ts`'s
-`pendingMachineNames` reads the same `Pending` this file's census now sees
-(`SUBSTANTIVE_STATUSES` in `influx/queries.ts`) and this function subtracts
-those machines from `observedOa` before anything is averaged.
+ * A fifth and a sixth are the board's `EXCLUDE_FROM_OA` (§0 of
+ * `MACHINE-STATUS-V2.md`), and both are now applied here. **`Pending`** was
+ * F-18, found and closed on 2026-09-10 against IOT: a machine an operator has
+ * parked keeps a computable %OA from its last shot, and the board drops it
+ * anyway. **`Order End`** is the same shape, found at ASI 6051 on 2026-09-11 -
+ * `M-ID-06` finished order `110000994598`, loaded nothing new, and was carried
+ * in our average at 111% while the board did not show the machine at all.
+ * `oa.ts`'s `oaExcludedMachines` reads the statuses this file's census already
+ * sees (`SUBSTANTIVE_STATUSES` in `influx/queries.ts`) and this function
+ * subtracts those machines from `observedOa` before anything is averaged.
 
 Two known, named divergences remain, both on the envelope:
  *
@@ -170,7 +173,7 @@ const ACHIEVEMENT_SCOPE_WARNING =
   '%Achievement is output against the LOT SIZE of the order each machine has loaded now (plan_qty0..3 of the current PO group), not against a shift or daily target - a machine early in a large order reads low by construction. An order shared across machines would be counted once per machine; none were observed (26 orders, 0 shared)';
 
 const RECONCILIATION_WARNING =
-  'counts follow the `Machine Status V2.0` board: 24 h window, TOTAL excludes `Order End` only. %OA follows EACH SITE\'s own board window rather than one fleet-wide figure, because the boards differ: 24 h at THS, 71 h at ASI, whose panel reads 3 days once an order is older than a day (confirmed against IOT 2026-09-10; 71 is the widest a single query here may scan). Per-site values are `oaWindowHours` in master data. A machine an operator has parked in `Pending` is excluded from %OA, matching the board\'s own EXCLUDE_FROM_OA. Counted across ALL processes, unlike that board, which shows one `process_var` at a time - THS has 29 machines and only 27 are Injection, so a plant card here can read higher than the drill-down it links to. Two known differences remain: a machine that has not reported for hours keeps its last known status instead of reading `Offline` - the board does the same, and closing it would move RUNNING away from it (T-11); and a machine whose order-creation time cannot be parsed stays in %OA rather than being blanked, with zero occurrences measured. machineExclusions is empty by decision: the recovered panel query carries no machine exclusion';
+  'counts follow the `Machine Status V2.0` board: 24 h window, TOTAL excludes `Order End` only. %OA follows EACH SITE\'s own board window rather than one fleet-wide figure, because the boards differ: 24 h at THS, 71 h at ASI, whose panel reads 3 days once an order is older than a day (confirmed against IOT 2026-09-10; 71 is the widest a single query here may scan). Per-site values are `oaWindowHours` in master data. A machine that is not working an order - parked by an operator in `Pending`, or finished and not reloaded in `Order End` - is excluded from %OA, matching EXCLUDE_FROM_OA on the board itself. It stays in the machine list, where its status says why. Counted across ALL processes, unlike that board, which shows one `process_var` at a time - THS has 29 machines and only 27 are Injection, so a plant card here can read higher than the drill-down it links to. Two known differences remain: a machine that has not reported for hours keeps its last known status instead of reading `Offline` - the board does the same, and closing it would move RUNNING away from it (T-11); and a machine whose order-creation time cannot be parsed stays in %OA rather than being blanked, with zero occurrences measured. machineExclusions is empty by decision: the recovered panel query carries no machine exclusion';
 
 /**
  * The KPI block for a node, from the machines beneath it.
@@ -352,7 +355,7 @@ function buildCompany(
      * The company-level gate stays, and it is what keeps the
      * `unconnected-site-contributes-nothing` invariant true: a company
      * whose plants have ALL gone silent rolls up to `no_data` and zeroes
-     * here. Read regardless of `reporting` - cheap, and `pendingMachines`
+     * here. Read regardless of `reporting` - cheap, and `oaExcluded`
      * below needs it even though `observedOa` will end up empty when the
      * company is not reporting.
      */
@@ -375,19 +378,23 @@ function buildCompany(
     }
 
     /*
-     * A machine an operator has parked in `Pending` (`production_machine_status`,
-     * via the panel's v4 widget button - MACHINE-STATUS-V2.md §0) has its %OA
-     * dropped below, matching the production board's `EXCLUDE_FROM_OA`.
-     * Confirmed against IOT, 2026-09-10: a parked machine's %OA should not
-     * count even though it is still computable from its last shot. Read off
-     * the census's own observations rather than the IO table, because
-     * "parked or not" is a fact about `production_machine_status`, not about
-     * `production_machine_io`.
+     * Machines the board leaves out of %OA (`EXCLUDE_FROM_OA`, §0 of
+     * MACHINE-STATUS-V2.md): an operator has parked the job in `Pending`, or
+     * the order has run out in `Order End` and nothing newer has been loaded.
+     * Both keep a computable %OA from their last shot; neither is working an
+     * order, so neither counts - see `oaExcludedMachines` for the measurement
+     * behind each status. Read off the census's own observations rather than
+     * the IO table, because "parked or finished" is a fact about
+     * `production_machine_status`, not about `production_machine_io`.
      */
-    const pendingMachines = pendingMachineNames(observations);
-    if (pendingMachines.size > 0) {
+    const oaExcluded = oaExcludedMachines(observations);
+    if (oaExcluded.size > 0) {
+      const named = [...oaExcluded]
+        .sort(([a], [c]) => a.localeCompare(c))
+        .map(([machine, status]) => `${machine} (${status})`)
+        .join(', ');
       warnings.push(
-        `${company.code}/${b.master.code}: ${pendingMachines.size} machine(s) are \`Pending\` (parked by an operator) and are excluded from %OA, as they are on the production board (${[...pendingMachines].sort().join(', ')})`,
+        `${company.code}/${b.master.code}: ${oaExcluded.size} machine(s) are not working an order and are excluded from %OA, as they are on the production board (${named})`,
       );
     }
 
@@ -407,7 +414,23 @@ function buildCompany(
      * above for what that changed and why.
      */
     const publishes = reporting;
-    const observedOa = publishes
+
+    /*
+     * Every machine the filter row leaves on this plant, before the %OA rule
+     * narrows it further. Two figures are read off it, and they part company
+     * here on purpose:
+     *
+     *   - **%OA** drops the parked and the finished (`observedOa` below).
+     *   - **`finished_orders`** does not. The board draws a finished order as
+     *     its own card off the ORDER rows - `global_machine_seq > 1` in §2.1 -
+     *     and never asks what the machine is doing now; `EXCLUDE_FROM_TOTAL`
+     *     and `EXCLUDE_FROM_OA` then drop those cards from TOTAL and from the
+     *     average, which is a different question from whether the card exists.
+     *     Counting finished orders over the narrowed set instead would lose
+     *     every order a machine completed today the moment its operator parked
+     *     it - orders the board still has cards for.
+     */
+    const scopedOa = publishes
       ? (oaByPlant.get(b.master.code) ?? [])
           .filter((m) => !b.master.machineExclusions.includes(m.machine))
           // The same two gates as the census above it, in the same order. A
@@ -415,11 +438,12 @@ function buildCompany(
           // is the defect the whole filter row exists to prevent.
           .filter(scope.process)
           .filter((m) => scope.zone({ zone: scope.zoneOf(m.plant, m.machine) }))
-          // Parked machines stay OUT of %OA, matching the production board -
-          // see `pendingMachines` above for why this one is a real, intentional
-          // exclusion rather than the layer-2 kind that stopped applying.
-          .filter((m) => !pendingMachines.has(m.machine))
       : [];
+
+    // Parked and finished machines stay OUT of %OA, matching the production
+    // board - see `oaExcluded` above for why these are real, intentional
+    // exclusions rather than the layer-2 kind that stopped applying.
+    const observedOa = scopedOa.filter((m) => !oaExcluded.has(m.machine));
 
     /*
      * `Order End` layer 2 (DESIGN.md §8.4) - and what it is allowed to do.
@@ -482,15 +506,19 @@ function buildCompany(
        * The census, plus the one figure in it that does not come from the
        * census query at all.
        *
-       * `Order End` is not a status any machine reports - it is derived from
-       * the ORDER rows, which is why it reaches the counts from `oaMachines`
-       * and not from `buildPlantCensus`. Same scope as everything else on this
-       * plant: `oaMachines` has already been through the process and zone
-       * filters and the machine exclusions, so a filtered board counts the
-       * finished orders of the machines it is showing and no others.
+       * A finished order is read from the ORDER rows, not from machine status,
+       * which is why it reaches the counts from `scopedOa` and not from
+       * `buildPlantCensus` - the board draws the same card off the same rows
+       * (`global_machine_seq > 1`, §2.1 of MACHINE-STATUS-V2.md). A machine can
+       * ALSO report `Order End` as its own status, meaning it is waiting rather
+       * than that an order finished; that is why this counts over `scopedOa`
+       * and %OA over `oaMachines`. Same scope as everything else on this plant
+       * either way: both have been through the process and zone filters and the
+       * machine exclusions, so a filtered board counts the finished orders of
+       * the machines it is showing and no others.
        */
       counts: census
-        ? { ...census.counts, finished_orders: countFinishedOrders(oaMachines, dayStart) }
+        ? { ...census.counts, finished_orders: countFinishedOrders(scopedOa, dayStart) }
         : emptyCounts(),
       kpi: buildKpi(oaMachines),
     };

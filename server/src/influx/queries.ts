@@ -228,7 +228,7 @@ function assertWindow(windowHours: number): void {
  * it on purpose - a real, un-reconciled divergence for plant 6051's %OA,
  * confirmed against IOT 2026-09-10: a `Pending` machine's %OA should not be
  * counted. Reading `Pending` here is step one of matching that - see
- * `domain/oa.ts`'s `pendingMachineNames` for step two, where it is actually
+ * `domain/oa.ts`'s `oaExcludedMachines` for step two, where it is actually
  * dropped from the average.
  */
 const SUBSTANTIVE_STATUSES = [

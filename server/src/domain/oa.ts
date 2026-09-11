@@ -507,22 +507,49 @@ export function averageOa(machines: MachineOa[]): number | null {
 }
 
 /**
- * Machines a plant's own status observations say are `Pending` right now - an
- * operator has parked the job on purpose, via the widget button
- * `production_machine_status.Result` gets written through
- * (`docs/grafana/MACHINE-STATUS-V2.md` §0).
+ * The production board's `EXCLUDE_FROM_OA`, as statuses.
  *
- * Exists so the %OA average can be handed a machine set with these already
- * removed, matching the production board's `EXCLUDE_FROM_OA`. Confirmed
- * against IOT, 2026-09-10: a parked machine's %OA should not count, even
- * though it is still computable from the shot it produced before being
- * parked. Takes a structural shape rather than `MachineObservation` itself so
- * this module does not need to import from `services/liveSnapshot.ts`.
+ * Both halves of this list are the same fact: `production_machine_status.Result`
+ * can say a machine is not working an order, and a machine that is not working
+ * an order does not belong in an efficiency average - even when its last shot
+ * still leaves one computable.
+ *
+ *   - `Pending` - an operator parked the job on purpose, through the widget
+ *     button the panel's v4 writes `Result` with. Confirmed against IOT,
+ *     2026-09-10.
+ *   - `Order End` - the order is finished and no newer one has been loaded.
+ *     Measured at ASI 6051 on 2026-09-11: `M-ID-06` sat in `Order End` with its
+ *     last IO shot three hours old, the board did not carry the machine at all,
+ *     and ours averaged it in. Not the same thing as the board's
+ *     `global_machine_seq > 1` cards - those are a finished order drawn beside
+ *     a machine that is still running, they are counted as `finished_orders`,
+ *     and they never reach this set because the census reads one status per
+ *     machine.
+ *   - `Offline`, `No Plan` - on the board's list too (§0). Neither has been
+ *     observed carrying a computable %OA on this instance, so they are here to
+ *     match the board's rule, not because they have moved a number yet.
+ *
+ * `docs/grafana/MACHINE-STATUS-V2.md` §0 carries the board-side list.
  */
-export function pendingMachineNames(
+const EXCLUDE_FROM_OA = ['Order End', 'Pending', 'Offline', 'No Plan'];
+
+/**
+ * Machines a plant's own status observations put outside the %OA average.
+ *
+ * Exists so the average can be handed a machine set with these already
+ * removed. Takes a structural shape rather than `MachineObservation` itself so
+ * this module does not need to import from `services/liveSnapshot.ts`.
+ *
+ * Keyed by status rather than a bare set, so the caller can say WHICH rule
+ * dropped each machine - a machine missing from a mean is otherwise
+ * indistinguishable from one that was measured and happened to agree with it.
+ */
+export function oaExcludedMachines(
   observations: readonly { machine: string; status: string }[],
-): ReadonlySet<string> {
-  return new Set(observations.filter((m) => m.status === 'Pending').map((m) => m.machine));
+): ReadonlyMap<string, string> {
+  return new Map(
+    observations.filter((m) => EXCLUDE_FROM_OA.includes(m.status)).map((m) => [m.machine, m.status]),
+  );
 }
 
 /** Sums a machine field, `null` only when not one machine reported it (R2). */

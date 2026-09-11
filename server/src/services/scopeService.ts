@@ -21,7 +21,13 @@ import {
 import type { Env } from '../config/env.ts';
 import { COMPANIES, type CompanyMasterData, type PlantMasterData } from '../config/masterData.ts';
 import { buildPlantCensus } from '../domain/counts.ts';
-import { achievementFrom, countFinishedOrders, round1, type MachineOa } from '../domain/oa.ts';
+import {
+  achievementFrom,
+  countFinishedOrders,
+  oaExcludedMachines,
+  round1,
+  type MachineOa,
+} from '../domain/oa.ts';
 import { sumHours, sumPlans, type MachineHourOa } from '../domain/trend.ts';
 import type { LiveSnapshot, MachineObservation } from './liveSnapshot.ts';
 import { buildGlobalOverview, buildKpi } from './globalOverviewService.ts';
@@ -170,7 +176,30 @@ function buildZones(
         observations: members,
         machineExclusions: plant.machineExclusions,
       });
-      const zoneOa = oa.filter((m) => ids.has(m.machine));
+      /*
+       * The board's `EXCLUDE_FROM_OA`, applied here as it already is one level
+       * up - see `oaExcluded` in globalOverviewService for the rule and the
+       * measurement behind each status.
+       *
+       * It was missing, so a zone's %OA was the mean of a machine set the plant
+       * card above it had already narrowed, and the two disagreed by exactly
+       * the parked and finished machines. Measured at ASI 6051 zone F on
+       * 2026-09-11: the zone read 45.8% over seven machines against the plant's
+       * 34.8% over six, and the production board - PLANT 6051, ZONE F - read
+       * 34.8%. The seventh was `M-ID-06`, sitting in `Order End` with a stale
+       * 111.6% off its last shot, which is the machine `oaExcludedMachines`
+       * documents.
+       *
+       * `finished_orders` keeps the wider set, the same split the plant summary
+       * makes: the board draws a finished order as its own card off the ORDER
+       * rows (`global_machine_seq > 1`, §2.1) without asking what the machine
+       * is doing now, so an operator parking a machine may not retract the
+       * orders it finished earlier today. The zone total still cannot exceed
+       * its plant's - both count the same orders over the same day.
+       */
+      const excluded = oaExcludedMachines(members);
+      const zoneOrders = oa.filter((m) => ids.has(m.machine));
+      const zoneOa = zoneOrders.filter((m) => !excluded.has(m.machine));
       const lastSeen = latestSeen(members);
       return {
         code,
@@ -190,7 +219,7 @@ function buildZones(
         absence: null,
         /* `Order End` comes from the order rows rather than the status rows -
            see the same line on the plant summary in globalOverviewService. */
-        counts: { ...census.counts, finished_orders: countFinishedOrders(zoneOa, dayStart) },
+        counts: { ...census.counts, finished_orders: countFinishedOrders(zoneOrders, dayStart) },
         kpi: buildKpi(zoneOa),
       };
     });

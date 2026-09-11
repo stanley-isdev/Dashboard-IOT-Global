@@ -7,7 +7,7 @@ import {
   foldMachineOa,
   oaFromPoGroup,
   oaWarnings,
-  pendingMachineNames,
+  oaExcludedMachines,
   planFromSlots,
   sumMachineField,
   type MachineOa,
@@ -357,20 +357,46 @@ describe('averageOa - the "Avg %OA" card', () => {
   });
 });
 
-describe('pendingMachineNames - the board`s EXCLUDE_FROM_OA, confirmed against IOT 2026-09-10', () => {
-  it('names only the machines currently Pending', () => {
+describe('oaExcludedMachines - the board`s EXCLUDE_FROM_OA', () => {
+  it('names the machines that are not working an order, with the status that says so', () => {
     const observations = [
       { machine: 'I1', status: 'Mass Pro' },
       { machine: 'I5', status: 'Pending' },
       { machine: 'I6', status: 'Pending' },
       { machine: 'I2', status: 'Stop' },
     ];
-    expect([...pendingMachineNames(observations)].sort()).toEqual(['I5', 'I6']);
+    expect([...oaExcludedMachines(observations)].sort()).toEqual([
+      ['I5', 'Pending'],
+      ['I6', 'Pending'],
+    ]);
   });
 
-  it('is empty when nothing is parked', () => {
-    expect(pendingMachineNames([{ machine: 'I1', status: 'Mass Pro' }]).size).toBe(0);
-    expect(pendingMachineNames([]).size).toBe(0);
+  /*
+   * ASI 6051, 2026-09-11: `M-ID-06` finished order `110000994598`, loaded
+   * nothing new, and sat in `Order End` with a %OA still computable from its
+   * last shot. The board did not carry the machine at all; ours averaged it in.
+   */
+  it('excludes a machine whose order has ended', () => {
+    const excluded = oaExcludedMachines([
+      { machine: 'M-ID-01', status: 'Mass Pro' },
+      { machine: 'M-ID-06', status: 'Order End' },
+      { machine: 'M-ID-07', status: 'Dandori' },
+    ]);
+    expect([...excluded]).toEqual([['M-ID-06', 'Order End']]);
+  });
+
+  it('covers the rest of the board`s list', () => {
+    const excluded = oaExcludedMachines([
+      { machine: 'A', status: 'Offline' },
+      { machine: 'B', status: 'No Plan' },
+      { machine: 'C', status: '4M Change' },
+    ]);
+    expect([...excluded.keys()].sort()).toEqual(['A', 'B']);
+  });
+
+  it('is empty when every machine is working its order', () => {
+    expect(oaExcludedMachines([{ machine: 'I1', status: 'Mass Pro' }]).size).toBe(0);
+    expect(oaExcludedMachines([]).size).toBe(0);
   });
 });
 
