@@ -79,9 +79,26 @@ export function useMeta(): UseQueryResult<Meta> {
   return useQuery({
     queryKey: ['meta'],
     queryFn: ({ signal }) => api.getMeta(signal),
-    // Master data changes when a site is commissioned, not every thirty seconds.
-    staleTime: 60 * 60_000,
-    refetchInterval: false,
+    /*
+     * Master data changes when a site is commissioned, not every thirty
+     * seconds - but `ever_reported` travels on this payload and is not master
+     * data. It is an observation the server settles AFTER it starts: every
+     * plant reads `unknown` at boot, which `/meta` deliberately serves as
+     * `true` so an Influx outage cannot empty the pickers, and the probe then
+     * walks the retention before it can answer `no`.
+     *
+     * An hour of `staleTime` with no refetch meant a page opened in that gap
+     * kept the boot-time roster for the rest of the session: measured
+     * 2026-09-11, the server had `STJ-1`, `6337` and `6321` at
+     * `ever_reported: false` while the open board still offered all six lamps,
+     * one of them a site the same board was drawing as Not connected.
+     *
+     * Five minutes is the ceiling on that window. The payload is small and
+     * served from the poller's memory, so the cost is a request per five
+     * minutes per board.
+     */
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
     gcTime: Infinity,
     retry: RETRY_LIMIT,
     retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 15_000),
