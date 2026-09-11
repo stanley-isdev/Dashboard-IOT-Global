@@ -80,9 +80,10 @@ var EXCLUDE_FROM_OA    = ['Order End', 'Pending', 'Offline', 'No Plan'];
 
 ดู §6 ตารางข้อค้นพบ - แถว **F-13** ปิดเป็น "ล้าสมัย" และเพิ่มแถวใหม่ **F-18** สำหรับข้อ 3 ด้านบน
 
-**อัปเดต 2026-09-10 ต่อ - ยืนยันแล้วว่า `TotalOutput_Per_PO` (ตัวคำนวณ `OA_percent`) อ่าน
-`now() - INTERVAL '3 days'` จริง ไม่ใช่ `'1 days'` เหมือน v3** และพี่ IOT ยืนยันกฎธุรกิจตรง ๆ:
-เครื่องของ ASI ที่ออเดอร์ปัจจุบันรันมาเกิน 24 ชม. ให้คิด %OA จากหน้าต่าง 3 วัน ไม่ใช่ 1 วัน
+**อัปเดต 2026-09-10 ต่อ - ยืนยันแล้วว่า `TotalOutput_Per_PO` (ตัวคำนวณ `OA_percent`) ของบอร์ด
+ASI อ่าน `now() - INTERVAL '3 days'` จริง ไม่ใช่ `'1 days'` เหมือนที่บันทึกไว้จากบอร์ด THS**
+และ IOT ยืนยันกฎธุรกิจพร้อมขอบเขต: **เฉพาะ ASI** เครื่องที่ออเดอร์ปัจจุบันรันมาเกิน 24 ชม.
+ให้คิด %OA จากหน้าต่าง 3 วัน ไม่ใช่ 1 วัน (ไซต์อื่นยังเป็น 1 วันตามเดิม)
 
 พิสูจน์ด้วยข้อมูลสดที่ plant 6051 (Explore, datasource `iot_data_master`, 2026-09-10):
 `M-ID-02` และ `M-ID-06` มีออเดอร์อายุเท่ากัน (~26.8 ชม.) แต่ %OA ต่างกันคนละขนาด -
@@ -92,13 +93,33 @@ var EXCLUDE_FROM_OA    = ['Order End', 'Pending', 'Offline', 'No Plan'];
 | M-ID-02 | 49.1% | 46.4% | 46.3-46.4% ✅ |
 | M-ID-06 | 112% | 111% | 111.5% |
 
-เลข 3d ตรงกับ Grafana เป๊ะ ยืนยันว่าหน้าต่าง 24h เดิมของเราผิด **`server/src/influx/queries.ts`'s
-`OA_WINDOW_HOURS` แก้จาก `24` เป็น `71` แล้ว** (71 ไม่ใช่ 72 เพราะ `MAX_WINDOW_HOURS` เป็นเพดาน
-scan ไฟล์จริงของ InfluxDB ต่อ 1 query - ดูคอมเมนต์ของค่านั้น) ผลข้างเคียงที่ต้องแก้ตามคือ
-`server/src/services/windowedSnapshot.ts`'s fast-path (`isDefault`) เคยผูกกับ
-`OA_WINDOW_HOURS` โดยบังเอิญ (ทั้งคู่เคยเป็น 24) ต้องแยกออกมาเป็นการเทียบ `request.range === '24h'`
-ตรง ๆ ไม่งั้นทุก request ปกติ (ที่ front end ส่ง `range=24h` เป็นค่า default) จะพลาด fast path
-และคำนวณ %OA ใหม่ด้วยหน้าต่างแคบกว่าที่ poller ถืออยู่ ทำให้การแก้ครั้งนี้ไม่มีผลกับ request ส่วนใหญ่
+เลข 3d ตรงกับ Grafana เป๊ะ ยืนยันว่าหน้าต่าง 24h ของเรา**ผิดสำหรับ ASI**
+
+> ⚠️ **กฎ 3 วันนี้เป็นของ ASI เท่านั้น ไม่ใช่ทุกไซต์** — IOT ยืนยันขอบเขตไว้ชัดเจน และ SQL ที่ถอดมา
+> ก็สอดคล้อง: `TotalOutput_Per_PO` ของบอร์ด **ASI** อ่าน `INTERVAL '3 days'` ส่วนของ **THS**
+> (บันทึกไว้ใน §2.1 เมื่อ 2026-08-27) อ่าน `INTERVAL '1 days'`
+>
+> ระหว่างวันที่ 2026-09-10 เคยแก้ `OA_WINDOW_HOURS` เป็น `71` แบบ**ค่าเดียวใช้ทั้งระบบ** ซึ่งผิด —
+> มันลาก THS ออกจากบอร์ดของ THS เอง (เครื่อง `P1I8` ที่ 6332 ขึ้น 294 ชิ้นฝั่งเรา เทียบกับ 43 ชิ้น
+> บนบอร์ด เพราะหน้าต่างที่กว้างเกินไปกวาด shot ย้อนหลังเกือบ 3 วันเข้ามานับ ทั้งที่บอร์ดนับแค่วันเดียว)
+
+**โครงสร้างที่ใช้จริงตอนนี้: หน้าต่าง %OA เป็นค่าราย company**
+
+| ที่ | ค่า |
+|---|---|
+| `server/src/influx/queries.ts` → `OA_WINDOW_HOURS` | `24` — ค่า default (เลขของ THS) |
+| `server/src/config/masterData.ts` → `oaWindowHours` ของ ASI | `71` (= `MAX_WINDOW_HOURS`, ไม่ใช่ 72 เพราะเป็นเพดาน scan ไฟล์ของ InfluxDB ต่อ 1 query) |
+| ไซต์อื่นที่ยังไม่ได้ตรวจสอบ | ไม่ต้องระบุ → ได้ค่า default ไปโดยอัตโนมัติ |
+
+`machineOaSql` รับ `OaWindowPlan` แล้ว emit เป็น **`UNION ALL` ของ SELECT ต่อหนึ่งหน้าต่าง** โดยแต่ละ
+สาขาถูกจำกัดด้วย `plant IN (...)` ของตัวเอง — query เดียว ไม่ซ้อนกัน (แต่ละ plant อยู่สาขาเดียว) และ
+poller ยังยิงครั้งเดียวต่อรอบเหมือนเดิม
+
+ผลข้างเคียงอีกจุดที่ต้องแก้ตาม: `server/src/services/windowedSnapshot.ts`'s fast-path (`isDefault`)
+เคยผูกกับ `OA_WINDOW_HOURS` โดยบังเอิญ (ทั้งคู่เคยเป็น 24) ต้องแยกออกมาเป็นการเทียบ
+`request.range === '24h'` ตรง ๆ ไม่งั้นพอมีไซต์ไหนที่หน้าต่างกว้างกว่า range ปกติ ทุก request
+ที่ front end ส่ง `range=24h` (ค่า default) จะพลาด fast path แล้วไปคำนวณใหม่ด้วยหน้าต่างที่ไม่ตรงกับ
+ที่ poller ถืออยู่
 
 ---
 
@@ -1103,7 +1124,7 @@ avgOA   = ค่าเฉลี่ยอย่างง่ายของ .fmt-o
 |---|---|---|---|
 | **F-01** | **drill-down param ว่างเปล่า 11 ตัว** | href ส่ง `mainGroup`, `process`, `shift`, `mode`, `status`, `cycle_time`, `avr_cycle_time`, `time_mold_opening`, `time_mold_end`, `time_injection`, `qty`, `cavity` แต่ **ไม่มีชื่อเหล่านี้ใน `SELECT`** → ได้ค่าว่างเสมอ · `std_time` ยิ่งพลาดซ้อน เพราะ SQL ส่งชื่อ `STD_Time` (Handlebars case-sensitive) | ขยายจาก DESIGN.md §10 ที่ระบุไว้แค่ `mainGroup` |
 | **F-02** | **`{{QtyColor}}` ไม่มีอยู่จริง** | ใช้เป็น class ของ OUTPUT ACTUAL แต่ไม่มีใน `SELECT` → class ว่างเปล่าตลอด | ใหม่ |
-| **F-03** | **time picker แทบไม่มีผลกับตัวเลข** | `$__timeFrom/$__timeTo` ใช้ใน `POs_To_Show` เท่านั้น · `TotalOutput_Per_PO` และ `RealtimeStatus_Latest`/`StatusPerPO_Latest` ใช้ `now() - INTERVAL` ตายตัว → **เลื่อน time picker แล้ว Output/%OA ไม่เปลี่ยน** เปลี่ยนแค่ว่ามีการ์ด `Order End`/`Pending` เก่ากี่ใบ · **v4 (2026-09-10): ค่าตายตัวนั้นขยับจาก `'1 days'` เป็น `'3 days'`** ยืนยันเป็นกฎธุรกิจจริงจาก IOT ไม่ใช่บั๊ก - พอร์ตมาแล้วที่ `server/src/influx/queries.ts`'s `OA_WINDOW_HOURS` (24→71, ดู §0) | DESIGN.md §10 "Time window hardcode" |
+| **F-03** | **time picker แทบไม่มีผลกับตัวเลข** | `$__timeFrom/$__timeTo` ใช้ใน `POs_To_Show` เท่านั้น · `TotalOutput_Per_PO` และ `RealtimeStatus_Latest`/`StatusPerPO_Latest` ใช้ `now() - INTERVAL` ตายตัว → **เลื่อน time picker แล้ว Output/%OA ไม่เปลี่ยน** เปลี่ยนแค่ว่ามีการ์ด `Order End`/`Pending` เก่ากี่ใบ · **บอร์ด ASI (2026-09-10): ค่าตายตัวนั้นเป็น `'3 days'` ไม่ใช่ `'1 days'` แบบ THS** ยืนยันเป็นกฎธุรกิจจริงจาก IOT และ**จำกัดขอบเขตแค่ ASI** - พอร์ตมาแล้วเป็นค่าราย company (`oaWindowHours` ใน `config/masterData.ts`, ASI = 71) ไม่ใช่ค่าเดียวทั้งระบบ ดู §0 | DESIGN.md §10 "Time window hardcode" |
 | **F-04** | **`AR_percent` คืน `0` เมื่อ `TotalPlan = 0`** | ขัดกับ rule R2 "ไม่มีข้อมูล ≠ ศูนย์" · THS 6338 ส่ง `plan_qty = 0` ทุกแถว → บอร์ดขึ้น 0% ทั้งที่ควรขึ้น "ไม่มีแผน" | DESIGN.md §9.2 ข้อ 2 |
 | **F-05** | **`StatusStartTime` ไม่ถูกบังคับเป็น UTC** | โค้ดขั้น 0 ระมัดระวังมากกับ `vCreateDateTxt` (เติม `Z` เอง) แต่ `data-start` ของ timer ส่งเข้า `new Date(startStr)` ตรงๆ · ถ้า `CAST(... AS VARCHAR)` ให้ string ที่ไม่มี `Z`/offset เบราว์เซอร์จะตีความเป็น **local time** → ที่ไทยจะเพี้ยน 7 ชม. และ `Math.max(0, …)` จะทำให้ timer ค้างที่ `00:00:00` · **ต้องตรวจ output จริงของ cast ก่อนสรุป** | ใหม่ - ต้องยืนยัน |
 | **F-06** | **Avg %OA มี bias สูงเกินจริง** | เงื่อนไข `oaVal > 0` ตัดเครื่องที่ %OA เป็น 0 จริงๆ ออกจากตัวหาร → ค่าเฉลี่ยสูงกว่าความจริง · และเป็น simple average ต่อการ์ด ไม่ถ่วงน้ำหนักด้วยชิ้น/เวลา | DESIGN.md D-20 |

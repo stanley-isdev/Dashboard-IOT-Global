@@ -6,9 +6,9 @@ import {
   latestMachineStatusInSql,
   machineHourOaInSql,
   machineOaInSql,
+  machineOaSql,
   MAX_WINDOW_HOURS,
   NARROW_WINDOW_HOURS,
-  OA_WINDOW_HOURS,
   type MachineOaRow,
   type LatestMachineStatusRow,
   type Window,
@@ -18,9 +18,11 @@ import {
   describeGaps,
   mergeLatestStatus,
   mergeOaGroups,
+  RANGE_HOURS,
   resolveWindow,
   type WindowStore,
 } from '../src/services/windowedSnapshot.ts';
+import { COMPANIES } from '../src/config/masterData.ts';
 import type { InfluxClient } from '../src/influx/client.ts';
 
 /**
@@ -114,16 +116,17 @@ describe('resolveWindow', () => {
   /**
    * Regression for the 2026-09-10 break: `isDefault` used to compare
    * `RANGE_HOURS[request.range]` against `OA_WINDOW_HOURS`, which only ever
-   * held because both happened to equal 24. Once %OA's window widened past a
-   * day, that equality broke for the ONE range value the fast path exists
-   * for - the front end's actual default - and every ordinary page load
-   * would have missed it: an extra `windows.get` round trip per request, and
-   * that request's %OA silently recomputed over a narrower window than the
-   * poller already holds correctly. `request.range === '24h'` must stay true
-   * regardless of whatever `OA_WINDOW_HOURS` is now.
+   * held because both happened to equal 24. A site whose %OA window is wider
+   * than the default range broke that equality for the ONE range value the
+   * fast path exists for - the front end's own default - and every ordinary
+   * page load would then have missed it: an extra `windows.get` round trip
+   * per request, and that request's %OA recomputed over a window other than
+   * the one the poller already holds. ASI is such a site (3 days, confirmed
+   * against IOT), so the invariant is live, not hypothetical.
    */
-  it("keeps the default fast path even though %OA's own window is wider than 24h", () => {
-    expect(OA_WINDOW_HOURS).not.toBe(24);
+  it("keeps the default fast path even though a site's %OA window is wider", () => {
+    const wider = COMPANIES.filter((c) => c.oaWindowHours > RANGE_HOURS['24h']);
+    expect(wider.map((c) => c.code)).toContain('ASI');
     expect(resolveWindow({ ...base, request: { range: '24h' } }).isDefault).toBe(true);
   });
 
@@ -376,6 +379,57 @@ describe('the bounded SQL builders', () => {
     // No `now()` anywhere: a bounded chunk must not drift with the clock
     // between the three queries that make up one window.
     expect(sql).not.toContain('now()');
+  });
+});
+
+/**
+ * %OA's window belongs to the SITE, because each production board sums its own
+ * `TotalOutput_Per_PO` over its own interval: THS's reads a day, ASI's reads
+ * three (confirmed against IOT, 2026-09-10). One global constant cannot be
+ * both, and setting it to ASI's for a few hours that day is what put THS 6332
+ * machine `P1I8` at 294 pieces against its own board's 43.
+ */
+describe('machineOaSql - one window per site, in one statement', () => {
+  it('emits a single plain SELECT when every site reads the same window', () => {
+    const sql = machineOaSql(24);
+    expect(sql).not.toContain('UNION ALL');
+    expect(sql).toContain("now() - INTERVAL '24 hours'");
+    // No plant predicate to write when there is nothing to tell apart.
+    expect(sql).not.toContain('"plant" IN');
+  });
+
+  it('gives the named plants their own window and everyone else the default', () => {
+    const sql = machineOaSql({
+      defaultHours: 24,
+      overrides: [{ plants: ['6051'], hours: 71 }],
+    });
+
+    const [asi, rest] = sql.split('\nUNION ALL\n');
+    expect(rest).toBeDefined();
+
+    // ASI's branch: its plants, its 3-day window.
+    expect(asi).toContain(`"plant" IN ('6051')`);
+    expect(asi).toContain("now() - INTERVAL '71 hours'");
+
+    // Everyone else's: explicitly NOT those plants, and the default window.
+    // `IS NULL` too, or three-valued logic drops a row with no plant here
+    // instead of at `foldMachineOa`, where the rule for it actually lives.
+    expect(rest).toContain(`"plant" NOT IN ('6051')`);
+    expect(rest).toContain(`"plant" IS NULL`);
+    expect(rest).toContain("now() - INTERVAL '24 hours'");
+    expect(rest).not.toContain("INTERVAL '71 hours'");
+  });
+
+  it('refuses a window wider than one query may scan', () => {
+    expect(() =>
+      machineOaSql({ defaultHours: 24, overrides: [{ plants: ['6051'], hours: 96 }] }),
+    ).toThrow(/MAX_WINDOW_HOURS|1\.\.71/);
+  });
+
+  it('ignores an override that names no plants', () => {
+    const sql = machineOaSql({ defaultHours: 24, overrides: [{ plants: [], hours: 71 }] });
+    expect(sql).not.toContain('UNION ALL');
+    expect(sql).toContain("now() - INTERVAL '24 hours'");
   });
 });
 

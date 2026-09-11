@@ -4,6 +4,7 @@ import type { Env } from './config/env.ts';
 import { COMPANIES } from './config/masterData.ts';
 import type { Deps } from './deps.ts';
 import { createInfluxClient } from './influx/client.ts';
+import { OA_WINDOW_HOURS } from './influx/queries.ts';
 import authPlugin from './plugins/auth.ts';
 import staticSitePlugin from './plugins/staticSite.ts';
 import globalOverviewRoutes from './routes/globalOverview.ts';
@@ -36,6 +37,20 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
     intervalMs: env.SNAPSHOT_INTERVAL_MS,
     oaIntervalMs: env.OA_REFRESH_MS,
     trendIntervalMs: env.TREND_REFRESH_MS,
+    /*
+     * %OA's window is the SITE's, not the fleet's: each production board sums
+     * its own `TotalOutput_Per_PO` over its own interval, and ASI's is 3 days
+     * where everyone else's is one (`oaWindowHours` in config/masterData.ts).
+     * Built here rather than inside the poller because "which plants belong to
+     * which company" is master data's question, and the poller has never had
+     * to know the company table.
+     */
+    oaWindowHours: {
+      defaultHours: OA_WINDOW_HOURS,
+      overrides: COMPANIES.filter(
+        (c) => c.oaWindowHours !== OA_WINDOW_HOURS && c.plants.length > 0,
+      ).map((c) => ({ plants: c.plants.map((p) => p.code), hours: c.oaWindowHours })),
+    },
     // Every plant in master data, not just the `live` companies': whether a
     // site has ever reported is exactly what we must not take from config.
     plantCodes: COMPANIES.flatMap((c) => c.plants.map((p) => p.code)),

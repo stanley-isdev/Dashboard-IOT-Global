@@ -7,6 +7,7 @@ import {
   type DataReadiness,
   type ShiftConfig,
 } from '@dashboard/contract';
+import { MAX_WINDOW_HOURS, OA_WINDOW_HOURS } from '../influx/queries.ts';
 
 /**
  * Master data for the nine manufacturing companies, ported from
@@ -73,6 +74,26 @@ const zCompanyMasterData = z.object({
     })
     .nullable(),
   shiftConfig: zShiftConfig.nullable(),
+  /**
+   * How many hours of shots this site's %OA is figured over - its own
+   * production board's window, which is NOT the same everywhere.
+   *
+   * THS's board sums `TotalOutput_Per_PO` over `INTERVAL '1 days'`; ASI's over
+   * `'3 days'`, confirmed against IOT on 2026-09-10 for ASI specifically ("a
+   * machine whose order has run past 24 h is figured over 3 days"). Omitted
+   * means `OA_WINDOW_HOURS`, the THS number, because that is what every site
+   * reconciled so far reads and a site nobody has checked should not silently
+   * inherit another site's exception.
+   *
+   * Capped at `MAX_WINDOW_HOURS` (71) rather than a literal 72, because that
+   * is the widest a single query may scan before InfluxDB rejects it on file
+   * count - see the constant. The hour given up is the oldest one.
+   *
+   * This being per company is the whole point: it was one global constant for
+   * a few hours on 2026-09-10, set to ASI's 71, and that moved every THS
+   * figure off THS's own board (`P1I8` read 294 pieces here against 43 there).
+   */
+  oaWindowHours: z.number().int().positive().max(MAX_WINDOW_HOURS).default(OA_WINDOW_HOURS),
   plants: z.array(zPlantMasterData),
 });
 
@@ -106,7 +127,10 @@ const STJ_SHIFT: ShiftConfig = {
   ],
 };
 
-const RAW_COMPANIES: CompanyMasterData[] = [
+/* The INPUT type, so a site that reads %OA over the ordinary window can leave
+   `oaWindowHours` out and take the schema's default rather than restating it
+   nine times. `COMPANIES` below is the parsed OUTPUT type, where it is set. */
+const RAW_COMPANIES: z.input<typeof zCompanyMasterData>[] = [
   {
     code: 'THS',
     name: 'Thai Stanley Electric Public Co., Ltd.',
@@ -154,6 +178,24 @@ const RAW_COMPANIES: CompanyMasterData[] = [
     readiness: 'live',
     absence: null,
     shiftConfig: TWO_SHIFT('Asia/Bangkok'),
+    /*
+     * ASI's board reads %OA over 3 days where every other site reads a day -
+     * its panel's `TotalOutput_Per_PO` says `INTERVAL '3 days'`, and IOT
+     * confirmed the rule on 2026-09-10: here, an order that has run past 24 h
+     * is figured over 3 days rather than clipped to the last one. ASI runs a
+     * single order across days (see `domain/orderShift.ts`), so the clipped
+     * figure is the wrong one far more often here than anywhere else.
+     *
+     * Measured at 6051 the same day, both machines on orders ~26.8 h old:
+     * `M-ID-02` read 49.1% over 24 h against 46.4% over 3 days, and the board
+     * showed 46.3-46.4%. `M-ID-06` read 112% and 111% - the same clipping,
+     * a much smaller effect, because what the extra hours change is not the
+     * order's age but whether the hours a day-wide window cuts off the front
+     * of it ran at a different efficiency than the rest.
+     *
+     * 71 and not 72: `MAX_WINDOW_HOURS`, the InfluxDB file-scan cap.
+     */
+    oaWindowHours: MAX_WINDOW_HOURS,
     plants: [
       { code: '6051', label: 'ASI Plant', targetOa: null, machinesExpected: 21, machineExclusions: [] },
     ],

@@ -18,6 +18,7 @@ import {
   type LatestMachineStatusRow,
   type MachineHourOaRow,
   type MachineOaRow,
+  type OaWindowPlan,
   type PlantEverSeenRow,
 } from '../influx/queries.ts';
 import { influxTimeToIsoUtc } from '../influx/time.ts';
@@ -256,7 +257,12 @@ export function createSnapshotPoller(opts: {
    * is rebuilt on every request regardless of which query last ran.
    */
   trendIntervalMs?: number;
-  oaWindowHours?: number;
+  /**
+   * One window for every site, or a plan giving the sites with their own
+   * window (ASI's 3 days) that window and everyone else the default. Omitted
+   * means `OA_WINDOW_HOURS` for all - see `machineOaSql`.
+   */
+  oaWindowHours?: number | OaWindowPlan;
   trendPoints?: number;
 
   /**

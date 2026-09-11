@@ -443,46 +443,58 @@ export interface PlantEverSeenRow {
 }
 
 /**
- * Q-03's window for %OA.
+ * Q-03's DEFAULT window for %OA - what a site reads over unless its own master
+ * data names a different one (`oaWindowHours` in `config/masterData.ts`).
  *
- * **71, not 24 - changed 2026-09-10, confirmed against IOT.** 24 h reproduced
- * the OLD (v3) production board's per-machine numbers exactly, because that
- * panel's `TotalOutput_Per_PO` CTE also read `now() - INTERVAL '1 days'`
- * (docs/grafana/MACHINE-STATUS-V2.md, captured 2026-08-27). The v4 panel
- * widened that CTE to `INTERVAL '3 days'` (§0 of the same doc, captured
- * 2026-09-10), and IOT confirmed the business rule behind it directly: at ASI,
- * any machine whose current order has run past 24 h is meant to have its %OA
- * figured over 3 days, not clipped to the last day.
+ * **24 h, and this is the THS number, not a universal one.** It reproduces the
+ * production board's per-machine figures at THS exactly, because that panel's
+ * `TotalOutput_Per_PO` CTE reads `now() - INTERVAL '1 days'`
+ * (docs/grafana/MACHINE-STATUS-V2.md, captured 2026-08-27).
  *
- * Proven against live data the same day at plant 6051, both machines on
- * orders ~26.8 h old: `M-ID-02` read 49.1% over 24 h and 46.4% over 3 d, and
- * the production board showed 46.3-46.4% - the 24 h figure was the wrong one.
- * `M-ID-06`, same order age, read 112% and 111% - a small gap where `M-ID-02`
- * had a large one, because what changes between the two windows is not "is
- * the order old" (both were) but whether the ~2.7 h a 24 h window clips off
- * the front of that order happens to run at a different efficiency than the
- * rest of it.
+ * ASI's panel does NOT: its CTE reads `INTERVAL '3 days'`, and IOT confirmed
+ * on 2026-09-10 that this is the rule there - a machine whose current order
+ * has run past 24 h has its %OA figured over 3 days rather than clipped to
+ * the last day. **That rule is ASI's alone**, so it lives on ASI's company
+ * record rather than here; briefly, on 2026-09-10, this constant was changed
+ * to 71 for everyone, which silently moved every THS figure away from THS's
+ * own board (THS 6332 machine `P1I8` read 294 pieces here against the board's
+ * 43 - the wider window sweeping in nearly three days of shots the board
+ * never counted).
  *
- * 71 rather than a literal 72 (3 x 24) because `MAX_WINDOW_HOURS` is a real
- * InfluxDB file-scan cap a single query may not cross - see its own comment.
- * 71 covers all but the oldest hour of the intended 3-day rule; the missing
- * hour is the earliest one, which is also the one an order's own creation
- * time bounds away as soon as it is under 71 h old. A window this wide costs
- * more per query, but the live poller already treats a failed %OA query as
- * "serve the last known figures, mark the source degraded, retry in
- * `oaIntervalMs`" (`services/liveSnapshot.ts`) rather than blanking anything,
- * so an occasional rejected poll costs staleness for a few seconds, not a
- * wrong or missing number.
+ * Longer than the status window whatever the site: %OA is an aggregate over a
+ * PO's run, and a narrower window clips every order that started before it
+ * and reports a partial figure as if it were the whole.
  *
- * Longer than the status window on the same grounds as before: %OA is an
- * aggregate over a PO's run, and a narrower window clips every order that
- * started before it and reports a partial figure as if it were the whole.
- *
- * Note this is NOT a shift-relative window (D-26) - see machineOaSql for what
- * a wider one now costs the `Order End` layer-2 verdict, which is nothing:
- * that rule stopped subtracting anything from %OA on 2026-09-08.
+ * Note this is NOT a shift-relative window (D-26).
  */
-export const OA_WINDOW_HOURS = 71;
+export const OA_WINDOW_HOURS = 24;
+
+/**
+ * One site group's own %OA window, for a plan that mixes several.
+ *
+ * `plants` are plant CODES, because that is what the rows carry - a company
+ * has no column of its own on `production_machine_io` (its `codeCompany` is
+ * NULL on almost every row, BACKEND-HANDOVER §4.3a), so a per-company rule
+ * has to travel as the list of that company's plants.
+ */
+export interface OaWindowOverride {
+  readonly plants: readonly string[];
+  readonly hours: number;
+}
+
+/**
+ * Which window each site's %OA is read over, in one object.
+ *
+ * Exists because the window is a property of the SITE and the poll is a single
+ * query for every site at once (see `machineOaSql`). Without this the choice
+ * was one window for everybody, and every value of it is wrong for somebody:
+ * 24 h is THS's board and ASI's is 3 days.
+ */
+export interface OaWindowPlan {
+  /** For any plant not named in `overrides`. */
+  readonly defaultHours: number;
+  readonly overrides: readonly OaWindowOverride[];
+}
 
 /**
  * One row per (plant, machine, PO slots) inside the window. Everything the
@@ -569,10 +581,51 @@ export interface MachineOaRow {
  * is counted as if it had taken standard, so a long stop does not register as
  * lost efficiency. That is why `Kpi.downtime_sec` has to exist separately.
  */
-export function machineOaSql(windowHours: number = OA_WINDOW_HOURS): string {
-  assertWindow(windowHours);
-  return machineOaWhere(`${ident('time')} > now() - INTERVAL '${windowHours} hours'`);
+export function machineOaSql(
+  /**
+   * A plain number is one window for every site. An `OaWindowPlan` gives the
+   * sites that read %OA over their own window (ASI's 3 days) that window and
+   * everyone else the default, in ONE statement: a `UNION ALL` of one grouped
+   * SELECT per window, each restricted to the plants it applies to.
+   *
+   * One statement rather than one query per window because this runs on the
+   * poller's hot path every `oaIntervalMs`, and because the branches are
+   * disjoint by plant - no row can be counted twice, so the union is exactly
+   * the set of groups a per-site query would have returned.
+   */
+  window: number | OaWindowPlan = OA_WINDOW_HOURS,
+): string {
+  if (typeof window === 'number') {
+    assertWindow(window);
+    return machineOaWhere(sinceHours(window));
+  }
+
+  const overrides = window.overrides.filter((o) => o.plants.length > 0);
+  assertWindow(window.defaultHours);
+  if (overrides.length === 0) return machineOaWhere(sinceHours(window.defaultHours));
+
+  const parts = overrides.map((o) => {
+    assertWindow(o.hours);
+    return machineOaWhere(
+      `${ident('plant')} IN (${o.plants.map(literal).join(', ')}) AND ${sinceHours(o.hours)}`,
+    );
+  });
+
+  /* `IS NULL` explicitly, because `plant NOT IN (...)` is NULL for a row with
+     no plant and would drop it. Such a row cannot be attributed to a site and
+     `foldMachineOa` discards it anyway, but it should be discarded THERE, by
+     the rule that says so, and not silently by three-valued logic here. */
+  const named = overrides.flatMap((o) => o.plants).map(literal).join(', ');
+  parts.push(
+    machineOaWhere(
+      `(${ident('plant')} NOT IN (${named}) OR ${ident('plant')} IS NULL) AND ${sinceHours(window.defaultHours)}`,
+    ),
+  );
+
+  return parts.join('\nUNION ALL\n');
 }
+
+const sinceHours = (hours: number) => `${ident('time')} > now() - INTERVAL '${hours} hours'`;
 
 /**
  * Q-03/Q-04 over an explicit window - one chunk of an absolute or multi-day pick.

@@ -475,9 +475,10 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
     const warnings = build(snapshot({ '6332': 10 })).meta.warnings.join(' ');
     expect(warnings).toMatch(/24 h window/);
     expect(warnings).toMatch(/TOTAL excludes `Order End` only/);
-    // %OA's own window, confirmed against IOT 2026-09-10 to match the board's
-    // 3-day rule for an order older than a day - not the census's 24 h.
-    expect(warnings).toMatch(/71 h, not 24/);
+    // %OA's window is the SITE's, not the fleet's: 24 h at THS, 71 h at ASI,
+    // whose board reads 3 days for an order older than a day (IOT,
+    // 2026-09-10). Saying one number here would be wrong for someone.
+    expect(warnings).toMatch(/24 h at THS, 71 h at ASI/);
     expect(warnings).toMatch(/Pending.*excluded from %OA/);
     // The plant card reading higher than its own drill-down needs saying.
     expect(warnings).toMatch(/Counted across ALL processes/);
@@ -960,8 +961,9 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
 
   it('still says on the envelope when a window is wider than the reconciled one', () => {
     // The gate is gone; the caveat is not. The board's 69.8% was measured over
-    // OA_WINDOW_HOURS (71 h, 2026-09-10), and a week is not that - which is
-    // worth saying even now that no machine leaves the average for it.
+    // OA_WINDOW_HOURS - THS's own 24 h, this fixture being a THS one - and a
+    // week is not that, which is worth saying even now that no machine leaves
+    // the average for it.
     const week = buildGlobalOverview({
       snapshot: snapshot({ '6332': 10 }, { '6332': boardMachines }, [
         onOrder('6332', 'IC4', 48.9, 137, 220),
@@ -972,7 +974,7 @@ describe('buildGlobalOverview - phase 3 %OA (Q-03)', () => {
       now: NOW,
     });
     expect(week.meta.warnings.join(' ')).toMatch(
-      /this window spans 168 h, wider than the 71 h that %OA was reconciled/,
+      /this window spans 168 h, wider than the 24 h that %OA was reconciled/,
     );
   });
 
