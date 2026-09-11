@@ -18,7 +18,7 @@ import {
   type LatestMachineStatusRow,
   type MachineHourOaRow,
   type MachineOaRow,
-  type OaWindowPlan,
+  type SiteWindowPlan,
   type PlantEverSeenRow,
 } from '../influx/queries.ts';
 import { influxTimeToIsoUtc } from '../influx/time.ts';
@@ -223,7 +223,13 @@ function emptySnapshot(configured: boolean): LiveSnapshot {
 export function createSnapshotPoller(opts: {
   client: InfluxClient;
   intervalMs: number;
-  windowHours?: number;
+  /**
+   * The census window - a number for one width fleet-wide, or a plan giving
+   * each site its own (see `statusWindowHours` in config/masterData.ts: ASI's
+   * board looks back 3 days, THS's 1). Built in app.ts, where master data's
+   * company-to-plant map lives.
+   */
+  windowHours?: number | SiteWindowPlan;
   /**
    * How often %OA (Q-03/Q-04) is re-read.
    *
@@ -262,7 +268,7 @@ export function createSnapshotPoller(opts: {
    * window (ASI's 3 days) that window and everyone else the default. Omitted
    * means `OA_WINDOW_HOURS` for all - see `machineOaSql`.
    */
-  oaWindowHours?: number | OaWindowPlan;
+  oaWindowHours?: number | SiteWindowPlan;
   trendPoints?: number;
 
   /**

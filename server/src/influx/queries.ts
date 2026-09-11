@@ -317,10 +317,25 @@ function betweenClause(w: Window): string {
   return `${ident('time')} >= ${instant(w.from)} AND ${ident('time')} < ${instant(w.to)}`;
 }
 
-/** Q-01: one row per machine, carrying its most recent status inside the window. */
-export function latestMachineStatusSql(windowHours: number = HOT_WINDOW_HOURS): string {
-  assertWindow(windowHours);
-  return latestMachineStatusWhere(`${ident('time')} > now() - INTERVAL '${windowHours} hours'`);
+/**
+ * Q-01: one row per machine, carrying its most recent status inside the window.
+ *
+ * The window is the SITE's, like %OA's above it. ASI's board reads its status
+ * table over `3 days` where THS's reads `1 days` (`panel-v4-asi.sql`), and a
+ * machine silent for longer than the window simply is not on the board - it has
+ * no card, so it is in no count. Ours behaved the same way with one number for
+ * everybody, which made ASI's census narrower than ASI's board: measured
+ * 2026-09-11, `M-IS-38` last reported `Dandori` two days earlier, so the board
+ * carried 43 machines and we carried 42.
+ *
+ * A stale status stays on screen rather than becoming `Offline` - that is T-11,
+ * accepted on 2026-08-27 for the same reason as here: the board does it, and
+ * our own freshness label travels beside the figure to say the site is quiet.
+ */
+export function latestMachineStatusSql(
+  window: number | SiteWindowPlan = HOT_WINDOW_HOURS,
+): string {
+  return perSiteWindowSql(latestMachineStatusWhere, window);
 }
 
 /**
@@ -477,7 +492,7 @@ export const OA_WINDOW_HOURS = 24;
  * NULL on almost every row, BACKEND-HANDOVER §4.3a), so a per-company rule
  * has to travel as the list of that company's plants.
  */
-export interface OaWindowOverride {
+export interface SiteWindowOverride {
   readonly plants: readonly string[];
   readonly hours: number;
 }
@@ -490,10 +505,10 @@ export interface OaWindowOverride {
  * was one window for everybody, and every value of it is wrong for somebody:
  * 24 h is THS's board and ASI's is 3 days.
  */
-export interface OaWindowPlan {
+export interface SiteWindowPlan {
   /** For any plant not named in `overrides`. */
   readonly defaultHours: number;
-  readonly overrides: readonly OaWindowOverride[];
+  readonly overrides: readonly SiteWindowOverride[];
 }
 
 /**
@@ -583,7 +598,7 @@ export interface MachineOaRow {
  */
 export function machineOaSql(
   /**
-   * A plain number is one window for every site. An `OaWindowPlan` gives the
+   * A plain number is one window for every site. A `SiteWindowPlan` gives the
    * sites that read %OA over their own window (ASI's 3 days) that window and
    * everyone else the default, in ONE statement: a `UNION ALL` of one grouped
    * SELECT per window, each restricted to the plants it applies to.
@@ -593,31 +608,46 @@ export function machineOaSql(
    * disjoint by plant - no row can be counted twice, so the union is exactly
    * the set of groups a per-site query would have returned.
    */
-  window: number | OaWindowPlan = OA_WINDOW_HOURS,
+  window: number | SiteWindowPlan = OA_WINDOW_HOURS,
+): string {
+  return perSiteWindowSql(machineOaWhere, window);
+}
+
+/**
+ * A plan turned into one statement, for any query that reads a time window.
+ *
+ * Shared by the %OA roll-up and the census because both meet the same fact: the
+ * window is a property of the SITE, and each is a single poll for every site at
+ * once. The branches are disjoint by plant - a row matches exactly one of them
+ * - so the union is precisely the set of rows a per-site query would have
+ * returned, and a per-machine `ROW_NUMBER` inside `where` still ranks within
+ * one site's own branch.
+ */
+function perSiteWindowSql(
+  where: (whereTime: string) => string,
+  window: number | SiteWindowPlan,
 ): string {
   if (typeof window === 'number') {
     assertWindow(window);
-    return machineOaWhere(sinceHours(window));
+    return where(sinceHours(window));
   }
 
   const overrides = window.overrides.filter((o) => o.plants.length > 0);
   assertWindow(window.defaultHours);
-  if (overrides.length === 0) return machineOaWhere(sinceHours(window.defaultHours));
+  if (overrides.length === 0) return where(sinceHours(window.defaultHours));
 
   const parts = overrides.map((o) => {
     assertWindow(o.hours);
-    return machineOaWhere(
-      `${ident('plant')} IN (${o.plants.map(literal).join(', ')}) AND ${sinceHours(o.hours)}`,
-    );
+    return where(`${ident('plant')} IN (${o.plants.map(literal).join(', ')}) AND ${sinceHours(o.hours)}`);
   });
 
   /* `IS NULL` explicitly, because `plant NOT IN (...)` is NULL for a row with
      no plant and would drop it. Such a row cannot be attributed to a site and
-     `foldMachineOa` discards it anyway, but it should be discarded THERE, by
-     the rule that says so, and not silently by three-valued logic here. */
+     the folds downstream discard it anyway, but it should be discarded THERE,
+     by the rule that says so, and not silently by three-valued logic here. */
   const named = overrides.flatMap((o) => o.plants).map(literal).join(', ');
   parts.push(
-    machineOaWhere(
+    where(
       `(${ident('plant')} NOT IN (${named}) OR ${ident('plant')} IS NULL) AND ${sinceHours(window.defaultHours)}`,
     ),
   );

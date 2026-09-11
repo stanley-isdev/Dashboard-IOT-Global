@@ -7,7 +7,7 @@ import {
   type DataReadiness,
   type ShiftConfig,
 } from '@dashboard/contract';
-import { MAX_WINDOW_HOURS, OA_WINDOW_HOURS } from '../influx/queries.ts';
+import { HOT_WINDOW_HOURS, MAX_WINDOW_HOURS, OA_WINDOW_HOURS } from '../influx/queries.ts';
 
 /**
  * Master data for the nine manufacturing companies, ported from
@@ -94,6 +94,25 @@ const zCompanyMasterData = z.object({
    * figure off THS's own board (`P1I8` read 294 pieces here against 43 there).
    */
   oaWindowHours: z.number().int().positive().max(MAX_WINDOW_HOURS).default(OA_WINDOW_HOURS),
+  /**
+   * How far back this company's census looks for a machine's latest status,
+   * in hours. Default `HOT_WINDOW_HOURS` (24).
+   *
+   * The same shape of fact as `oaWindowHours` above, read off the same panels:
+   * ASI's `RealtimeStatus_Latest` bounds on `now() - INTERVAL '3 days'` where
+   * THS's bounds on `1 days`. A machine that has not reported inside the
+   * window has no card on that board and is in none of its counts, so ours has
+   * to use the same width or the two censuses cannot agree.
+   *
+   * Measured at 6051 on 2026-09-11: `M-IS-38` last reported `Dandori` two days
+   * earlier. The board carried it - 43 machines, Dandori 4 - and our 24 h
+   * census did not, at 42 and 3. Nothing about the machine changed; only how
+   * far back each side was willing to look.
+   *
+   * Capped at `MAX_WINDOW_HOURS` (71) for the file-scan limit, exactly as
+   * `oaWindowHours` is, so ASI reads 71 h rather than a literal 72.
+   */
+  statusWindowHours: z.number().int().positive().max(MAX_WINDOW_HOURS).default(HOT_WINDOW_HOURS),
   plants: z.array(zPlantMasterData),
 });
 
@@ -196,6 +215,7 @@ const RAW_COMPANIES: z.input<typeof zCompanyMasterData>[] = [
      * 71 and not 72: `MAX_WINDOW_HOURS`, the InfluxDB file-scan cap.
      */
     oaWindowHours: MAX_WINDOW_HOURS,
+    statusWindowHours: MAX_WINDOW_HOURS,
     plants: [
       { code: '6051', label: 'ASI Plant', targetOa: null, machinesExpected: 21, machineExclusions: [] },
     ],

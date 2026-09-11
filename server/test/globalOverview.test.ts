@@ -474,11 +474,14 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
     // the response what scope produced these numbers, and the places they
     // deliberately part company with the board.
     const warnings = build(snapshot({ '6332': 10 })).meta.warnings.join(' ');
-    expect(warnings).toMatch(/24 h window/);
-    expect(warnings).toMatch(/TOTAL excludes `Order End` only/);
-    // %OA's window is the SITE's, not the fleet's: 24 h at THS, 71 h at ASI,
-    // whose board reads 3 days for an order older than a day (IOT,
-    // 2026-09-10). Saying one number here would be wrong for someone.
+    expect(warnings).toMatch(/TOTAL excludes `Order End` and `Pending`/);
+    /*
+     * Both windows are the SITE's, not the fleet's: 24 h at THS, 71 h at ASI,
+     * whose board reads 3 days - for %OA because its output table does, and for
+     * the census because its status table does. Saying one number for either
+     * would be wrong for someone, which is why the sentence names both sites.
+     */
+    expect(warnings).toMatch(/census window is the one EACH SITE reads/);
     expect(warnings).toMatch(/24 h at THS, 71 h at ASI/);
     expect(warnings).toMatch(/Pending.*excluded from %OA/);
     // The plant card reading higher than its own drill-down needs saying.

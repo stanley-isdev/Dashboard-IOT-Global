@@ -6,6 +6,7 @@ import {
   latestMachineStatusInSql,
   machineHourOaInSql,
   machineOaInSql,
+  latestMachineStatusSql,
   machineOaSql,
   MAX_WINDOW_HOURS,
   NARROW_WINDOW_HOURS,
@@ -627,5 +628,73 @@ describe('everSeenWindows - Q-09 slicing', () => {
     expect(sql).toContain('ORDER BY "time" DESC');
     // No Result predicate: any row at all proves the plant reached us.
     expect(sql).not.toContain('Result');
+  });
+});
+
+/*
+ * The census meets the same fact one table over.
+ *
+ * ASI's board bounds `RealtimeStatus_Latest` on `now() - INTERVAL '3 days'`
+ * and THS's on `1 days` (docs/grafana/panel-v4-asi.sql). A machine silent for
+ * longer than its own board's window has no card there and is in none of its
+ * counts - so a census one width wide for everybody has to be wrong for
+ * somebody. Measured at 6051 on 2026-09-11: `M-IS-38`, last heard from two
+ * days earlier in `Dandori`, was on the board (43 machines) and not in our
+ * 24 h census (42).
+ */
+describe('latestMachineStatusSql - the census window is the site\'s too', () => {
+  it('emits a single plain SELECT when every site reads the same window', () => {
+    const sql = latestMachineStatusSql(24);
+    expect(sql).not.toContain('UNION ALL');
+    expect(sql).toContain("now() - INTERVAL '24 hours'");
+    expect(sql).not.toContain('"plant" IN');
+  });
+
+  it('gives ASI its three days and everyone else twenty-four hours', () => {
+    const sql = latestMachineStatusSql({
+      defaultHours: 24,
+      overrides: [{ plants: ['6051'], hours: 71 }],
+    });
+
+    const [asi, rest] = sql.split('\nUNION ALL\n');
+    expect(rest).toBeDefined();
+
+    expect(asi).toContain(`"plant" IN ('6051')`);
+    expect(asi).toContain("now() - INTERVAL '71 hours'");
+    expect(rest).toContain(`"plant" NOT IN ('6051')`);
+    expect(rest).toContain(`"plant" IS NULL`);
+    expect(rest).toContain("now() - INTERVAL '24 hours'");
+
+    /*
+     * Each branch ranks within itself. The union is disjoint by plant, so a
+     * machine appears in exactly one branch and `rn = 1` there is its latest
+     * row for the whole statement - the property that lets this be one query
+     * instead of one per site.
+     */
+    for (const branch of [asi, rest]) {
+      expect(branch).toContain('PARTITION BY "plant", "machine"');
+      expect(branch).toContain('rn = 1');
+    }
+  });
+
+  it('refuses a window wider than one query may scan', () => {
+    expect(() =>
+      latestMachineStatusSql({ defaultHours: 24, overrides: [{ plants: ['6051'], hours: 96 }] }),
+    ).toThrow(/MAX_WINDOW_HOURS|1\.\.71/);
+  });
+});
+
+/*
+ * Master data is where the width lives, so the plan app.ts builds from it is
+ * worth pinning: ASI reads 71 h, and nothing else may quietly inherit it - the
+ * defect of 2026-09-10, when one global 71 pulled THS off its own board.
+ */
+describe('statusWindowHours in master data', () => {
+  it('gives ASI the wide window and every other company the default', () => {
+    const asi = COMPANIES.find((c) => c.code === 'ASI')!;
+    expect(asi.statusWindowHours).toBe(71);
+    for (const c of COMPANIES.filter((c) => c.code !== 'ASI')) {
+      expect(c.statusWindowHours).toBe(24);
+    }
   });
 });

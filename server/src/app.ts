@@ -4,7 +4,7 @@ import type { Env } from './config/env.ts';
 import { COMPANIES } from './config/masterData.ts';
 import type { Deps } from './deps.ts';
 import { createInfluxClient } from './influx/client.ts';
-import { OA_WINDOW_HOURS } from './influx/queries.ts';
+import { HOT_WINDOW_HOURS, OA_WINDOW_HOURS } from './influx/queries.ts';
 import authPlugin from './plugins/auth.ts';
 import staticSitePlugin from './plugins/staticSite.ts';
 import globalOverviewRoutes from './routes/globalOverview.ts';
@@ -50,6 +50,19 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
       overrides: COMPANIES.filter(
         (c) => c.oaWindowHours !== OA_WINDOW_HOURS && c.plants.length > 0,
       ).map((c) => ({ plants: c.plants.map((p) => p.code), hours: c.oaWindowHours })),
+    },
+    /*
+     * The census window is the SITE's too, and for the same reason: ASI's board
+     * reads its status table over 3 days where THS's reads 1 day, and a machine
+     * outside that window has no card there and no place in its counts. Built
+     * here beside %OA's plan because both answer "which plants belong to which
+     * company", which is master data's question and never the poller's.
+     */
+    windowHours: {
+      defaultHours: HOT_WINDOW_HOURS,
+      overrides: COMPANIES.filter(
+        (c) => c.statusWindowHours !== HOT_WINDOW_HOURS && c.plants.length > 0,
+      ).map((c) => ({ plants: c.plants.map((p) => p.code), hours: c.statusWindowHours })),
     },
     // Every plant in master data, not just the `live` companies': whether a
     // site has ever reported is exactly what we must not take from config.
