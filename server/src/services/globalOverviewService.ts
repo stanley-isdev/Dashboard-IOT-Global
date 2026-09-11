@@ -367,13 +367,20 @@ function buildCompany(
       ? buildPlantCensus({ observations, machineExclusions: b.master.machineExclusions })
       : null;
 
-    // `Order End` is the board's only exclusion from TOTAL, and it exists there
-    // to avoid double-counting a machine that also has a live card. Said on the
-    // payload anyway - a number dropped from a display is a presentation
-    // choice; a number dropped without a trace is a lie.
+    /*
+     * The board's `EXCLUDE_FROM_TOTAL` - `Order End` and `Pending` - named on
+     * the payload. A number dropped from a display is a presentation choice; a
+     * number dropped without a trace is a lie. The statuses are listed rather
+     * than assumed, because which one it was is the whole question a reader
+     * comparing this against the board will have.
+     */
     if (census && census.notCounted > 0) {
+      const why = (Object.entries(census.counts.not_counted) as [string, number][])
+        .filter(([, n]) => n > 0)
+        .map(([status, n]) => `${n} \`${status}\``)
+        .join(', ');
       warnings.push(
-        `${company.code}/${b.master.code}: ${census.notCounted} of ${census.observed} reporting machines are in \`Order End\` and are excluded from TOTAL, as they are on the production board`,
+        `${company.code}/${b.master.code}: ${census.notCounted} of ${census.observed} reporting machines are excluded from TOTAL, as they are on the production board (${why})`,
       );
     }
 

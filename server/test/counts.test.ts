@@ -5,10 +5,10 @@ import { buildPlantCensus } from '../src/domain/counts.ts';
 import type { MachineObservation } from '../src/services/liveSnapshot.ts';
 
 /**
- * The board's rule: everything counts except `Order End`
- * (docs/grafana/MACHINE-STATUS-V2.md §4.2, `EXCLUDE_FROM_TOTAL`).
+ * The board's rule: everything counts except `Order End` and `Pending`
+ * (`EXCLUDE_FROM_TOTAL` in docs/grafana/panel-v4-asi.js, captured 2026-09-11).
  */
-const EXCLUDED = new Set<MachineStatus>(['Order End']);
+const EXCLUDED = new Set<MachineStatus>(['Order End', 'Pending']);
 
 const obs = (pairs: [string, MachineStatus][]): MachineObservation[] =>
   pairs.map(([machine, status]) => ({
@@ -30,7 +30,7 @@ function partitionViolations(c: ReturnType<typeof census>): Violation[] {
   return out;
 }
 
-describe("buildPlantCensus - the board's TOTAL: everything but `Order End`", () => {
+describe("buildPlantCensus - the board's TOTAL: everything but `Order End` and `Pending`", () => {
   it('still adds up when every machine is running or stopped', () => {
     // The snapshot the old TOTAL = RUNNING + STOP rule was set from. Both rules
     // agree here, which is exactly why that one looked right for two days.
@@ -48,7 +48,7 @@ describe("buildPlantCensus - the board's TOTAL: everything but `Order End`", () 
     expect(partitionViolations(c)).toEqual([]);
   });
 
-  it('counts the third states the board counts, and only drops `Order End`', () => {
+  it('counts the third states the board counts, and drops only what the board drops', () => {
     const c = census([
       ['I1', 'Mass Pro'],
       ['I2', 'No Plan'],
@@ -57,17 +57,24 @@ describe("buildPlantCensus - the board's TOTAL: everything but `Order End`", () 
       ['I6', 'Pending'],
     ]);
 
-    // Four of five. The old rule reported 1 here - which is what made THS read
-    // 19 against the board's 27 on 2026-08-27.
-    expect(c.counts.total).toBe(4);
+    /*
+     * Three of five. The old TOTAL = RUNNING + STOP rule reported 1 here -
+     * which is what made THS read 19 against the board's 27 on 2026-08-27 -
+     * and `No Plan` / `4M Change` have been counted ever since. `Pending`
+     * joined `Order End` outside the total on 2026-09-11, off the captured v4
+     * source: its content template renders no card for either status, so
+     * neither can reach the board's own count.
+     */
+    expect(c.counts.total).toBe(3);
     expect(c.observed).toBe(5);
-    expect(c.notCounted).toBe(1);
+    expect(c.notCounted).toBe(2);
     expect(c.counts.not_counted['Order End']).toBe(1);
+    expect(c.counts.not_counted.Pending).toBe(1);
 
-    // The buckets carry them rather than the headline swallowing them.
+    // The buckets carry the counted ones rather than the headline swallowing them.
     expect(c.counts.running).toBe(1);
     expect(c.counts.idle).toBe(1); // No Plan. `Order End` is idle too, but excluded.
-    expect(c.counts.other).toBe(2); // 4M Change + Pending
+    expect(c.counts.other).toBe(1); // 4M Change. `Pending` is excluded.
     expect(partitionViolations(c)).toEqual([]);
   });
 

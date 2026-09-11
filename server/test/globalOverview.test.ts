@@ -329,13 +329,14 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
       .find((c) => c.code === 'THS')!
       .plants.find((p) => p.code === '6332')!;
 
-    // Four of five: `No Plan` and `Pending` count, as they do on the board;
-    // `Order End` does not, because layer 1 emits it as an extra card.
-    expect(p6332.counts.total).toBe(4);
+    // Three of five: `No Plan` counts, as it does on the board. `Order End`
+    // and `Pending` do not - the board's content template renders no card for
+    // either, so neither reaches its count (`EXCLUDE_FROM_TOTAL`, v4).
+    expect(p6332.counts.total).toBe(3);
     expect(p6332.counts.running).toBe(1);
     expect(p6332.counts.stopped).toBe(1);
     expect(p6332.counts.idle).toBe(1);
-    expect(p6332.counts.other).toBe(1);
+    expect(p6332.counts.other).toBe(0);
 
     // The buckets partition TOTAL at every level - the invariant that replaced
     // "total === running + stopped", which only ever held by coincidence.
@@ -349,15 +350,15 @@ describe('buildGlobalOverview - phase 1 liveness', () => {
     }) => c.running + c.stopped + c.idle + c.other + c.no_data === c.total;
 
     expect(partitions(payload.totals.counts)).toBe(true);
-    expect(payload.totals.counts.total).toBe(5); // 4 at 6332 + 1 at 6051
+    expect(payload.totals.counts.total).toBe(4); // 3 at 6332 + 1 at 6051
     for (const co of payload.companies) {
       expect(partitions(co.counts)).toBe(true);
       for (const p of co.plants) expect(partitions(p.counts)).toBe(true);
     }
 
-    // The one machine left out is recorded, not silently dropped.
+    // The machines left out are recorded, by status, not silently dropped.
     expect(payload.meta.warnings.join(' ')).toMatch(
-      /THS\/6332: 1 of 5 reporting machines are in `Order End`/,
+      /THS\/6332: 2 of 5 reporting machines are excluded from TOTAL.*1 `Order End`.*1 `Pending`/,
     );
   });
 
