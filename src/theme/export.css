@@ -48,6 +48,19 @@
 }
 
 /*
+ * The browser-window shell (see the `data-device='desktop'` block in base.css)
+ * parks the masthead and the filter row with `position: sticky`. A sticky box
+ * renders where it is STUCK, so capturing a page that has been scrolled down
+ * would put the band across the middle of the picture, over whatever it was
+ * covering at the time. Unstuck for the capture, it goes back to being the
+ * first thing in the document, which is where the export wants it.
+ */
+:root[data-exporting] .topbar {
+  position: relative;
+  top: auto;
+}
+
+/*
  * Controls that are actions rather than information.
  *
  * Everything else in the two bands stays, and deliberately: the filter row is

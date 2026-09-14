@@ -134,6 +134,142 @@ body {
   overscroll-behavior: contain;
 }
 
+/* ---- the same board, opened in a browser window ---- */
+
+/*
+ * Everything above frames the board as exactly one viewport. That is the right
+ * answer for the thing this was drawn for - an iPad Air mounted in landscape,
+ * or a panel on a wall - where nobody is going to scroll and anything below the
+ * fold is effectively not on the board at all.
+ *
+ * It is the wrong answer for the other way this URL gets opened: a colleague on
+ * a desktop with the browser in half a screen. There the fixed frame has no
+ * slack to give. The board row shrinks to whatever the window left over, and at
+ * 520px of viewport that is 176px of map with nine base labels stacked on top
+ * of each other and a ranking showing two rows - and because the page cannot
+ * scroll, the rest is not merely below the fold, it is unreachable.
+ *
+ * So the frame is fixed only on the device it is fixed FOR. In a browser the
+ * shell is at LEAST a viewport tall rather than exactly one:
+ *
+ *   - a window with room to spare is unchanged, pixel for pixel. The flex
+ *     children still grow into the slack, the board still ends at the bottom
+ *     edge, and no scrollbar appears - `min-height` only bites once there is
+ *     not enough room, which is the whole point;
+ *   - below that the rows stop shrinking at the heights the board declares for
+ *     its panels (see `.board` in components.css) and the document grows past
+ *     the window instead. The viewer scrolls, which is the one thing the kiosk
+ *     frame ruled out and the one thing a browser reader expects.
+ *
+ * Keyed on `data-device`, not on a width breakpoint. An iPad handed a small
+ * Stage Manager window is still the device the fixed frame is for, and a
+ * 1280x700 laptop is a browser however close to the artboard it happens to
+ * measure. AppShell writes the attribute once at boot (see config/device.ts),
+ * and `?device=desktop` forces it for review.
+ *
+ * The export already does exactly this to capture a drill-down in full - see
+ * the `:has(.view--scroll)` block in export.css, which is the same three
+ * declarations for the same reason.
+ */
+:root[data-device='desktop'] body {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
+
+:root[data-device='desktop'] .app {
+  height: auto;
+  min-height: 100dvh;
+  /*
+   * Was `hidden`, and it has to go for two independent reasons: a clipped
+   * ancestor would swallow the page scroll this whole mode exists to allow, and
+   * it would also make the masthead's `position: sticky` below silently do
+   * nothing - an overflow-hidden ancestor becomes the sticky element's
+   * scrolling box, and .app is now exactly as tall as its content, so there
+   * would be no distance for it to stick over.
+   */
+  overflow: visible;
+}
+
+/*
+ * The three boxes between the shell and the board carry `min-height: 0` so a
+ * page can hand its leftover height down. That is what lets them shrink to
+ * nothing, so in a browser they stop at their content instead and the board's
+ * declared minimums reach the document.
+ */
+:root[data-device='desktop'] #main,
+:root[data-device='desktop'] .view,
+:root[data-device='desktop'] .boardwrap {
+  min-height: auto;
+}
+
+/*
+ * ...and the board's panels do not get to raise that content floor themselves.
+ *
+ * `min-height: auto` above asks each box how short it may be, and the answer
+ * walks all the way down into the ranking's `<table>`: nine bases with their
+ * plants expanded measure 675px, so the shell would reserve a board two thirds
+ * taller than the 22rem it asks for and a 1280x700 laptop that fits the board
+ * today would have grown a scrollbar for nothing.
+ *
+ * A scroller is exactly the box that should NOT answer that question - its
+ * whole job is to be shorter than what is inside it - and `flex-basis: 0` is
+ * what makes it say so: the panel's intrinsic height becomes its head plus
+ * nothing, which leaves `.board`'s declared minimum as the only thing setting
+ * the floor. `min-height: 0` alone does not do it; that governs how far the
+ * item may be shrunk, not what it contributes upward.
+ *
+ * Scoped to the board, not to every `.panel__scroll` on the site. A drill-down
+ * page stacks panels that have no height handed to them from above, and a
+ * scroller with no basis there would collapse to a panel head with nothing
+ * under it. Inside .boardwrap every panel is a grid item in a row the board
+ * sized, which is the condition that makes this safe.
+ */
+:root[data-device='desktop'] .boardwrap .panel__scroll {
+  flex-basis: 0;
+  /*
+   * And once the page itself can scroll, a panel that has reached the end of
+   * its rows hands the rest of the gesture on rather than swallowing it.
+   * `contain` is the right default on a screen that cannot scroll - there is
+   * nothing to chain to, and it keeps a flick inside the table off the browser's
+   * own rubber-band - but here it strands the reader: the pointer is over the
+   * ranking, the ranking has no more rows, and the page underneath refuses to
+   * move until they find somewhere else to put the cursor.
+   */
+  overscroll-behavior: auto;
+}
+
+/*
+ * The masthead and the filter row stay put while the board scrolls under them.
+ *
+ * They are the page's controls - the range, the region, Export - and the
+ * freshness badge that says whether any of it is live. On a fixed screen they
+ * are always in view for free; once the page scrolls they would be the first
+ * thing to leave, and a reader looking at the ranking would have no way to tell
+ * how old it is without scrolling back.
+ *
+ * Only when the window is tall enough to spare the band. At 600px of viewport
+ * the two rows are a sixth of the screen, and a reader that short of height
+ * wants all of it for the board.
+ *
+ * The band ends at the filter row and the board is cut flush against it, with
+ * .app's --shell-gap left in the flow to scroll away like everything else. The
+ * alternative - padding the gap into the sticky box so a strip of page tint
+ * always shows underneath - was tried and looks like a mistake rather than a
+ * margin: --shell-gap is 10px, which is exactly enough for the rounded bottom
+ * corners of the KPI cards to sit in the band looking like a stray outline.
+ */
+@media (min-height: 600px) {
+  :root[data-device='desktop'] .topbar {
+    position: sticky;
+    top: 0;
+    /* The masthead paints its own band edge to edge and the filter row does
+       not, so without this the board would show through the filters on its way
+       past them. */
+    background: var(--bg);
+  }
+}
+
 /* ---- focus. Visible ring on keyboard nav only, >=3:1 against every surface. */
 :focus-visible {
   outline: none;

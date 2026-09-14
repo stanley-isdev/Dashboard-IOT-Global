@@ -3502,6 +3502,25 @@ button.filter {
 }
 
 /*
+ * What the board is worth, in a browser window that cannot spare it a screen.
+ *
+ * The other half of the rules in base.css: there the page stopped being exactly
+ * one viewport tall, and here the board says how much height it needs before
+ * the document should grow and the reader should scroll rather than the panels
+ * keep shrinking.
+ *
+ * 22rem, and the map is the panel that decides it. At 1280x700 - the smallest
+ * window the fixed frame still looks right in - the board gets 380px and all
+ * nine base labels separate; 22rem lands just under that, so every window that
+ * holds the board today still holds it, unchanged and with no scrollbar, and
+ * the page starts growing exactly where the map starts stacking labels on top
+ * of each other.
+ */
+:root[data-device='desktop'] .board {
+  min-height: 22rem;
+}
+
+/*
  * The unselected board. `hidden` is the correct ARIA state for an unselected
  * tabpanel and normally carries `display: none` from the UA stylesheet - but a
  * class selector beats a bare attribute selector, so the rule above wins and
@@ -3870,6 +3889,25 @@ button.filter {
      was just asked to fill. */
   .board--map {
     grid-template-rows: minmax(0, 1fr);
+  }
+
+  /*
+   * Stacked in a browser the two rows are drawn taller than the 14rem the fixed
+   * frame settles for, because here they do not have to come out of one screen:
+   * past this the page grows and the reader scrolls. 21rem is about where the
+   * map stops piling its nine base labels on top of each other, and where the
+   * ranking shows enough rows to read as a table rather than as one that failed
+   * to load.
+   *
+   * The board's own minimum (22rem, above) is left alone - these two track
+   * minimums already add up to more than it, and saying the total twice is two
+   * numbers to keep in step.
+   *
+   * On an iPad the 14rem still stands: a portrait window there is the fixed
+   * screen this board is drawn for, not a browser somebody resized.
+   */
+  :root[data-device='desktop'] .board {
+    grid-template-rows: minmax(21rem, 1fr) minmax(21rem, 1fr);
   }
 }
 @media (max-width: 680px) {
