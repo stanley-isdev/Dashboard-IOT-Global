@@ -5319,7 +5319,32 @@ button.filter {
   border: 0;
   padding: 0;
   margin: 0;
-  font: inherit;
+  /*
+   * `font-family`, and deliberately NOT the `font` shorthand.
+   *
+   * The shorthand resets every longhand it names - including the size and the
+   * weight `.last-seen` sets two rules up on this very element. Both classes
+   * land on the same button, so the shorthand won and the clock stopped being
+   * 12px nano type: it took the size of whatever it was sitting next to.
+   *
+   * In a table cell that is invisible, because the cell is small type anyway.
+   * Beside a KPI card's hero figure it is 32px, and the mark - drawn at 1.05em
+   * by StatusIcon so it tracks its text - came out 34px across, nearly three
+   * times the size of the same clock in the ranking. That is the whole of "the
+   * yellow clock is too big".
+   *
+   * The family is the only part of the button's UA font that has to come off:
+   * the size and weight are `.last-seen`'s to set, and the line height is set
+   * just below.
+   */
+  font-family: inherit;
+  /* One gap, so the mark never touches the figure it qualifies. The button
+     follows the value with no whitespace between them in the JSX - deliberately,
+     because a text node there would be a wrap opportunity in a 60px table
+     column - so the separation has to be drawn rather than typed. Most visible
+     on a KPI card, where a 10px clock sitting flush against a 32px "%" reads as
+     part of the glyph instead of as a caveat about the number. */
+  margin-inline-start: var(--sp-1);
   color: inherit;
   line-height: 1;
   cursor: pointer;
