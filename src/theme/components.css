@@ -5270,6 +5270,82 @@ button.filter {
   font-weight: 500;
 }
 
+/*
+ * The clock arm of `.last-seen` is a button, so that the age it stands for can
+ * be TAPPED open and not only hovered - see the note in MeasureValue.tsx. These
+ * rules exist to make a button look like the span it replaced: the mark keeps
+ * its own tier colour from the inline style, so nothing here sets one.
+ */
+.last-seen--tap {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  /* The drawn mark must not grow; `.tap` in base.css grows the hit area around
+     it to the 44px minimum instead, which is what a thumb needs in a cell this
+     tight. */
+  flex: none;
+}
+
+/*
+ * The age itself, in the top layer.
+ *
+ * Set as a small dark bubble rather than a panel: it carries one short phrase,
+ * and a bordered card the size of the provenance popover reads as a document
+ * opening over a figure the reader only glanced at.
+ */
+.last-seen__pop {
+  margin: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-panel);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  max-width: min(16rem, calc(100vw - 2 * var(--sp-4)));
+}
+
+/*
+ * The fallback path only. Without anchor positioning the bubble centres itself
+ * in the viewport, nowhere near the clock that opened it, and a lone phrase
+ * floating mid-board reads as a glitch - the dim says it was opened on purpose.
+ * The `@supports` block below takes it back out, because an anchored bubble
+ * sitting on its own clock needs no such explanation.
+ */
+.last-seen__pop::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+/*
+ * Anchored on the clock that opened it, the same implicit-anchor trick the
+ * provenance panel uses - a popover invoked through `popovertarget` takes its
+ * invoker as anchor, so no `anchor-name` has to be threaded through the JSX of
+ * every cell that can grow a clock.
+ *
+ * `flip-block` matters more here than `flip-inline`: these clocks sit in the
+ * last rows of a full-height ranking as often as the first, and a bubble opening
+ * downward from the bottom row would hang off the board.
+ */
+@supports (position-area: block-end) {
+  .last-seen__pop {
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline;
+    margin: var(--sp-1) 0 0;
+  }
+
+  .last-seen__pop::backdrop {
+    background: none;
+  }
+}
+
 /* ---------------------------------------------------------------- chip */
 
 /*

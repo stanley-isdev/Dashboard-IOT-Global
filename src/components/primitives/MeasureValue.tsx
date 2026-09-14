@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 import type { Tier } from '../../api/contract';
 import { hasValue, type Measure } from '../../domain/measure';
 import { measureToken, tierToken } from '../../domain/status';
@@ -47,6 +49,12 @@ export function MeasureValue({
 }: MeasureValueProps) {
   const { lang, t } = useI18n();
   const fmt = format ?? ((v: number) => formatPct(v, lang));
+  /*
+   * Called before the arms below branch, because only one of them needs it and
+   * a hook cannot be called conditionally. It names the stale popover - see the
+   * clock's own note further down for why that popover exists.
+   */
+  const staleId = useId();
 
   if (hasValue(measure)) {
     const token = tier ? tierToken(tier) : null;
@@ -82,10 +90,39 @@ export function MeasureValue({
          */}
         {measure.kind === 'stale' ? (
           emphasis === 'cell' || emphasis === 'kpi' ? (
-            <span className="last-seen" title={lastSeen ?? undefined}>
-              <StatusGlyph token={measureToken('stale')} />
-              <span className="visually-hidden">{lastSeen}</span>
-            </span>
+            /*
+             * A button that opens a popover, not a bare span with a `title`.
+             *
+             * This board is read on an iPad standing on the shop floor, and a
+             * touch device has no hover: the `title` carrying "as of 8 minutes
+             * ago" was unreachable on the one screen that matters most. Anyone
+             * tapping the clock got nothing back and concluded the mark meant
+             * nothing - which is worse than the caveat never being drawn.
+             *
+             * The same native `[popover]` the provenance panel uses. It renders
+             * in the top layer, so it is not clipped by `.kpi`'s
+             * `overflow: hidden` nor by a table cell's box, and light-dismiss
+             * and Escape arrive without another document-level handler. The
+             * `title` stays for the desktop reader who never taps.
+             *
+             * The click is stopped so a clock sitting inside a drill-down row
+             * opens the age rather than the drawer behind it.
+             */
+            <>
+              <button
+                type="button"
+                className="last-seen last-seen--tap tap"
+                popoverTarget={staleId}
+                title={lastSeen ?? undefined}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <StatusGlyph token={measureToken('stale')} />
+                <span className="visually-hidden">{lastSeen}</span>
+              </button>
+              <span id={staleId} popover="auto" className="last-seen__pop">
+                {lastSeen}
+              </span>
+            </>
           ) : (
             <span className="last-seen">
               {' '}
