@@ -204,6 +204,34 @@ body {
 }
 
 /*
+ * A drill-down stops being its own scroller, and this is not tidying - without
+ * it the wheel does nothing at all on those pages.
+ *
+ * `.view--scroll` is the page-level scroller a company or a plant uses, because
+ * forty machines are taller than the fixed frame. The rule above makes it
+ * content-sized, so on a desktop it has no scrollable overflow left - the
+ * DOCUMENT is what is too tall now, not this box. Measured on a plant at
+ * 1200x620: the page had 1947px of room and the box itself had 0.
+ *
+ * A scroll container with nothing to scroll would normally hand the notch
+ * straight up to the page. This one carries `overscroll-behavior: contain`, and
+ * contain blocks the hand-off whether or not there was any scrolling to do
+ * first - so the wheel landed on a box that could not move, was refused passage
+ * to the document, and the page sat still. The scrollbar was right there on the
+ * right-hand edge; dragging it worked, which is what makes this read as the
+ * wheel being broken rather than the page.
+ *
+ * `overflow: visible` is the fix and the honest description at once: on a
+ * desktop this element is not a scroller, so it should not be declaring itself
+ * one. `overscroll-behavior` stops applying with it, which is why it is not
+ * restated here. Both stay exactly as they are on the iPad, where the frame is
+ * fixed and this box really is the thing that scrolls.
+ */
+:root[data-device='desktop'] .view--scroll {
+  overflow: visible;
+}
+
+/*
  * ...and the board's panels do not get to raise that content floor themselves.
  *
  * `min-height: auto` above asks each box how short it may be, and the answer
@@ -227,15 +255,25 @@ body {
  */
 :root[data-device='desktop'] .boardwrap .panel__scroll {
   flex-basis: 0;
-  /*
-   * And once the page itself can scroll, a panel that has reached the end of
-   * its rows hands the rest of the gesture on rather than swallowing it.
-   * `contain` is the right default on a screen that cannot scroll - there is
-   * nothing to chain to, and it keeps a flick inside the table off the browser's
-   * own rubber-band - but here it strands the reader: the pointer is over the
-   * ranking, the ranking has no more rows, and the page underneath refuses to
-   * move until they find somewhere else to put the cursor.
-   */
+}
+
+/*
+ * Every panel scroller hands the wheel on once it has nothing left to scroll.
+ *
+ * `contain` is the right default on a screen that cannot scroll: there is
+ * nothing to chain to, and it keeps a flick inside a table off the browser's
+ * own rubber-band. On a page that CAN scroll it is a trap, and it does not need
+ * the panel to be full to spring - contain blocks the hand-off whether or not
+ * any scrolling happened first. So a panel whose rows all fit, which is most of
+ * them, swallowed the notch and gave nothing back: on a company page the
+ * pointer over the plants table found a scroller with 0px of room and 280px of
+ * page waiting underneath it, and the wheel did nothing at all.
+ *
+ * Not scoped to the board, unlike the flex-basis above. The board was only
+ * where this was noticed; `.panel__scroll` is on every deck panel of every
+ * drill-down, which is where a reader does the most scrolling.
+ */
+:root[data-device='desktop'] .panel__scroll {
   overscroll-behavior: auto;
 }
 
