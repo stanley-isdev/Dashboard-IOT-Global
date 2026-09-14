@@ -3,6 +3,7 @@ import { latLngBounds } from 'leaflet';
 import { MapContainer, useMap } from 'react-leaflet';
 import type { CompanySummary, TierPolicy } from '../../api/contract';
 import { useConfig } from '../../config/AppContext';
+import { detectDevice } from '../../config/device';
 import { tierToken, siteToken } from '../../domain/status';
 import { useI18n } from '../../i18n/I18nProvider';
 import { usePrefs } from '../../state/prefsStore';
@@ -101,13 +102,17 @@ export const WorldMap = memo(function WorldMap({
         // Legal requirement, and the control is styled rather than hidden.
         attributionControl
         /*
-         * The wheel zooms. It is the first thing a viewer reaches for on a map
-         * this size, and the pinned +/- pair is a poor substitute once the
-         * cursor is already over the pin they want a closer look at.
+         * Leaflet's wheel handler is registered, but it does not get every
+         * notch: WheelPassThrough below arbitrates first, and which notches
+         * reach here depends on the device. On the iPad board the wheel zooms -
+         * it is the first thing a viewer reaches for on a map this size, and the
+         * pinned +/- pair is a poor substitute once the cursor is already over
+         * the pin they want a closer look at. In a browser, where the page can
+         * scroll and this panel covers most of it, the wheel is the page's and
+         * zoom takes ctrl/⌘. See the long note on WheelPassThrough.
          *
-         * The reason it used to be off - reading down the page must not
-         * silently re-frame the map - is answered by WheelPassThrough below
-         * rather than by giving the gesture up.
+         * Registered unconditionally rather than switched off per device,
+         * because the ctrl/⌘ path needs this handler present to zoom with.
          */
         scrollWheelZoom
         /*
@@ -231,22 +236,44 @@ function FitToContainer() {
 }
 
 /**
- * Gives the wheel back to the page once the map has nowhere left to zoom.
+ * Decides, per notch, whether the wheel belongs to the map or to the page.
  *
  * Leaflet's scroll-wheel handler swallows every notch it sees - it calls
- * preventDefault on all of them, at minZoom as readily as anywhere else. That
- * is fine on a map that fills the window and wrong here: the map is a tall
- * panel with the ranking table under it, so a viewer scrolling down to reach
- * the table would zoom the world out to minZoom and then sit there, wheel
- * turning, page still. That is the behaviour the old scrollWheelZoom={false}
- * was avoiding, and it is worth avoiding - but the answer is a limit, not a ban.
+ * preventDefault on all of them, at minZoom as readily as anywhere else. This
+ * runs in the capture phase on the box *around* the Leaflet container, so it
+ * gets each event first and can stop it short of Leaflet. It never calls
+ * preventDefault, so a notch it keeps back is left to the browser as an
+ * ordinary scroll.
  *
- * So: capture phase on the box *around* the Leaflet container, which runs
- * before Leaflet's own listener on the container inside it. While the map can
- * still move in the direction asked, this does nothing at all and Leaflet
- * zooms. At the limit it stops the event short of Leaflet - and, crucially,
- * never calls preventDefault - so the browser treats the notch as an ordinary
- * scroll and the page moves instead.
+ * There are two answers, because there are two devices.
+ *
+ * ## On the iPad board: at the limit
+ *
+ * The map is a tall panel with the ranking under it on a page that does not
+ * scroll, so a viewer working the wheel at minZoom would zoom the world out and
+ * then sit there, wheel turning, nothing moving. The notch goes to the page
+ * once the map has nowhere left to go in the direction asked; everywhere else
+ * the wheel zooms, which is the first thing a viewer reaches for on a map this
+ * size.
+ *
+ * ## In a browser: the page always wins
+ *
+ * A desktop window can be smaller than the board (see the `data-device`
+ * section in base.css) and then the page really does scroll - and the map fills
+ * most of it, so the wheel lands over the map nearly every time. Leaving the
+ * limit rule in place made the board unreadable in one direction: scrolling
+ * DOWN happened to work, because the map opens at minZoom and passes the notch
+ * straight through, while scrolling back UP zoomed the world in and moved the
+ * page not at all. Measured at 1200x540: 140px of travel down, 0px back up. And
+ * once the map had taken a single notch it was no longer at minZoom, so
+ * scrolling down stopped working too - the gesture just zoomed back out again.
+ *
+ * A gesture whose meaning depends on where the map happens to be zoomed is not
+ * a gesture anyone can learn. So in a browser the wheel scrolls the page, full
+ * stop, and zoom moves to the modifier every map on the web uses for this:
+ * ctrl (or ⌘) with the wheel. A trackpad pinch arrives as exactly that, so
+ * pinch-to-zoom keeps working without knowing anything about it, and the +/-
+ * buttons and double-click were never affected.
  */
 function WheelPassThrough() {
   const map = useMap();
@@ -255,11 +282,20 @@ function WheelPassThrough() {
     // The Leaflet container's parent is the .map-container box; the fallback is
     // only for the frame before it is in the document.
     const el = map.getContainer().parentElement ?? map.getContainer();
+    /* Read once: an iPad does not become a desktop while the board is up, and
+       this is the same call AppShell resolves `data-device` from. */
+    const inBrowser = detectDevice() === 'desktop';
 
     const onWheel = (e: WheelEvent) => {
       // A trackpad's sideways flick carries no deltaY, and Leaflet reads deltaY
       // only - there is nothing here to arbitrate.
       if (e.deltaY === 0) return;
+
+      if (inBrowser) {
+        // ctrl/⌘ held is a deliberate zoom - and is what a trackpad pinch sends.
+        if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
+        return;
+      }
 
       const zoom = map.getZoom();
       const stuck = e.deltaY > 0 ? zoom <= map.getMinZoom() : zoom >= map.getMaxZoom();
