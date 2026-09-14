@@ -41,9 +41,11 @@ export const GRAFANA_BASE_URL = 'http://10.200.129.66:3000';
 /**
  * The links, exactly as supplied. Do not tidy them.
  *
- * Their query strings differ - THS opens on `now/d` at 10s, ASI on `now-6h` at
- * 5s - and the differences are not accidents to be normalised away: each string
- * is the one that was checked against its own board. Both carry
+ * Both open on `from=now-24h&to=now` - a rolling Last 24 hours, set by the
+ * design owner on 2026-09-14. THS used to open on `now/d`, the calendar day so
+ * far, and that is not a stale value to be restored: the two boards were asked
+ * to agree on the window a reader sees when they arrive. The refresh rates are
+ * still each board's own (10s and 5s) and are left alone. Both carry
  * `var-Zone_var=$__all`, so the board opens on the whole plant no matter which
  * zone this app's own filter row is narrowed to. That is a real loss - the
  * generated links used to carry the zones in scope - and it is the price of
@@ -56,10 +58,10 @@ export const GRAFANA_BASE_URL = 'http://10.200.129.66:3000';
 const SUPPLIED_PLANT_LINKS: Readonly<Record<string, string>> = {
   /** THS LAMP 2, on Machine Status V2.0. */
   '6332':
-    'http://10.200.129.66:3000/d/adz5fll/machine-status-v2-0?orgId=1&from=now%2Fd&to=now%2Fd&timezone=Asia%2FBangkok&var-Lamp_var=6332&var-process_var=Injection&var-Zone_var=$__all&refresh=10s',
+    'http://10.200.129.66:3000/d/adz5fll/machine-status-v2-0?orgId=1&from=now-24h&to=now&timezone=Asia%2FBangkok&var-Lamp_var=6332&var-process_var=Injection&var-Zone_var=$__all&refresh=10s',
   /** ASI's single plant, on ASI's own instance. */
   '6051':
-    'http://10.201.128.87:3000/d/adz5fll/machine-status-v1-0-asi?orgId=1&from=now-6h&to=now&timezone=Asia%2FBangkok&var-Lamp_var=6051&var-process_var=Injection&var-Zone_var=$__all&refresh=5s',
+    'http://10.201.128.87:3000/d/adz5fll/machine-status-v1-0-asi?orgId=1&from=now-24h&to=now&timezone=Asia%2FBangkok&var-Lamp_var=6051&var-process_var=Injection&var-Zone_var=$__all&refresh=5s',
 };
 
 /**

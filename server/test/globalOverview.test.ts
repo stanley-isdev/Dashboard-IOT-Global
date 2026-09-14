@@ -1483,7 +1483,7 @@ describe('GET /api/v1/global-overview', () => {
     const link = (code: string) => payload.companies.find((c) => c.code === code)!.grafana_url;
 
     expect(link('THS')).toBe(
-      'http://10.200.129.66:3000/d/adz5fll/machine-status-v2-0?orgId=1&from=now%2Fd&to=now%2Fd&timezone=Asia%2FBangkok&var-Lamp_var=6332&var-process_var=Injection&var-Zone_var=$__all&refresh=10s',
+      'http://10.200.129.66:3000/d/adz5fll/machine-status-v2-0?orgId=1&from=now-24h&to=now&timezone=Asia%2FBangkok&var-Lamp_var=6332&var-process_var=Injection&var-Zone_var=$__all&refresh=10s',
     );
     expect(link('ASI')).toContain('machine-status-v1-0-asi');
     // The one that was invented, and every site still waiting for a board.
