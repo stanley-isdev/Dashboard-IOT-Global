@@ -332,10 +332,10 @@ function betweenClause(w: Window): string {
  * accepted on 2026-08-27 for the same reason as here: the board does it, and
  * our own freshness label travels beside the figure to say the site is quiet.
  */
-export function latestMachineStatusSql(
+export function latestMachineStatusQueries(
   window: number | SiteWindowPlan = HOT_WINDOW_HOURS,
-): string {
-  return perSiteWindowSql(latestMachineStatusWhere, window);
+): SiteQuery[] {
+  return perSiteWindowQueries(latestMachineStatusWhere, window);
 }
 
 /**
@@ -596,63 +596,141 @@ export interface MachineOaRow {
  * is counted as if it had taken standard, so a long stop does not register as
  * lost efficiency. That is why `Kpi.downtime_sec` has to exist separately.
  */
-export function machineOaSql(
+export function machineOaQueries(
   /**
    * A plain number is one window for every site. A `SiteWindowPlan` gives the
    * sites that read %OA over their own window (ASI's 3 days) that window and
-   * everyone else the default, in ONE statement: a `UNION ALL` of one grouped
-   * SELECT per window, each restricted to the plants it applies to.
+   * everyone else the default - as one grouped SELECT per window, each
+   * restricted to the plants it applies to.
    *
-   * One statement rather than one query per window because this runs on the
-   * poller's hot path every `oaIntervalMs`, and because the branches are
-   * disjoint by plant - no row can be counted twice, so the union is exactly
-   * the set of groups a per-site query would have returned.
+   * One query per window and NOT one union of them all, even though this runs
+   * on the poller's hot path every `oaIntervalMs`: the branches are disjoint by
+   * plant, so no row can be counted twice either way, and a union would charge
+   * the widest branch's file scan to every site on the board. See `SiteQuery`.
    */
   window: number | SiteWindowPlan = OA_WINDOW_HOURS,
-): string {
-  return perSiteWindowSql(machineOaWhere, window);
+): SiteQuery[] {
+  return perSiteWindowQueries(machineOaWhere, window);
 }
 
 /**
- * A plan turned into one statement, for any query that reads a time window.
+ * One site family: the plants that share a window, and the statements that read
+ * it. A plan becomes one of these per distinct window, NOT one `UNION ALL`
+ * statement covering them all.
+ *
+ * **It was one statement until 2026-09-16, and that is what took the board
+ * down.** The file-scan cap (`MAX_WINDOW_HOURS` above) counts the files ONE
+ * QUERY touches, so a union of a 71 h branch and a 24 h branch is charged for
+ * the 71 h one. Measured that morning, with the estate at 9 plants: the poller's
+ * single statement was rejected with `would scan 432 Parquet files`, every plant
+ * on the board read `No data`, and the amber banner said InfluxDB was
+ * unreachable - while the instance was answering a 24 h query in 138 ms. Eight
+ * sites that had nothing wrong with them were dark because ASI's branch rode in
+ * the same statement.
+ *
+ * Disjoint branches are exactly why splitting is free: a row matches one family
+ * and one only, so the families' rows concatenate into precisely the set the
+ * union returned, and a per-machine `ROW_NUMBER` inside `where` ranks within one
+ * site's own branch either way. What changes is only the blast radius of a
+ * rejection.
+ */
+export interface SiteQuery {
+  /**
+   * The plants named by this family. For `covers: 'others'` this is the
+   * EXCLUSION set - the plants that belong to some sibling - so it is never a
+   * statement that the family is empty.
+   */
+  readonly plants: readonly string[];
+  /** Whether `plants` is the set this family reads, or the set it skips. */
+  readonly covers: 'listed' | 'others';
+  readonly hours: number;
+  /**
+   * The first attempt: one statement over a relative window.
+   *
+   * Relative and not bounded, deliberately - see `betweenClause` for why the
+   * live builders keep the `now() - INTERVAL` form the production board's own
+   * SQL uses and the database's own clock.
+   */
+  readonly sql: string;
+  /**
+   * The same rows as `sql`, as bounded slices no wider than
+   * `NARROW_WINDOW_HOURS`, oldest first - what to send when `sql` is refused.
+   *
+   * Narrowing is the ONLY lever that works here. Measured 2026-09-16 against
+   * the live instance at a width that was being refused (84 h), all three of
+   * `plant IN ('6051')`, `plant NOT IN ('6051')` and no plant predicate at all
+   * were rejected identically, while the same span read as four bounded 24 h
+   * slices answered every time (3,629 / 3,884 / 2,676 / 2,928 rows). The cap
+   * counts files, files are laid down by time, and a plant predicate prunes
+   * none of them.
+   *
+   * The slices tile the window half-open and without overlap (`chunkWindow`),
+   * so the caller merges them by taking the newest row per machine rather than
+   * concatenating - `mergeLatestStatus` for Q-01, and for %OA the fold
+   * re-aggregates, which is the same exactness `fetchWindow` relies on.
+   */
+  narrow(nowMs?: number): string[];
+}
+
+/**
+ * A plan turned into one query per distinct window - see `SiteQuery`.
  *
  * Shared by the %OA roll-up and the census because both meet the same fact: the
- * window is a property of the SITE, and each is a single poll for every site at
- * once. The branches are disjoint by plant - a row matches exactly one of them
- * - so the union is precisely the set of rows a per-site query would have
- * returned, and a per-machine `ROW_NUMBER` inside `where` still ranks within
- * one site's own branch.
+ * window is a property of the SITE, and each is one poll for every site at once.
  */
-function perSiteWindowSql(
+function perSiteWindowQueries(
   where: (whereTime: string) => string,
   window: number | SiteWindowPlan,
-): string {
+): SiteQuery[] {
   if (typeof window === 'number') {
     assertWindow(window);
-    return where(sinceHours(window));
+    return [siteQuery(where, null, window)];
   }
 
   const overrides = window.overrides.filter((o) => o.plants.length > 0);
   assertWindow(window.defaultHours);
-  if (overrides.length === 0) return where(sinceHours(window.defaultHours));
+  if (overrides.length === 0) return [siteQuery(where, null, window.defaultHours)];
 
-  const parts = overrides.map((o) => {
+  const out = overrides.map((o) => {
     assertWindow(o.hours);
-    return where(`${ident('plant')} IN (${o.plants.map(literal).join(', ')}) AND ${sinceHours(o.hours)}`);
+    return siteQuery(where, { plants: o.plants, exclude: false }, o.hours);
   });
 
+  out.push(siteQuery(where, { plants: overrides.flatMap((o) => o.plants), exclude: true }, window.defaultHours));
+  return out;
+}
+
+function siteQuery(
+  where: (whereTime: string) => string,
+  scope: { plants: readonly string[]; exclude: boolean } | null,
+  hours: number,
+): SiteQuery {
   /* `IS NULL` explicitly, because `plant NOT IN (...)` is NULL for a row with
      no plant and would drop it. Such a row cannot be attributed to a site and
      the folds downstream discard it anyway, but it should be discarded THERE,
      by the rule that says so, and not silently by three-valued logic here. */
-  const named = overrides.flatMap((o) => o.plants).map(literal).join(', ');
-  parts.push(
-    where(
-      `(${ident('plant')} NOT IN (${named}) OR ${ident('plant')} IS NULL) AND ${sinceHours(window.defaultHours)}`,
-    ),
-  );
+  const list = scope ? scope.plants.map(literal).join(', ') : '';
+  const predicate = !scope
+    ? null
+    : scope.exclude
+      ? `(${ident('plant')} NOT IN (${list}) OR ${ident('plant')} IS NULL)`
+      : `${ident('plant')} IN (${list})`;
 
-  return parts.join('\nUNION ALL\n');
+  const scoped = (whereTime: string) =>
+    predicate === null ? whereTime : `${predicate} AND ${whereTime}`;
+
+  return {
+    plants: scope?.plants ?? [],
+    // A plan with no overrides reads every plant, which is the complement of
+    // an empty exclusion set - the same shape, so readers need no third case.
+    covers: !scope || scope.exclude ? 'others' : 'listed',
+    hours,
+    sql: where(scoped(sinceHours(hours))),
+    narrow(nowMs = Date.now()) {
+      const w = { from: new Date(nowMs - hours * HOUR_MS).toISOString(), to: new Date(nowMs).toISOString() };
+      return chunkWindow(w, NARROW_WINDOW_HOURS).map((c) => where(scoped(betweenClause(c))));
+    },
+  };
 }
 
 const sinceHours = (hours: number) => `${ident('time')} > now() - INTERVAL '${hours} hours'`;

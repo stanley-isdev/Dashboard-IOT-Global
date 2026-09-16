@@ -14,6 +14,7 @@ function snapshotWith(machines: Record<string, MachineObservation[]>): LiveSnaps
     lastSuccessAt: at,
     ok: true,
     error: null,
+    siteOutages: [],
     everSeen: {},
     plants: {},
     machines,

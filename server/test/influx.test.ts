@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertIdentifiersQuoted, ident, InfluxError } from '../src/influx/client.ts';
-import { HOT_WINDOW_HOURS, latestMachineStatusSql } from '../src/influx/queries.ts';
+import { HOT_WINDOW_HOURS, latestMachineStatusQueries } from '../src/influx/queries.ts';
 import { influxTimeToIsoUtc } from '../src/influx/time.ts';
 
 describe('assertIdentifiersQuoted - the silent-500 guard', () => {
@@ -62,9 +62,9 @@ describe('influxTimeToIsoUtc', () => {
   });
 });
 
-describe('latestMachineStatusSql', () => {
+describe('latestMachineStatusQueries', () => {
   it('quotes every identifier it touches, including "Result"', () => {
-    const sql = latestMachineStatusSql();
+    const sql = latestMachineStatusQueries()[0]!.sql;
     // The guard is the real assertion here: it is what stands between a typo
     // and an empty-bodied 500 in production.
     expect(() => assertIdentifiersQuoted(sql)).not.toThrow();
@@ -76,20 +76,20 @@ describe('latestMachineStatusSql', () => {
   });
 
   it('takes one row per machine, newest first', () => {
-    const sql = latestMachineStatusSql();
+    const sql = latestMachineStatusQueries()[0]!.sql;
     expect(sql).toContain('ROW_NUMBER() OVER (PARTITION BY "plant", "machine"');
     expect(sql).toContain('ORDER BY "time" DESC');
     expect(sql).toContain('WHERE rn = 1');
   });
 
   it('never groups or filters by codeCompany - it is NULL on 98.6% of rows', () => {
-    expect(latestMachineStatusSql()).not.toContain('codeCompany');
+    expect(latestMachineStatusQueries()[0]!.sql).not.toContain('codeCompany');
   });
 
   it('refuses a window past the measured 3-day cliff', () => {
-    expect(() => latestMachineStatusSql(71)).not.toThrow();
-    expect(() => latestMachineStatusSql(72)).toThrow(/BACKEND-HANDOVER/);
-    expect(() => latestMachineStatusSql(0)).toThrow();
-    expect(() => latestMachineStatusSql(2.5)).toThrow();
+    expect(() => latestMachineStatusQueries(71)).not.toThrow();
+    expect(() => latestMachineStatusQueries(72)).toThrow(/BACKEND-HANDOVER/);
+    expect(() => latestMachineStatusQueries(0)).toThrow();
+    expect(() => latestMachineStatusQueries(2.5)).toThrow();
   });
 });

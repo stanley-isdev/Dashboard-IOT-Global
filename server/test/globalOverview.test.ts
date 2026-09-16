@@ -79,6 +79,7 @@ function snapshot(
     lastSuccessAt: NOW.toISOString(),
     ok: true,
     error: null,
+    siteOutages: [],
     everSeen: {},
     plants,
     machines,

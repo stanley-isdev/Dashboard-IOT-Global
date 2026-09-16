@@ -6,8 +6,8 @@ import {
   latestMachineStatusInSql,
   machineHourOaInSql,
   machineOaInSql,
-  latestMachineStatusSql,
-  machineOaSql,
+  latestMachineStatusQueries,
+  machineOaQueries,
   MAX_WINDOW_HOURS,
   NARROW_WINDOW_HOURS,
   type MachineOaRow,
@@ -17,12 +17,11 @@ import {
 import {
   createWindowStore,
   describeGaps,
-  mergeLatestStatus,
-  mergeOaGroups,
   RANGE_HOURS,
   resolveWindow,
   type WindowStore,
 } from '../src/services/windowedSnapshot.ts';
+import { mergeLatestStatus, mergeOaGroups } from '../src/services/mergeRows.ts';
 import { COMPANIES } from '../src/config/masterData.ts';
 import type { InfluxClient } from '../src/influx/client.ts';
 
@@ -390,47 +389,63 @@ describe('the bounded SQL builders', () => {
  * both, and setting it to ASI's for a few hours that day is what put THS 6332
  * machine `P1I8` at 294 pieces against its own board's 43.
  */
-describe('machineOaSql - one window per site, in one statement', () => {
+describe('machineOaQueries - one window per site, one QUERY per window', () => {
   it('emits a single plain SELECT when every site reads the same window', () => {
-    const sql = machineOaSql(24);
-    expect(sql).not.toContain('UNION ALL');
-    expect(sql).toContain("now() - INTERVAL '24 hours'");
+    const [only, ...rest] = machineOaQueries(24);
+    expect(rest).toHaveLength(0);
+    expect(only!.sql).toContain("now() - INTERVAL '24 hours'");
     // No plant predicate to write when there is nothing to tell apart.
-    expect(sql).not.toContain('"plant" IN');
+    expect(only!.sql).not.toContain('"plant" IN');
+    expect(only!.covers).toBe('others');
   });
 
   it('gives the named plants their own window and everyone else the default', () => {
-    const sql = machineOaSql({
+    const [asi, rest, extra] = machineOaQueries({
       defaultHours: 24,
       overrides: [{ plants: ['6051'], hours: 71 }],
     });
-
-    const [asi, rest] = sql.split('\nUNION ALL\n');
     expect(rest).toBeDefined();
+    expect(extra).toBeUndefined();
 
-    // ASI's branch: its plants, its 3-day window.
-    expect(asi).toContain(`"plant" IN ('6051')`);
-    expect(asi).toContain("now() - INTERVAL '71 hours'");
+    // ASI's query: its plants, its 3-day window.
+    expect(asi!.covers).toBe('listed');
+    expect(asi!.plants).toEqual(['6051']);
+    expect(asi!.hours).toBe(71);
+    expect(asi!.sql).toContain(`"plant" IN ('6051')`);
+    expect(asi!.sql).toContain("now() - INTERVAL '71 hours'");
 
     // Everyone else's: explicitly NOT those plants, and the default window.
     // `IS NULL` too, or three-valued logic drops a row with no plant here
     // instead of at `foldMachineOa`, where the rule for it actually lives.
-    expect(rest).toContain(`"plant" NOT IN ('6051')`);
-    expect(rest).toContain(`"plant" IS NULL`);
-    expect(rest).toContain("now() - INTERVAL '24 hours'");
-    expect(rest).not.toContain("INTERVAL '71 hours'");
+    expect(rest!.covers).toBe('others');
+    expect(rest!.sql).toContain(`"plant" NOT IN ('6051')`);
+    expect(rest!.sql).toContain(`"plant" IS NULL`);
+    expect(rest!.sql).toContain("now() - INTERVAL '24 hours'");
+    expect(rest!.sql).not.toContain("INTERVAL '71 hours'");
+  });
+
+  /*
+   * The regression this split exists for. One statement meant ASI's 71 h branch
+   * and everyone else's 24 h branch were charged to the same file-scan budget,
+   * so the cap took the whole fleet down with it (2026-09-16 - see `SiteQuery`).
+   */
+  it('never puts two windows in one statement', () => {
+    for (const q of machineOaQueries({ defaultHours: 24, overrides: [{ plants: ['6051'], hours: 71 }] })) {
+      expect(q.sql).not.toContain('UNION ALL');
+      expect(q.sql.match(/INTERVAL '\d+ hours'/g)).toEqual([`INTERVAL '${q.hours} hours'`]);
+    }
   });
 
   it('refuses a window wider than one query may scan', () => {
     expect(() =>
-      machineOaSql({ defaultHours: 24, overrides: [{ plants: ['6051'], hours: 96 }] }),
+      machineOaQueries({ defaultHours: 24, overrides: [{ plants: ['6051'], hours: 96 }] }),
     ).toThrow(/MAX_WINDOW_HOURS|1\.\.71/);
   });
 
   it('ignores an override that names no plants', () => {
-    const sql = machineOaSql({ defaultHours: 24, overrides: [{ plants: [], hours: 71 }] });
-    expect(sql).not.toContain('UNION ALL');
-    expect(sql).toContain("now() - INTERVAL '24 hours'");
+    const qs = machineOaQueries({ defaultHours: 24, overrides: [{ plants: [], hours: 71 }] });
+    expect(qs).toHaveLength(1);
+    expect(qs[0]!.sql).toContain("now() - INTERVAL '24 hours'");
   });
 });
 
@@ -642,45 +657,84 @@ describe('everSeenWindows - Q-09 slicing', () => {
  * days earlier in `Dandori`, was on the board (43 machines) and not in our
  * 24 h census (42).
  */
-describe('latestMachineStatusSql - the census window is the site\'s too', () => {
+describe('latestMachineStatusQueries - the census window is the site\'s too', () => {
   it('emits a single plain SELECT when every site reads the same window', () => {
-    const sql = latestMachineStatusSql(24);
-    expect(sql).not.toContain('UNION ALL');
-    expect(sql).toContain("now() - INTERVAL '24 hours'");
-    expect(sql).not.toContain('"plant" IN');
+    const qs = latestMachineStatusQueries(24);
+    expect(qs).toHaveLength(1);
+    expect(qs[0]!.sql).toContain("now() - INTERVAL '24 hours'");
+    expect(qs[0]!.sql).not.toContain('"plant" IN');
   });
 
   it('gives ASI its three days and everyone else twenty-four hours', () => {
-    const sql = latestMachineStatusSql({
+    const [asi, rest] = latestMachineStatusQueries({
       defaultHours: 24,
       overrides: [{ plants: ['6051'], hours: 71 }],
     });
-
-    const [asi, rest] = sql.split('\nUNION ALL\n');
     expect(rest).toBeDefined();
 
-    expect(asi).toContain(`"plant" IN ('6051')`);
-    expect(asi).toContain("now() - INTERVAL '71 hours'");
-    expect(rest).toContain(`"plant" NOT IN ('6051')`);
-    expect(rest).toContain(`"plant" IS NULL`);
-    expect(rest).toContain("now() - INTERVAL '24 hours'");
+    expect(asi!.sql).toContain(`"plant" IN ('6051')`);
+    expect(asi!.sql).toContain("now() - INTERVAL '71 hours'");
+    expect(rest!.sql).toContain(`"plant" NOT IN ('6051')`);
+    expect(rest!.sql).toContain(`"plant" IS NULL`);
+    expect(rest!.sql).toContain("now() - INTERVAL '24 hours'");
 
     /*
-     * Each branch ranks within itself. The union is disjoint by plant, so a
-     * machine appears in exactly one branch and `rn = 1` there is its latest
-     * row for the whole statement - the property that lets this be one query
-     * instead of one per site.
+     * Each query ranks within itself. The families are disjoint by plant, so a
+     * machine appears in exactly one of them and `rn = 1` there is its latest
+     * row for the whole fleet - the property that made splitting them free.
      */
-    for (const branch of [asi, rest]) {
-      expect(branch).toContain('PARTITION BY "plant", "machine"');
-      expect(branch).toContain('rn = 1');
+    for (const q of [asi!, rest!]) {
+      expect(q.sql).toContain('PARTITION BY "plant", "machine"');
+      expect(q.sql).toContain('rn = 1');
     }
   });
 
   it('refuses a window wider than one query may scan', () => {
     expect(() =>
-      latestMachineStatusSql({ defaultHours: 24, overrides: [{ plants: ['6051'], hours: 96 }] }),
+      latestMachineStatusQueries({ defaultHours: 24, overrides: [{ plants: ['6051'], hours: 96 }] }),
     ).toThrow(/MAX_WINDOW_HOURS|1\.\.71/);
+  });
+
+  /*
+   * The fallback for a family the cap refuses outright. A plant predicate prunes
+   * no files - measured 2026-09-16, `plant IN`, `plant NOT IN` and no predicate
+   * at all were rejected identically at a width that was failing - so narrowing
+   * the HOURS is the only lever, and these slices are it.
+   */
+  describe('narrow() - what to send when the one statement is refused', () => {
+    const [asi] = latestMachineStatusQueries({
+      defaultHours: 24,
+      overrides: [{ plants: ['6051'], hours: 71 }],
+    });
+    const at = Date.parse('2026-09-16T03:00:00.000Z');
+    const slices = asi!.narrow(at);
+
+    it('covers the same window in slices no wider than the cap allows', () => {
+      expect(slices.length).toBeGreaterThan(1);
+      for (const s of slices) {
+        // Bounded, not relative: a slice has to name both of its edges or the
+        // pieces could not tile the window.
+        expect(s).toContain('"time" >=');
+        expect(s).toContain('"time" <');
+        expect(s).not.toContain('now()');
+      }
+    });
+
+    it('keeps the family it was built for, so a retry cannot widen the blast radius', () => {
+      for (const s of slices) expect(s).toContain(`"plant" IN ('6051')`);
+    });
+
+    it('tiles the window exactly once, oldest first', () => {
+      const edges = slices.map((s) => {
+        const m = [...s.matchAll(/timestamp '([^']+)'/g)].map((x) => x[1]!);
+        return { from: m[0]!, to: m[1]! };
+      });
+      expect(edges[0]!.from).toBe(new Date(at - 71 * 3_600_000).toISOString());
+      expect(edges.at(-1)!.to).toBe(new Date(at).toISOString());
+      // Half-open and adjacent: each slice starts exactly where the last ended,
+      // so no row is counted twice and none falls between two slices.
+      for (let i = 1; i < edges.length; i++) expect(edges[i]!.from).toBe(edges[i - 1]!.to);
+    });
   });
 });
 

@@ -1,7 +1,7 @@
 import type { SourceHealth } from '@dashboard/contract';
 import type { Env } from '../config/env.ts';
 import { FRESHNESS } from '../config/policy.ts';
-import type { LiveSnapshot } from '../services/liveSnapshot.ts';
+import { describeOutages, type LiveSnapshot } from '../services/liveSnapshot.ts';
 
 /**
  * Real source health, derived from the snapshot poller rather than probed
@@ -78,6 +78,25 @@ function influxHealth(snapshot: LiveSnapshot | null, env: Env, nowMs: number): S
         message:
           `${gaps.length} slice(s) of the picked window could not be read and are missing ` +
           `from these numbers, the first being ${first.from} .. ${first.to}: ${first.error}`,
+      };
+    }
+    /*
+     * Some SITES could not be read while others could (liveSnapshot.ts's
+     * `SiteOutage`). Same shape as the gap above, one axis over: the plants on
+     * screen are real and current, and the named ones are showing what they
+     * last said. `ok` would hide that a site is frozen; `down` would deny the
+     * eight that are fine - which is exactly the lie this whole split was made
+     * to stop telling.
+     */
+    const outages = snapshot.siteOutages ?? [];
+    if (outages.length > 0) {
+      return {
+        name: 'influxdb',
+        status: 'degraded',
+        last_success: snapshot.lastSuccessAt,
+        message:
+          `these sites could not be read on the last poll and are showing their previous ` +
+          `numbers - ${describeOutages(outages)}: ${outages[0]!.error}`,
       };
     }
     // Telemetry is landing but the %OA aggregate is not. `ok` would claim the
